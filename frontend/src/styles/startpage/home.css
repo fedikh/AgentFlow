@@ -1,0 +1,225 @@
+/* ================================================
+   HOME.CSS
+   Hero section — video bg, floating spheres, centered content
+   ================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap");
+
+:root {
+  --home-navy: #1a3a5c;
+  --home-blue: #2563eb;
+  --home-blue-mid: #1d4ed8;
+  --home-text: #1e293b;
+  --home-muted: #475569;
+  --home-white: #ffffff;
+  --home-font: "Plus Jakarta Sans", sans-serif;
+  --home-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ---------- Section ---------- */
+.home {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-family: var(--home-font);
+  background: #f0f4f8;
+}
+
+/* ---------- Video Background ---------- */
+.home__video-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.home__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.9;
+}
+
+/* Soft overlay to keep text readable */
+.home__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    160deg,
+    rgba(240, 244, 248, 0.35) 0%,
+    rgba(219, 234, 254, 0.2) 50%,
+    rgba(240, 244, 248, 0.4) 100%
+  );
+  z-index: 1;
+}
+
+/* ---------- Floating Spheres ---------- */
+.home__spheres {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.sphere {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95), rgba(220, 230, 245, 0.5));
+  box-shadow:
+    inset -4px -4px 12px rgba(180, 200, 230, 0.4),
+    inset 3px 3px 10px rgba(255, 255, 255, 0.9),
+    4px 8px 20px rgba(100, 140, 200, 0.15);
+  animation: sphere-float linear infinite;
+}
+
+/* Individual sphere sizes & positions */
+.sphere--1  { width: 90px;  height: 90px;  top: 8%;   left: 5%;   animation-duration: 18s; animation-delay: 0s; }
+.sphere--2  { width: 55px;  height: 55px;  top: 18%;  left: 18%;  animation-duration: 14s; animation-delay: -3s; }
+.sphere--3  { width: 130px; height: 130px; top: 40%;  left: 2%;   animation-duration: 22s; animation-delay: -6s; }
+.sphere--4  { width: 70px;  height: 70px;  top: 65%;  left: 10%;  animation-duration: 16s; animation-delay: -9s; }
+.sphere--5  { width: 45px;  height: 45px;  top: 80%;  left: 22%;  animation-duration: 12s; animation-delay: -2s; }
+.sphere--6  { width: 110px; height: 110px; top: 5%;   right: 8%;  animation-duration: 20s; animation-delay: -5s; }
+.sphere--7  { width: 80px;  height: 80px;  top: 20%;  right: 20%; animation-duration: 17s; animation-delay: -1s; }
+.sphere--8  { width: 50px;  height: 50px;  top: 35%;  right: 5%;  animation-duration: 13s; animation-delay: -7s; }
+.sphere--9  { width: 140px; height: 140px; top: 55%;  right: 3%;  animation-duration: 24s; animation-delay: -4s; }
+.sphere--10 { width: 65px;  height: 65px;  top: 75%;  right: 15%; animation-duration: 15s; animation-delay: -10s; }
+.sphere--11 { width: 40px;  height: 40px;  top: 12%;  left: 42%;  animation-duration: 11s; animation-delay: -8s; }
+.sphere--12 { width: 85px;  height: 85px;  top: 72%;  left: 45%;  animation-duration: 19s; animation-delay: -11s; }
+
+@keyframes sphere-float {
+  0%   { transform: translateY(0px) translateX(0px); }
+  25%  { transform: translateY(-14px) translateX(6px); }
+  50%  { transform: translateY(-22px) translateX(-4px); }
+  75%  { transform: translateY(-10px) translateX(8px); }
+  100% { transform: translateY(0px) translateX(0px); }
+}
+
+/* ---------- Content ---------- */
+.home__content {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 780px;
+  padding: 0 24px;
+  animation: home-fade-up 0.9s var(--home-ease) both;
+}
+
+@keyframes home-fade-up {
+  from { opacity: 0; transform: translateY(32px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Badge */
+.home__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 16px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--home-blue);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+  animation: home-fade-up 0.9s var(--home-ease) 0.1s both;
+}
+
+.home__badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--home-blue);
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.7); }
+}
+
+/* Headline */
+.home__headline {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -1.5px;
+  color: var(--home-text);
+  margin-bottom: 20px;
+  animation: home-fade-up 0.9s var(--home-ease) 0.2s both;
+}
+
+.home__headline-blue {
+  color: var(--home-blue);
+}
+
+/* Subtext */
+.home__sub {
+  font-size: clamp(1rem, 2.2vw, 1.15rem);
+  color: var(--home-muted);
+  line-height: 1.7;
+  max-width: 520px;
+  margin: 0 auto 36px;
+  animation: home-fade-up 0.9s var(--home-ease) 0.3s both;
+}
+
+.home__sub-accent {
+  color: var(--home-blue);
+  font-weight: 600;
+}
+
+/* CTA Button */
+.home__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 36px;
+  border-radius: 100px;
+  background: var(--home-navy);
+  color: var(--home-white);
+  font-family: var(--home-font);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 4px 20px rgba(26, 58, 92, 0.35);
+  transition: all 0.3s var(--home-ease);
+  animation: home-fade-up 0.9s var(--home-ease) 0.4s both;
+}
+
+.home__cta:hover {
+  background: var(--home-blue);
+  box-shadow: 0 8px 28px rgba(37, 99, 235, 0.4);
+  transform: translateY(-2px);
+}
+
+.home__cta-arrow {
+  font-size: 1.1rem;
+  transition: transform 0.25s ease;
+}
+
+.home__cta:hover .home__cta-arrow {
+  transform: translateX(4px);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 640px) {
+  .home__headline {
+    letter-spacing: -0.8px;
+  }
+
+  .sphere--3,
+  .sphere--9 {
+    display: none;
+  }
+}

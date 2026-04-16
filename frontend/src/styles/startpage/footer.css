@@ -1,0 +1,306 @@
+/* ================================================
+   FOOTER.CSS
+   Dark navy footer — AgentFlow + Welyne branding
+   ================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap");
+
+:root {
+  --ft-navy:       #0d1f35;
+  --ft-navy-mid:   #1a3a5c;
+  --ft-blue:       #2563eb;
+  --ft-blue-light: #3b82f6;
+  --ft-white:      #ffffff;
+  --ft-text:       rgba(255, 255, 255, 0.75);
+  --ft-muted:      rgba(255, 255, 255, 0.4);
+  --ft-border:     rgba(255, 255, 255, 0.08);
+  --ft-font:       "Plus Jakarta Sans", sans-serif;
+}
+
+/* ── Shell ── */
+.footer {
+  background: linear-gradient(160deg, #0a1828 0%, #0d1f35 50%, #1a3a5c 100%);
+  font-family: var(--ft-font);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle grid overlay */
+.footer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.05) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Container ── */
+.footer__container {
+  position: relative;
+  z-index: 1;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 72px 60px 40px;
+}
+
+/* ── Top grid ── */
+.footer__top {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1.4fr;
+  gap: 48px;
+  align-items: start;
+}
+
+/* ── Brand col ── */
+.footer__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.footer__agentflow-logo {
+  height: 80px;
+  width: auto;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.footer__agentflow-fallback {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--ft-white);
+  letter-spacing: -0.5px;
+}
+
+.footer__brand-desc {
+  font-size: 0.875rem;
+  color: var(--ft-text);
+  line-height: 1.75;
+  max-width: 300px;
+  margin: 0;
+}
+
+.footer__welyne {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ft-border);
+  width: fit-content;
+}
+
+.footer__welyne-by {
+  font-size: 0.75rem;
+  color: var(--ft-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.footer__welyne-logo {
+  height: 22px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(1.1) saturate(1.1);
+}
+
+.footer__welyne-fallback {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f97316;
+}
+
+/* ── Link cols ── */
+.footer__col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.footer__col-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ft-white);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.footer__links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.footer__link {
+  font-size: 0.875rem;
+  color: var(--ft-text);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+  width: fit-content;
+}
+
+.footer__link:hover {
+  color: var(--ft-blue-light);
+}
+
+/* ── Studio status ── */
+.footer__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  flex-shrink: 0;
+  animation: ft-blink 2s ease-in-out infinite;
+}
+
+@keyframes ft-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.footer__status-text {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #86efac;
+  font-family: "Courier New", monospace;
+}
+
+.footer__studio-note {
+  font-size: 0.8rem;
+  color: var(--ft-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── Divider ── */
+.footer__divider {
+  width: 100%;
+  height: 1px;
+  background: var(--ft-border);
+  margin: 48px 0 28px;
+}
+
+/* ── Bottom row ── */
+.footer__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.footer__copy {
+  font-size: 0.8rem;
+  color: var(--ft-muted);
+  font-weight: 500;
+}
+
+.footer__bottom-logos {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.footer__bottom-icon {
+  height: 26px;
+  width: auto;
+  object-fit: contain;
+  opacity: 0.8;
+}
+
+.footer__bottom-sep {
+  font-size: 0.75rem;
+  color: var(--ft-muted);
+  font-weight: 700;
+}
+
+.footer__bottom-welyne {
+  height: 20px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(1.05) saturate(1.1);
+  opacity: 0.85;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1024px) {
+  .footer__container {
+    padding: 60px 40px 36px;
+  }
+  .footer__top {
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+  }
+  .footer__brand {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .footer__container {
+    padding: 48px 20px 28px;
+  }
+  .footer__top {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .footer__brand {
+    grid-column: auto;
+  }
+  .footer__bottom {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+}
+
+/* ── Bigger AgentFlow logo ── */
+.footer__agentflow-logo--lg {
+  height: 110px;
+}
+
+/* ── Social icons ── */
+.footer__socials {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.footer__social-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ft-border);
+  color: var(--ft-muted);
+  text-decoration: none;
+  transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+
+.footer__social-link:hover {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(37, 99, 235, 0.4);
+  color: #93c5fd;
+  transform: translateY(-2px);
+}

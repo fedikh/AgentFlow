@@ -1,0 +1,309 @@
+/* ================================================
+   FAQ.CSS
+   Dark navy/blue — accordion layout
+   ================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap");
+
+:root {
+  --faq-navy:        #0d1f35;
+  --faq-navy-mid:    #1a3a5c;
+  --faq-blue:        #2563eb;
+  --faq-blue-light:  #3b82f6;
+  --faq-white:       #ffffff;
+  --faq-text:        rgba(255, 255, 255, 0.88);
+  --faq-muted:       rgba(255, 255, 255, 0.5);
+  --faq-border:      rgba(255, 255, 255, 0.08);
+  --faq-font:        "Plus Jakarta Sans", sans-serif;
+  --faq-ease:        cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Section Shell ── */
+.faq {
+  position: relative;
+  width: 100%;
+  padding: 120px 0 140px;
+  background: linear-gradient(160deg, #0d1f35 0%, #0f2847 50%, #1a3a5c 100%);
+  font-family: var(--faq-font);
+  overflow: hidden;
+}
+
+/* ── Background grid ── */
+.faq::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.05) 1px, transparent 1px);
+  background-size: 60px 60px;
+  z-index: 0;
+}
+
+/* ── Glow orbs ── */
+.faq__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.faq__glow--1 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.15) 0%, transparent 70%);
+  top: -100px;
+  right: -50px;
+}
+
+.faq__glow--2 {
+  width: 350px;
+  height: 350px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
+  bottom: -60px;
+  left: 5%;
+}
+
+/* ── Container ── */
+.faq__container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 40px;
+}
+
+/* ══════════════════════════
+   HEADER
+══════════════════════════ */
+.faq__header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 64px;
+  gap: 16px;
+}
+
+.faq__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 100px;
+  background: rgba(37, 99, 235, 0.15);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--faq-blue-light);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.faq__badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faq-blue-light);
+  animation: faq-pulse 2s ease-in-out infinite;
+}
+
+@keyframes faq-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+.faq__title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 900;
+  color: var(--faq-white);
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.faq__title-blue {
+  color: var(--faq-blue-light);
+}
+
+.faq__subtitle {
+  font-size: 1rem;
+  color: var(--faq-muted);
+  max-width: 460px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ══════════════════════════
+   ACCORDION LIST
+══════════════════════════ */
+.faq__list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Single Item ── */
+.faq__item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--faq-border);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: border-color 0.3s var(--faq-ease),
+              background 0.3s var(--faq-ease);
+}
+
+.faq__item--open {
+  background: rgba(37, 99, 235, 0.07);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+/* ── Question (trigger) ── */
+.faq__question {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 28px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--faq-font);
+  transition: padding 0.3s var(--faq-ease);
+}
+
+.faq__question-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--faq-white);
+  line-height: 1.4;
+  transition: color 0.25s ease;
+}
+
+.faq__item--open .faq__question-text {
+  color: #93c5fd;
+}
+
+/* ── Chevron icon ── */
+.faq__chevron {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--faq-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.3s ease,
+              border-color 0.3s ease,
+              transform 0.35s var(--faq-ease);
+}
+
+.faq__item--open .faq__chevron {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: rgba(37, 99, 235, 0.4);
+  transform: rotate(180deg);
+}
+
+.faq__chevron svg {
+  width: 14px;
+  height: 14px;
+  stroke: var(--faq-muted);
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.25s ease;
+}
+
+.faq__item--open .faq__chevron svg {
+  stroke: var(--faq-blue-light);
+}
+
+/* ── Answer panel ── */
+.faq__answer {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s var(--faq-ease);
+}
+
+.faq__item--open .faq__answer {
+  max-height: 300px;
+}
+
+.faq__answer-inner {
+  padding: 0 28px 24px;
+  border-top: 1px solid var(--faq-border);
+  padding-top: 20px;
+}
+
+.faq__answer-text {
+  font-size: 0.92rem;
+  color: var(--faq-text);
+  line-height: 1.8;
+}
+
+.faq__answer-text strong {
+  color: var(--faq-white);
+  font-weight: 700;
+}
+
+/* ══════════════════════════
+   BOTTOM CONTACT ROW
+══════════════════════════ */
+.faq__bottom {
+  margin-top: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  text-align: center;
+}
+
+.faq__bottom-text {
+  font-size: 0.92rem;
+  color: var(--faq-muted);
+}
+
+.faq__bottom-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--faq-blue-light);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.faq__bottom-link:hover {
+  color: var(--faq-white);
+}
+
+/* ══════════════════════════
+   RESPONSIVE
+══════════════════════════ */
+@media (max-width: 640px) {
+  .faq {
+    padding: 80px 0 100px;
+  }
+
+  .faq__container {
+    padding: 0 20px;
+  }
+
+  .faq__question {
+    padding: 20px 20px;
+  }
+
+  .faq__answer-inner {
+    padding: 0 20px 20px;
+    padding-top: 16px;
+  }
+}

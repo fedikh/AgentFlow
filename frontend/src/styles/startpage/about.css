@@ -1,0 +1,610 @@
+/* ================================================
+   ABOUT.CSS
+   Dark navy/blue section — text left, visual right
+   ================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap");
+
+:root {
+  --about-navy: #0d1f35;
+  --about-navy-mid: #1a3a5c;
+  --about-blue: #2563eb;
+  --about-blue-light: #3b82f6;
+  --about-blue-pale: #dbeafe;
+  --about-white: #ffffff;
+  --about-text: rgba(255, 255, 255, 0.88);
+  --about-muted: rgba(255, 255, 255, 0.5);
+  --about-border: rgba(255, 255, 255, 0.08);
+  --about-font: "Plus Jakarta Sans", sans-serif;
+  --about-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Section Shell ── */
+.about {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0d1f35 0%, #0f2847 40%, #1a3a5c 100%);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  font-family: var(--about-font);
+  padding: 120px 0;
+}
+
+/* ── Background grid mesh ── */
+.about::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.06) 1px, transparent 1px);
+  background-size: 60px 60px;
+  z-index: 0;
+}
+
+/* ── Glow orbs ── */
+.about__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.about__glow--1 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.18) 0%, transparent 70%);
+  top: -120px;
+  left: -100px;
+}
+
+.about__glow--2 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.14) 0%, transparent 70%);
+  bottom: -80px;
+  right: 10%;
+}
+
+/* ── Inner Container ── */
+.about__container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 60px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+}
+
+/* ═══════════════════════════════
+   LEFT — Text Content
+═══════════════════════════════ */
+.about__left {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* Badge */
+.about__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 100px;
+  background: rgba(37, 99, 235, 0.15);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--about-blue-light);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.about__badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--about-blue-light);
+  animation: about-pulse 2s ease-in-out infinite;
+}
+
+@keyframes about-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* Heading */
+.about__heading {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  color: var(--about-white);
+}
+
+.about__heading-blue {
+  color: var(--about-blue-light);
+}
+
+/* Description */
+.about__desc {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: var(--about-text);
+  max-width: 480px;
+}
+
+.about__desc + .about__desc {
+  margin-top: -12px;
+}
+
+/* Feature list */
+.about__features {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.about__feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.about__feature-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.15);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.about__feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.about__feature-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--about-white);
+}
+
+.about__feature-sub {
+  font-size: 0.85rem;
+  color: var(--about-muted);
+  line-height: 1.5;
+}
+
+/* CTA */
+.about__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 32px;
+  border-radius: 100px;
+  background: var(--about-blue);
+  color: var(--about-white);
+  font-family: var(--about-font);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  width: fit-content;
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
+  transition: all 0.3s var(--about-ease);
+  margin-top: 8px;
+}
+
+.about__cta:hover {
+  background: var(--about-blue-light);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(59, 130, 246, 0.45);
+}
+
+.about__cta-arrow {
+  transition: transform 0.25s ease;
+}
+
+.about__cta:hover .about__cta-arrow {
+  transform: translateX(4px);
+}
+
+/* ═══════════════════════════════
+   RIGHT — Visual Panel
+═══════════════════════════════ */
+.about__right {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.about__visual {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+}
+
+/* Main card */
+.about__card {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--about-border);
+  border-radius: 24px;
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+}
+
+/* Card header */
+.about__card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--about-border);
+}
+
+.about__card-logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, var(--about-blue), #6366f1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4);
+}
+
+.about__card-logo img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.about__card-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--about-white);
+}
+
+.about__card-sub {
+  font-size: 0.75rem;
+  color: var(--about-muted);
+  font-family: "Courier New", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Stat row */
+.about__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.about__stat {
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.about__stat-num {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--about-white);
+  letter-spacing: -0.5px;
+}
+
+.about__stat-num span {
+  color: var(--about-blue-light);
+}
+
+.about__stat-label {
+  font-size: 0.75rem;
+  color: var(--about-muted);
+  font-weight: 500;
+}
+
+/* ── Welyne badge (above about badge) ── */
+.about__welyne-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--about-muted);
+  width: fit-content;
+}
+
+.about__welyne-logo {
+  height: 22px;
+  width: auto;
+  object-fit: contain;
+}
+
+/* ── Desc brand highlight ── */
+.about__desc-brand {
+  color: var(--about-white);
+  font-weight: 700;
+}
+
+/* ── AgentFlow full logo in card header ── */
+.about__card-fulllogo {
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  object-position: center;
+  filter: brightness(1.05);
+}
+
+.about__card-logo-fallback {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Capabilities grid ── */
+.about__capabilities {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.about__cap-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--about-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.about__cap-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.about__cap-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 8px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.about__cap-item:hover {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(37, 99, 235, 0.4);
+  transform: translateY(-2px);
+}
+
+.about__cap-icon {
+  font-size: 1.2rem;
+}
+
+.about__cap-text {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--about-text);
+  text-align: center;
+}
+
+/* ── Welyne branding inside card ── */
+.about__card-welyne {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--about-border);
+  border-radius: 12px;
+}
+
+.about__card-welyne-by {
+  font-size: 0.75rem;
+  color: var(--about-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.about__card-welyne-img {
+  height: 24px;
+  width: auto;
+  object-fit: contain;
+  /* invert so the orange logo shows well on dark bg */
+  filter: brightness(1.1) saturate(1.2);
+}
+
+.about__card-welyne-text {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f97316;
+  letter-spacing: -0.2px;
+}
+
+/* Status bar */
+.about__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 12px;
+}
+
+.about__status-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--about-text);
+}
+
+.about__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  animation: status-blink 2s ease-in-out infinite;
+}
+
+@keyframes status-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.about__status-ver {
+  font-size: 0.75rem;
+  color: var(--about-blue-light);
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+}
+
+/* Floating mini card */
+.about__float-card {
+  position: absolute;
+  bottom: -20px;
+  left: -30px;
+  background: rgba(13, 31, 53, 0.9);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  border-radius: 14px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  animation: float-card 4s ease-in-out infinite;
+}
+
+@keyframes float-card {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+.about__float-icon {
+  font-size: 1.3rem;
+}
+
+.about__float-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.about__float-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--about-white);
+}
+
+.about__float-sub {
+  font-size: 0.72rem;
+  color: var(--about-muted);
+}
+
+/* ── Responsive ── */
+@media (max-width: 1024px) {
+  .about__container {
+    grid-template-columns: 1fr;
+    gap: 60px;
+    padding: 0 40px;
+  }
+
+  .about__visual {
+    max-width: 100%;
+  }
+
+  .about__float-card {
+    left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .about {
+    padding: 100px 0 80px;
+  }
+
+  .about__container {
+    padding: 0 20px;
+  }
+
+  .about__stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ── Welyne row (below card in right column) ── */
+.about__welyne-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 12px 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
+}
+
+.about__welyne-by {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--about-muted);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.about__welyne-img {
+  height: 26px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(1.1) saturate(1.15);
+}
+
+.about__welyne-fallback {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #f97316;
+  letter-spacing: -0.2px;
+}
