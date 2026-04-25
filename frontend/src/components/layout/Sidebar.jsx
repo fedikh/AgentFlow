@@ -30,6 +30,28 @@ const NAV = {
           icon: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
         },
         {
+          to: "/admin/rag",
+          label: "RAG Spaces",
+          icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
+          icon2: "M14 2v6h6",
+        },
+        {
+          to: "/admin/agents",
+          label: "Agents",
+          icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
+        },
+        {
+          to: "/admin/workflows",
+          label: "Workflows",
+          icon: "M22 12h-4l-3 9L9 3l-3 9H2",
+        },
+      ],
+    },
+    {
+      section: "MANAGEMENT",
+      businessOnly: true,
+      items: [
+        {
           to: "/admin/users",
           label: "Users",
           icon: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2",
@@ -39,16 +61,6 @@ const NAV = {
           to: "/admin/settings",
           label: "Org Settings",
           icon: "M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z",
-        },
-      ],
-    },
-    {
-      section: "ANALYTICS",
-      items: [
-        {
-          to: "/admin/analytics",
-          label: "Analytics",
-          icon: "M18 20V10M12 20V4M6 20v-6",
         },
       ],
     },
@@ -84,21 +96,10 @@ const NAV = {
           label: "Agents",
           icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
         },
-      ],
-    },
-    {
-      section: "TASK MANAGEMENT",
-      items: [
         {
           to: "/it/workflows",
           label: "Workflows",
           icon: "M22 12h-4l-3 9L9 3l-3 9H2",
-        },
-        {
-          to: "/it/connections",
-          label: "Connections",
-          icon: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
-          icon2: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
         },
       ],
     },
@@ -124,14 +125,9 @@ const NAV = {
           icon: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
         },
         {
-          to: "/user/chat",
-          label: "Chat",
-          icon: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
-        },
-        {
-          to: "/user/history",
-          label: "History",
-          icon: "M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
+          to: "/user/agents",
+          label: "Agents",
+          icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
         },
       ],
     },
@@ -152,7 +148,11 @@ const NAV = {
 const Sidebar = () => {
   const user = getUser();
   const role = user?.role || "USER";
-  const sections = NAV[role] || NAV.USER;
+  const orgType = user?.org_type || "PERSONAL";
+  const allSections = NAV[role] || NAV.USER;
+  const sections = allSections.filter(
+    (sec) => !sec.businessOnly || orgType === "BUSINESS",
+  );
 
   const navigate = useNavigate();
   const [showConfirm, setShowConfirm] = React.useState(false);

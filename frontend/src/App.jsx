@@ -20,6 +20,8 @@ import UserDashboard from "./pages/user/UserDashboard";
 
 // ── Shared pages ──────────────────────────────────────
 import ProfilePage from "./pages/shared/ProfilePage";
+import UsersPage from "./pages/admin/UsersPage";
+import ActivatePage from "./pages/auth/ActivatePage";
 import StartPage from "./pages/StartPage";
 
 // ── Role redirect after login ─────────────────────────
@@ -41,6 +43,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/forgot" element={<ForgotPasswordPage />} />
+        <Route path="/activate" element={<ActivatePage />} />
 
         {/* ── After login: redirect by role ── */}
         <Route path="/dashboard" element={<RoleRedirect />} />
@@ -50,23 +53,30 @@ export default function App() {
           <Route element={<DashboardLayout />}>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route
-              path="/admin/users"
+              path="/admin/rag"
               element={
-                <div style={{ padding: "32px" }}>Users Page — coming soon</div>
+                <div style={{ padding: "32px" }}>RAG BULIDER — coming soon</div>
               }
             />
+            <Route
+              path="/admin/agents"
+              element={
+                <div style={{ padding: "32px" }}>agents — coming soon</div>
+              }
+            />
+            <Route
+              path="/admin/workflows"
+              element={
+                <div style={{ padding: "32px" }}>workflows — coming soon</div>
+              }
+            />
+            <Route path="/admin/users" element={<UsersPage />} />
             <Route
               path="/admin/settings"
               element={
                 <div style={{ padding: "32px" }}>
-                  Org Settings — coming soon
+                  org settings — coming soon
                 </div>
-              }
-            />
-            <Route
-              path="/admin/analytics"
-              element={
-                <div style={{ padding: "32px" }}>Analytics — coming soon</div>
               }
             />
           </Route>
@@ -79,7 +89,9 @@ export default function App() {
             <Route
               path="/it/rag"
               element={
-                <div style={{ padding: "32px" }}>RAG Spaces — coming soon</div>
+                <div style={{ padding: "32px" }}>
+                  org settings — coming soon
+                </div>
               }
             />
             <Route

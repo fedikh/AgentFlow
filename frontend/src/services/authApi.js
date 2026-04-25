@@ -54,3 +54,13 @@ export const verifyOtp = (email, otp) =>
 export const resetPassword = (email, otp, new_password) =>
   post("/auth/reset-password", { email, otp, new_password });
 export const fetchMe = () => get("/auth/me");
+
+export const checkSession = async () => {
+  try {
+    await get("/auth/me");
+    return true;
+  } catch (err) {
+    clearSession();
+    return false;
+  }
+};

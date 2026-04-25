@@ -131,7 +131,7 @@ def register(db: Session, data: RegisterRequest) -> dict:
     return {
         "access_token": create_access_token(user.id),
         "token_type":   "bearer",
-        "user": _user_dict(user, org),
+        "user": _user_dict(user, org, db),
     }
 
 # ── Login (with rate limiting) ────────────────────────
@@ -168,7 +168,7 @@ def login(db: Session, data: LoginRequest, client_ip: str) -> dict:
     return {
         "access_token": create_access_token(user.id),
         "token_type":   "bearer",
-        "user": _user_dict(user, org),
+        "user": _user_dict(user, org, db),
     }
 
 # ── GET /me ───────────────────────────────────────────
@@ -180,7 +180,7 @@ def get_me(db: Session, token: str) -> dict:
         raise HTTPException(status_code=404, detail="User not found")
 
     org = db.query(Organization).filter(Organization.id == user.organization_id).first()
-    return _user_dict(user, org)
+    return _user_dict(user, org, db)
 
 # ── Forgot Password ───────────────────────────────────
 async def forgot_password(db: Session, data: ForgotPasswordRequest) -> dict:
@@ -261,7 +261,13 @@ def reset_password(db: Session, data: ResetPasswordRequest) -> dict:
     return {"message": "Password reset successfully"}
 
 # ── Helper ────────────────────────────────────────────
-def _user_dict(user: User, org: Organization | None) -> dict:
+def _user_dict(user: User, org: Organization | None, db = None) -> dict:
+    dept_name = None
+    if hasattr(user, 'department_id') and user.department_id and db:
+        from app.models.department import Department
+        dept = db.query(Department).filter(Department.id == user.department_id).first()
+        dept_name = dept.name if dept else None
+
     return {
         "id":              user.id,
         "name":            user.name,
@@ -270,5 +276,7 @@ def _user_dict(user: User, org: Organization | None) -> dict:
         "organization_id": user.organization_id,
         "org_type":        org.type if org else None,
         "org_name":        org.name if org else None,
+        "department_id":   getattr(user, 'department_id', None),
+        "department_name": dept_name,
         "created_at":      str(user.created_at),
     }
