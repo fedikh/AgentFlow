@@ -11,3 +11,11 @@ pydantic[email]==2.7.1
 pydantic-settings==2.2.1
 python-multipart==0.0.9
 fastapi-mail==1.4.1
+openai==1.30.0
+langchain==0.2.0
+langchain-community==0.2.0
+langchain-openai==0.1.0
+pypdf==4.2.0
+tiktoken==0.7.0
+pdfplumber==0.11.0
+pgvector==0.3.0

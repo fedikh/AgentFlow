@@ -14,6 +14,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 
 // ── IT pages ─────────────────────────────────────────
 import ITDashboard from "./pages/it/ITDashboard";
+import RAGSpacesPage from "./pages/it/RAGSpacesPage";
 
 // ── User pages ────────────────────────────────────────
 import UserDashboard from "./pages/user/UserDashboard";
@@ -52,22 +53,17 @@ export default function App() {
         <Route element={<ProtectedRoute roles={["ADMIN"]} />}>
           <Route element={<DashboardLayout />}>
             <Route path="/admin" element={<AdminDashboard />} />
-            <Route
-              path="/admin/rag"
-              element={
-                <div style={{ padding: "32px" }}>RAG BULIDER — coming soon</div>
-              }
-            />
+            <Route path="/admin/rag" element={<RAGSpacesPage />} />
             <Route
               path="/admin/agents"
               element={
-                <div style={{ padding: "32px" }}>agents — coming soon</div>
+                <div style={{ padding: "32px" }}>Agents — coming soon</div>
               }
             />
             <Route
               path="/admin/workflows"
               element={
-                <div style={{ padding: "32px" }}>workflows — coming soon</div>
+                <div style={{ padding: "32px" }}>Workflows — coming soon</div>
               }
             />
             <Route path="/admin/users" element={<UsersPage />} />
@@ -75,7 +71,7 @@ export default function App() {
               path="/admin/settings"
               element={
                 <div style={{ padding: "32px" }}>
-                  org settings — coming soon
+                  ORG settings — coming soon
                 </div>
               }
             />
@@ -86,14 +82,7 @@ export default function App() {
         <Route element={<ProtectedRoute roles={["IT"]} />}>
           <Route element={<DashboardLayout />}>
             <Route path="/it" element={<ITDashboard />} />
-            <Route
-              path="/it/rag"
-              element={
-                <div style={{ padding: "32px" }}>
-                  org settings — coming soon
-                </div>
-              }
-            />
+            <Route path="/it/rag" element={<RAGSpacesPage />} />
             <Route
               path="/it/agents"
               element={

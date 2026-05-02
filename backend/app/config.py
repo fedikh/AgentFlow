@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     MAIL_FROM: str
     MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_PORT:   int = 587
+  # Groq (free LLM)
+    GROQ_API_KEY: str = ""
+ 
+    # RAG defaults
+    CHUNK_SIZE:    int = 512
+    CHUNK_OVERLAP: int = 50
+    TOP_K:         int = 5
  
     class Config:
         env_file = ".env"
