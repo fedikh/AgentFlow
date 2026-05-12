@@ -433,12 +433,36 @@ SOURCES AVAILABLE:
 # ══════════════════════════════════════════════════════
 # RAG SPACE CRUD
 # ══════════════════════════════════════════════════════
+def create_space(db: Session, data: CreateRAGSpaceRequest, org_id: str, current_user=None) -> dict:
+    """
+    Create a RAG space. IT must assign it to one of their departments.
+    Admin can assign to any department.
+    """
+    from app.models.department import Department
 
-def create_space(db: Session, data: CreateRAGSpaceRequest, org_id: str) -> dict:
+    # Validate department exists in org
+    if data.department_id:
+        dept = db.query(Department).filter(
+            Department.id == data.department_id,
+            Department.organization_id == org_id,
+        ).first()
+        if not dept:
+            raise HTTPException(404, "Department not found")
+
+        # If IT, check they have access to this department
+        if current_user and current_user.role == "IT":
+            user_dept_ids = [d.id for d in current_user.departments]
+            if data.department_id not in user_dept_ids:
+                raise HTTPException(403, "You don't have access to this department")
+
     space = RAGSpace(
-        name=data.name, description=data.description,
-        organization_id=org_id, chunk_size=data.chunk_size,
-        chunk_overlap=data.chunk_overlap, top_k=data.top_k,
+        name=data.name,
+        description=data.description,
+        organization_id=org_id,
+        department_id=data.department_id,        # NEW
+        chunk_size=data.chunk_size,
+        chunk_overlap=data.chunk_overlap,
+        top_k=data.top_k,
         chunk_strategy=data.chunk_strategy,
     )
     db.add(space)
@@ -446,8 +470,30 @@ def create_space(db: Session, data: CreateRAGSpaceRequest, org_id: str) -> dict:
     db.refresh(space)
     return _space_dict(space, db)
 
-def list_spaces(db: Session, org_id: str) -> list[dict]:
-    spaces = db.query(RAGSpace).filter(RAGSpace.organization_id == org_id).all()
+
+def list_spaces(db: Session, org_id: str, current_user=None) -> list[dict]:
+    """
+    List RAG spaces filtered by role:
+    - ADMIN: sees ALL spaces in the org
+    - IT: sees only spaces in their assigned departments
+    - USER: sees only spaces in their assigned departments
+    """
+    if current_user and current_user.role == "ADMIN":
+        # Admin sees everything
+        spaces = db.query(RAGSpace).filter(RAGSpace.organization_id == org_id).all()
+    elif current_user:
+        # IT and USER: filter by their departments
+        dept_ids = [d.id for d in current_user.departments]
+        if not dept_ids:
+            return []
+        spaces = db.query(RAGSpace).filter(
+            RAGSpace.organization_id == org_id,
+            RAGSpace.department_id.in_(dept_ids),
+        ).all()
+    else:
+        # Fallback (no user context): show all (backward compat)
+        spaces = db.query(RAGSpace).filter(RAGSpace.organization_id == org_id).all()
+
     return [_space_dict(s, db) for s in spaces]
 
 def get_space(db: Session, space_id: str, org_id: str) -> dict:
@@ -634,20 +680,37 @@ def _find_space(db: Session, space_id: str, org_id: str) -> RAGSpace:
         raise HTTPException(404, "RAG space not found")
     return space
 
+
 def _space_dict(space: RAGSpace, db: Session = None) -> dict:
+    """Convert RAGSpace to dict — now includes department info."""
+    from app.models.department import Department
+
     num_docs = 0
     num_chunks = 0
+    dept_name = None
+
     if db:
         num_docs = db.query(Document).filter(Document.rag_space_id == space.id).count()
         num_chunks = db.query(Chunk).filter(Chunk.rag_space_id == space.id).count()
-    return {
-        "id": space.id, "name": space.name, "description": space.description,
-        "organization_id": space.organization_id, "chunk_size": space.chunk_size,
-        "chunk_overlap": space.chunk_overlap, "top_k": space.top_k,
-        "chunk_strategy": space.chunk_strategy, "num_documents": num_docs,
-        "num_chunks": num_chunks, "created_at": str(space.created_at),
-    }
+        if space.department_id:
+            dept = db.query(Department).filter(Department.id == space.department_id).first()
+            dept_name = dept.name if dept else None
 
+    return {
+        "id":              space.id,
+        "name":            space.name,
+        "description":     space.description,
+        "organization_id": space.organization_id,
+        "department_id":   space.department_id,       # NEW
+        "department_name": dept_name,                  # NEW
+        "chunk_size":      space.chunk_size,
+        "chunk_overlap":   space.chunk_overlap,
+        "top_k":           space.top_k,
+        "chunk_strategy":  space.chunk_strategy,
+        "num_documents":   num_docs,
+        "num_chunks":      num_chunks,
+        "created_at":      str(space.created_at),
+    }
 def _doc_dict(doc: Document) -> dict:
     return {
         "id": doc.id, "file_name": doc.file_name, "file_type": doc.file_type,

@@ -14,8 +14,12 @@ async function request(method, endpoint, body = null) {
 }
 
 // Users
-export const inviteUser = (email, role, department_id) =>
-  request("POST", "/users/invite", { email, role, department_id });
+export const inviteUser = (email, role, departmentIds) =>
+  request("POST", "/users/invite", {
+    email,
+    role,
+    department_ids: departmentIds,
+  });
 export const activateUser = (token, name, password) =>
   request("POST", "/users/activate", { token, name, password });
 export const listUsers = () => request("GET", "/users/");

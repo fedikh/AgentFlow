@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { getUser, clearSession, logout } from "../../services/authApi";
 import "../../styles/layoutStyles/Sidebar.css";
 
-const Icon = ({ d, d2 }) => (
+const Icon = ({ d, d2, d3 }) => (
   <svg
     width="15"
     height="15"
@@ -16,34 +16,23 @@ const Icon = ({ d, d2 }) => (
   >
     <path d={d} />
     {d2 && <path d={d2} />}
+    {d3 && <path d={d3} />}
   </svg>
 );
 
+// ══════════════════════════════════════════════════════
+// NAVIGATION BY ROLE
+// ══════════════════════════════════════════════════════
 const NAV = {
+  // ── ADMIN ──────────────────────────────────────────
   ADMIN: [
     {
-      section: "CORE",
+      section: "OVERVIEW",
       items: [
         {
           to: "/admin",
           label: "Dashboard",
           icon: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
-        },
-        {
-          to: "/admin/rag",
-          label: "RAG Spaces",
-          icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
-          icon2: "M14 2v6h6",
-        },
-        {
-          to: "/admin/agents",
-          label: "Agents",
-          icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
-        },
-        {
-          to: "/admin/workflows",
-          label: "Workflows",
-          icon: "M22 12h-4l-3 9L9 3l-3 9H2",
         },
       ],
     },
@@ -53,19 +42,48 @@ const NAV = {
       items: [
         {
           to: "/admin/users",
-          label: "Users",
+          label: "Users & Departments",
           icon: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2",
           icon2: "M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
         },
         {
-          to: "/admin/settings",
-          label: "Org Settings",
-          icon: "M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z",
+          to: "/admin/rag",
+          label: "RAG Spaces",
+          icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
+          icon2: "M14 2v6h6",
         },
       ],
     },
     {
-      section: "SETTINGS",
+      section: "CONFIGURATION",
+      businessOnly: true,
+      items: [
+        {
+          to: "/admin/providers",
+          label: "Providers & API Keys",
+          icon: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4",
+        },
+        {
+          to: "/admin/settings",
+          label: "Org Settings",
+          icon: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z",
+          icon2: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+        },
+      ],
+    },
+    {
+      section: "MONITORING",
+      businessOnly: true,
+      items: [
+        {
+          to: "/admin/analytics",
+          label: "Analytics",
+          icon: "M18 20V10M12 20V4M6 20v-6",
+        },
+      ],
+    },
+    {
+      section: "ACCOUNT",
       items: [
         {
           to: "/profile",
@@ -76,15 +94,22 @@ const NAV = {
       ],
     },
   ],
+
+  // ── IT ─────────────────────────────────────────────
   IT: [
     {
-      section: "CORE",
+      section: "OVERVIEW",
       items: [
         {
           to: "/it",
           label: "Dashboard",
           icon: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
         },
+      ],
+    },
+    {
+      section: "BUILD",
+      items: [
         {
           to: "/it/rag",
           label: "RAG Spaces",
@@ -104,7 +129,22 @@ const NAV = {
       ],
     },
     {
-      section: "SETTINGS",
+      section: "TOOLS",
+      items: [
+        {
+          to: "/it/console",
+          label: "Test Console",
+          icon: "M4 17l6-6-6-6M12 19h8",
+        },
+        {
+          to: "/it/tuning",
+          label: "Auto-Tuning",
+          icon: "M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z",
+        },
+      ],
+    },
+    {
+      section: "ACCOUNT",
       items: [
         {
           to: "/profile",
@@ -115,24 +155,36 @@ const NAV = {
       ],
     },
   ],
+
+  // ── END USER ───────────────────────────────────────
   USER: [
     {
-      section: "CORE",
+      section: "OVERVIEW",
       items: [
         {
           to: "/user",
           label: "Dashboard",
           icon: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
         },
+      ],
+    },
+    {
+      section: "AI ASSISTANTS",
+      items: [
         {
           to: "/user/agents",
-          label: "Agents",
+          label: "My Agents",
           icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
+        },
+        {
+          to: "/user/history",
+          label: "Chat History",
+          icon: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
         },
       ],
     },
     {
-      section: "SETTINGS",
+      section: "ACCOUNT",
       items: [
         {
           to: "/profile",
@@ -145,6 +197,9 @@ const NAV = {
   ],
 };
 
+// ══════════════════════════════════════════════════════
+// SIDEBAR COMPONENT
+// ══════════════════════════════════════════════════════
 const Sidebar = () => {
   const user = getUser();
   const role = user?.role || "USER";
@@ -172,6 +227,14 @@ const Sidebar = () => {
         .toUpperCase()
         .slice(0, 2)
     : "??";
+
+  // Role badge colors
+  const roleBadge = {
+    ADMIN: { bg: "#FEF2F2", color: "#991B1B", label: "Admin" },
+    IT: { bg: "#EFF6FF", color: "#1E40AF", label: "IT" },
+    USER: { bg: "#F0FDF4", color: "#166534", label: "User" },
+  };
+  const rb = roleBadge[role] || roleBadge.USER;
 
   return (
     <aside className="sidebar">
@@ -214,7 +277,7 @@ const Sidebar = () => {
                   `sidebar-link ${isActive ? "active" : ""}`
                 }
               >
-                <Icon d={item.icon} d2={item.icon2} />
+                <Icon d={item.icon} d2={item.icon2} d3={item.d3} />
                 <span>{item.label}</span>
               </NavLink>
             ))}
@@ -227,7 +290,23 @@ const Sidebar = () => {
       <div className="sidebar-user">
         <div className="sidebar-user-avatar">{initials}</div>
         <div style={{ overflow: "hidden", flex: 1 }}>
-          <div className="sidebar-user-name">{user?.name || "User"}</div>
+          <div className="sidebar-user-name">
+            {user?.name || "User"}
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 600,
+                marginLeft: 6,
+                padding: "1px 5px",
+                borderRadius: 4,
+                background: rb.bg,
+                color: rb.color,
+                verticalAlign: "middle",
+              }}
+            >
+              {rb.label}
+            </span>
+          </div>
           <div className="sidebar-user-email">{user?.email || ""}</div>
         </div>
         <button

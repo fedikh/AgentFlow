@@ -261,22 +261,30 @@ def reset_password(db: Session, data: ResetPasswordRequest) -> dict:
     return {"message": "Password reset successfully"}
 
 # ── Helper ────────────────────────────────────────────
-def _user_dict(user: User, org: Organization | None, db = None) -> dict:
-    dept_name = None
-    if hasattr(user, 'department_id') and user.department_id and db:
-        from app.models.department import Department
-        dept = db.query(Department).filter(Department.id == user.department_id).first()
-        dept_name = dept.name if dept else None
+def _user_dict(user, org=None, db=None) -> dict:
+    """
+    Updated _user_dict for many-to-many departments.
+    Returns departments as a list instead of single department_id/department_name.
+    """
+    departments = []
+    department_names = []
+    department_ids = []
+
+    if hasattr(user, 'departments') and user.departments:
+        departments = [{"id": d.id, "name": d.name} for d in user.departments]
+        department_names = [d.name for d in user.departments]
+        department_ids = [d.id for d in user.departments]
 
     return {
-        "id":              user.id,
-        "name":            user.name,
-        "email":           user.email,
-        "role":            user.role,
-        "organization_id": user.organization_id,
-        "org_type":        org.type if org else None,
-        "org_name":        org.name if org else None,
-        "department_id":   getattr(user, 'department_id', None),
-        "department_name": dept_name,
-        "created_at":      str(user.created_at),
+        "id":               user.id,
+        "name":             user.name,
+        "email":            user.email,
+        "role":             user.role,
+        "organization_id":  user.organization_id,
+        "org_type":         org.type if org else None,
+        "org_name":         org.name if org else None,
+        "departments":      departments,
+        "department_names": department_names,
+        "department_ids":   department_ids,
+        "created_at":       str(user.created_at),
     }
