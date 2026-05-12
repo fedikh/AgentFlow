@@ -8,13 +8,14 @@ import {
   deleteDocument,
   queryRAG,
 } from "../../services/ragApi";
+import { listDepartments } from "../../services/usersApi";
 import "../../styles/it/rag.css";
 
 const RAGSpacesPage = () => {
-  // ── State ──
   const [spaces, setSpaces] = useState([]);
-  const [selected, setSelected] = useState(null); // selected space
+  const [selected, setSelected] = useState(null);
   const [docs, setDocs] = useState([]);
+  const [depts, setDepts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -22,6 +23,7 @@ const RAGSpacesPage = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [newDeptId, setNewDeptId] = useState("");
 
   // Upload
   const fileRef = useRef(null);
@@ -32,56 +34,29 @@ const RAGSpacesPage = () => {
   const [chatHistory, setChatHistory] = useState([]);
   const [querying, setQuerying] = useState(false);
 
-  // ── Load spaces ──
-  // Format LLM answer — simple markdown to HTML
-  const formatAnswer = (text) => {
-    if (!text) return "";
-    return (
-      text
-        // Bold: **text**
-        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-        // Headers: ## text
-        .replace(/^## (.+)$/gm, '<div class="rag-md-h2">$1</div>')
-        .replace(/^### (.+)$/gm, '<div class="rag-md-h3">$1</div>')
-        // Bullet points: • or - at start of line
-        .replace(/^[•\-\*] (.+)$/gm, '<div class="rag-md-li">$1</div>')
-        // Numbered lists: 1. text
-        .replace(
-          /^(\d+)\. (.+)$/gm,
-          '<div class="rag-md-li"><span class="rag-md-num">$1.</span> $2</div>',
-        )
-        // Tables: | col | col |
-        .replace(/^\|(.+)\|$/gm, (match) => {
-          const cells = match
-            .split("|")
-            .filter((c) => c.trim() && !c.trim().match(/^-+$/));
-          if (cells.length === 0) return "";
-          return (
-            '<div class="rag-md-tr">' +
-            cells
-              .map((c) => '<span class="rag-md-td">' + c.trim() + "</span>")
-              .join("") +
-            "</div>"
-          );
-        })
-        // Remove separator rows |---|---|
-        .replace(/^\|[\s-|]+\|$/gm, "")
-        // Newlines
-        .replace(/\n\n/g, '<div class="rag-md-br"></div>')
-        .replace(/\n/g, "<br/>")
-    );
-  };
-
   useEffect(() => {
     loadSpaces();
+    loadDepts();
   }, []);
 
   const loadSpaces = async () => {
+    setLoading(true);
     try {
       const data = await listSpaces();
       setSpaces(data);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDepts = async () => {
+    try {
+      const data = await listDepartments();
+      setDepts(data);
+    } catch (e) {
+      console.error("Failed to load departments:", e);
     }
   };
 
@@ -96,16 +71,36 @@ const RAGSpacesPage = () => {
     }
   };
 
-  // ── Create space ──
+  // Format markdown
+  const formatAnswer = (text) => {
+    if (!text) return "";
+    return text
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/^## (.+)$/gm, '<div class="rag-md-h2">$1</div>')
+      .replace(/^### (.+)$/gm, '<div class="rag-md-h3">$1</div>')
+      .replace(/^[•\-\*] (.+)$/gm, '<div class="rag-md-li">$1</div>')
+      .replace(
+        /^(\d+)\. (.+)$/gm,
+        '<div class="rag-md-li"><span class="rag-md-num">$1.</span> $2</div>',
+      )
+      .replace(/\n/g, "<br>");
+  };
+
+  // ── Create space with department ──
   const handleCreate = async () => {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !newDeptId) return;
     setLoading(true);
     try {
-      await createSpace({ name: newName, description: newDesc });
-      await loadSpaces();
-      setShowCreate(false);
+      await createSpace({
+        name: newName,
+        description: newDesc,
+        department_id: newDeptId,
+      });
       setNewName("");
       setNewDesc("");
+      setNewDeptId("");
+      setShowCreate(false);
+      await loadSpaces();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -113,7 +108,6 @@ const RAGSpacesPage = () => {
     }
   };
 
-  // ── Delete space ──
   const handleDeleteSpace = async (id) => {
     if (!confirm("Delete this RAG space and all its documents?")) return;
     try {
@@ -128,7 +122,6 @@ const RAGSpacesPage = () => {
     }
   };
 
-  // ── Upload document ──
   const handleUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !selected) return;
@@ -147,7 +140,6 @@ const RAGSpacesPage = () => {
     }
   };
 
-  // ── Delete document ──
   const handleDeleteDoc = async (docId) => {
     try {
       await deleteDocument(selected.id, docId);
@@ -157,7 +149,6 @@ const RAGSpacesPage = () => {
     }
   };
 
-  // ── Chat query ──
   const handleQuery = async () => {
     if (!question.trim() || !selected) return;
     const q = question;
@@ -168,11 +159,7 @@ const RAGSpacesPage = () => {
       const res = await queryRAG(selected.id, q);
       setChatHistory((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: res.answer,
-          sources: res.sources,
-        },
+        { role: "assistant", content: res.answer, sources: res.sources },
       ]);
     } catch (e) {
       setChatHistory((prev) => [
@@ -188,7 +175,7 @@ const RAGSpacesPage = () => {
     <div className="rag-page">
       <h1 className="rag-title">RAG Spaces</h1>
       <p className="rag-sub">
-        Upload documents and chat with your knowledge base
+        Build and configure RAG pipelines for your departments
       </p>
 
       {error && (
@@ -222,7 +209,25 @@ const RAGSpacesPage = () => {
               onClick={() => selectSpace(s)}
             >
               <div className="rag-space-name">{s.name}</div>
-              <div className="rag-space-meta">{s.num_documents} doc(s)</div>
+              <div className="rag-space-meta">
+                {s.num_documents} doc(s)
+                {s.department_name && (
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      fontSize: 10,
+                      fontWeight: 500,
+                      padding: "1px 5px",
+                      borderRadius: 4,
+                      background: "#EFF6FF",
+                      color: "#1D4ED8",
+                      border: "1px solid #BFDBFE",
+                    }}
+                  >
+                    {s.department_name}
+                  </span>
+                )}
+              </div>
               <button
                 className="rag-space-del"
                 onClick={(e) => {
@@ -250,6 +255,22 @@ const RAGSpacesPage = () => {
                   <h2 className="rag-detail-title">{selected.name}</h2>
                   <p className="rag-detail-desc">
                     {selected.description || "No description"}
+                    {selected.department_name && (
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          fontSize: 11,
+                          fontWeight: 500,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          background: "#EFF6FF",
+                          color: "#1D4ED8",
+                          border: "1px solid #BFDBFE",
+                        }}
+                      >
+                        {selected.department_name}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="rag-config-pills">
@@ -371,7 +392,7 @@ const RAGSpacesPage = () => {
         </div>
       </div>
 
-      {/* ── Create modal ── */}
+      {/* ── Create modal with department selector ── */}
       {showCreate && (
         <div className="rag-overlay" onClick={() => setShowCreate(false)}>
           <div className="rag-modal" onClick={(e) => e.stopPropagation()}>
@@ -395,6 +416,40 @@ const RAGSpacesPage = () => {
                 onChange={(e) => setNewDesc(e.target.value)}
               />
             </div>
+            <div className="field">
+              <label>Department</label>
+              <select
+                value={newDeptId}
+                onChange={(e) => setNewDeptId(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #E5E7EB",
+                  fontSize: 13,
+                  color: newDeptId ? "#1F2937" : "#9CA3AF",
+                }}
+              >
+                <option value="">Select a department</option>
+                {depts.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              {depts.length === 0 && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#DC2626",
+                    marginTop: 4,
+                    display: "block",
+                  }}
+                >
+                  No departments available — ask Admin to create one
+                </span>
+              )}
+            </div>
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button
                 className="rag-btn-cancel"
@@ -405,7 +460,7 @@ const RAGSpacesPage = () => {
               <button
                 className="rag-btn-primary"
                 onClick={handleCreate}
-                disabled={loading || !newName.trim()}
+                disabled={loading || !newName.trim() || !newDeptId}
               >
                 {loading ? "Creating..." : "Create"}
               </button>
