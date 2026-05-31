@@ -13,35 +13,39 @@ async function request(method, endpoint, body = null) {
   return data;
 }
 
-async function upload(endpoint, file) {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
-    method: "POST",
-    credentials: "include",
-    body: form, // no Content-Type header — browser sets multipart boundary
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Upload failed");
-  return data;
-}
-
-// ── RAG Spaces ────────────────────────────────────────
-export const createSpace = (payload) => request("POST", "/rag/spaces", payload);
+// Spaces
+export const createSpace = (data) => request("POST", "/rag/spaces", data);
 export const listSpaces = () => request("GET", "/rag/spaces");
 export const getSpace = (id) => request("GET", `/rag/spaces/${id}`);
-export const updateSpace = (id, payload) =>
-  request("PUT", `/rag/spaces/${id}`, payload);
+export const updateSpace = (id, data) =>
+  request("PUT", `/rag/spaces/${id}`, data);
 export const deleteSpace = (id) => request("DELETE", `/rag/spaces/${id}`);
 
-// ── Documents ─────────────────────────────────────────
-export const uploadDocument = (spaceId, file) =>
-  upload(`/rag/spaces/${spaceId}/upload`, file);
+// Documents
 export const listDocuments = (spaceId) =>
   request("GET", `/rag/spaces/${spaceId}/documents`);
 export const deleteDocument = (spaceId, docId) =>
   request("DELETE", `/rag/spaces/${spaceId}/documents/${docId}`);
 
-// ── Query ─────────────────────────────────────────────
-export const queryRAG = (spaceId, question) =>
-  request("POST", `/rag/spaces/${spaceId}/query`, { question });
+// Chunks — NEW
+export const listChunks = (spaceId, docId) =>
+  request("GET", `/rag/spaces/${spaceId}/documents/${docId}/chunks`);
+
+// Upload (multipart)
+export const uploadDocument = async (spaceId, file) => {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}/rag/spaces/${spaceId}/upload`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Upload failed");
+  return data;
+};
+
+// Query
+export const queryRAG = async (spaceId, question) => {
+  return request("POST", `/rag/spaces/${spaceId}/query`, { question });
+};

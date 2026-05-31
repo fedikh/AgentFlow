@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     CHUNK_SIZE:    int = 512
     CHUNK_OVERLAP: int = 50
     TOP_K:         int = 5
+    FERNET_KEY: str = ""
  
     class Config:
         env_file = ".env"

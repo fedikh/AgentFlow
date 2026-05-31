@@ -89,6 +89,11 @@ def list_documents(space_id: str, request: Request, db: Session = Depends(get_db
     user = _get_current_user(request, db)
     return rag_service.list_documents(db, space_id, user.organization_id)
 
+@router.get("/spaces/{space_id}/documents/{doc_id}/chunks")
+def get_chunks(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return rag_service.list_chunks(db, space_id, doc_id, user.organization_id)
+
 
 @router.delete("/spaces/{space_id}/documents/{doc_id}")
 def delete_document(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
@@ -104,3 +109,4 @@ def delete_document(space_id: str, doc_id: str, request: Request, db: Session = 
 def query_space(space_id: str, data: QueryRequest, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return rag_service.query(db, space_id, user.organization_id, data)
+
