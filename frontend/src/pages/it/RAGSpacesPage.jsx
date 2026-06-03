@@ -6,6 +6,10 @@ import {
   listDocuments,
   uploadDocument,
   deleteDocument,
+  scrapeUrl,
+  getExtractedContent,
+  processDocument,
+  processAllDocuments,
   listChunks,
   queryRAG,
 } from "../../services/ragApi";
@@ -19,32 +23,29 @@ const RAGSpacesPage = () => {
   const [spaces, setSpaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  // Navigation
   const [activeDept, setActiveDept] = useState(null);
   const [activeSpace, setActiveSpace] = useState(null);
   const [activeTab, setActiveTab] = useState("documents");
 
-  // Documents & chunks
   const [docs, setDocs] = useState([]);
   const [activeDoc, setActiveDoc] = useState(null);
+  const [extractedData, setExtractedData] = useState(null);
   const [chunks, setChunks] = useState([]);
+  const [loadingExtract, setLoadingExtract] = useState(false);
   const [loadingChunks, setLoadingChunks] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
-  // Upload
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [scrapeUrlValue, setScrapeUrlValue] = useState("");
+  const [scraping, setScraping] = useState(false);
 
-  // Create modal
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [newStrategy, setNewStrategy] = useState("FIXED");
-  const [newChunkSize, setNewChunkSize] = useState(512);
-  const [newOverlap, setNewOverlap] = useState(50);
-  const [newTopK, setNewTopK] = useState(5);
 
-  // Chat
   const [question, setQuestion] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [querying, setQuerying] = useState(false);
@@ -57,7 +58,12 @@ const RAGSpacesPage = () => {
     setLoading(true);
     try {
       const [d, s] = await Promise.all([listDepartments(), listSpaces()]);
-      setDepts(d);
+      const userDeptIds = currentUser?.department_ids || [];
+      const myDepts =
+        currentUser?.role === "ADMIN"
+          ? d
+          : d.filter((dept) => userDeptIds.includes(dept.id));
+      setDepts(myDepts);
       setSpaces(s);
     } catch (e) {
       setError(e.message);
@@ -69,7 +75,6 @@ const RAGSpacesPage = () => {
   const deptSpaces = activeDept
     ? spaces.filter((s) => s.department_id === activeDept.id)
     : [];
-
   const spaceCountByDept = (deptId) =>
     spaces.filter((s) => s.department_id === deptId).length;
 
@@ -77,31 +82,16 @@ const RAGSpacesPage = () => {
     setActiveSpace(space);
     setActiveTab("documents");
     setActiveDoc(null);
+    setExtractedData(null);
     setChunks([]);
     setChatHistory([]);
     try {
-      const d = await listDocuments(space.id);
-      setDocs(d);
+      setDocs(await listDocuments(space.id));
     } catch (e) {
       setError(e.message);
     }
   };
 
-  const loadChunks = async (doc) => {
-    setActiveDoc(doc);
-    setLoadingChunks(true);
-    try {
-      const c = await listChunks(activeSpace.id, doc.id);
-      setChunks(c);
-      setActiveTab("chunks");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoadingChunks(false);
-    }
-  };
-
-  // ── Create space ──
   const handleCreate = async () => {
     if (!newName.trim() || !activeDept) return;
     try {
@@ -109,17 +99,9 @@ const RAGSpacesPage = () => {
         name: newName,
         description: newDesc,
         department_id: activeDept.id,
-        chunk_strategy: newStrategy,
-        chunk_size: newChunkSize,
-        chunk_overlap: newOverlap,
-        top_k: newTopK,
       });
       setNewName("");
       setNewDesc("");
-      setNewStrategy("FIXED");
-      setNewChunkSize(512);
-      setNewOverlap(50);
-      setNewTopK(5);
       setShowCreate(false);
       await loadData();
     } catch (e) {
@@ -127,7 +109,7 @@ const RAGSpacesPage = () => {
     }
   };
 
-  // ── Upload ──
+  // ── Upload local file ──
   const handleUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !activeSpace) return;
@@ -135,8 +117,8 @@ const RAGSpacesPage = () => {
     setError("");
     try {
       await uploadDocument(activeSpace.id, file);
-      const d = await listDocuments(activeSpace.id);
-      setDocs(d);
+      setSuccess(`"${file.name}" uploaded and text extracted`);
+      setDocs(await listDocuments(activeSpace.id));
       await loadData();
     } catch (err) {
       setError(err.message);
@@ -146,12 +128,92 @@ const RAGSpacesPage = () => {
     }
   };
 
+  // ── Scrape URL ──
+  const handleScrape = async () => {
+    if (!scrapeUrlValue.trim() || !activeSpace) return;
+    setScraping(true);
+    setError("");
+    try {
+      await scrapeUrl(activeSpace.id, scrapeUrlValue);
+      setSuccess(`URL scraped and text extracted`);
+      setScrapeUrlValue("");
+      setDocs(await listDocuments(activeSpace.id));
+      await loadData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  // ── View extracted text ──
+  const viewExtracted = async (doc) => {
+    setActiveDoc(doc);
+    setLoadingExtract(true);
+    try {
+      const data = await getExtractedContent(activeSpace.id, doc.id);
+      setExtractedData(data);
+      setActiveTab("extracted");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoadingExtract(false);
+    }
+  };
+
+  // ── Process one document ──
+  const handleProcess = async (docId) => {
+    setProcessing(true);
+    setError("");
+    try {
+      await processDocument(activeSpace.id, docId);
+      setSuccess("Document processed — chunks created");
+      setDocs(await listDocuments(activeSpace.id));
+      await loadData();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // ── Process all ──
+  const handleProcessAll = async () => {
+    setProcessing(true);
+    setError("");
+    try {
+      const result = await processAllDocuments(activeSpace.id);
+      setSuccess(`${result.processed} document(s) processed`);
+      setDocs(await listDocuments(activeSpace.id));
+      await loadData();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // ── View chunks ──
+  const viewChunks = async (doc) => {
+    setActiveDoc(doc);
+    setLoadingChunks(true);
+    try {
+      setChunks(await listChunks(activeSpace.id, doc.id));
+      setActiveTab("chunks");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoadingChunks(false);
+    }
+  };
+
   const handleDeleteDoc = async (docId) => {
     try {
       await deleteDocument(activeSpace.id, docId);
       setDocs(docs.filter((d) => d.id !== docId));
       if (activeDoc?.id === docId) {
         setActiveDoc(null);
+        setExtractedData(null);
         setChunks([]);
       }
     } catch (e) {
@@ -165,14 +227,12 @@ const RAGSpacesPage = () => {
       await deleteSpace(id);
       setActiveSpace(null);
       setDocs([]);
-      setChunks([]);
       await loadData();
     } catch (e) {
       setError(e.message);
     }
   };
 
-  // ── Chat ──
   const handleQuery = async () => {
     if (!question.trim() || !activeSpace) return;
     const q = question;
@@ -195,56 +255,115 @@ const RAGSpacesPage = () => {
     }
   };
 
-  const formatAnswer = (text) => {
-    if (!text) return "";
-    return text
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(
-        /^## (.+)$/gm,
-        '<div style="font-weight:600;font-size:14px;margin:8px 0 4px">$1</div>',
-      )
-      .replace(/^[•\-\*] (.+)$/gm, '<div style="padding-left:12px">• $1</div>')
-      .replace(/\n/g, "<br>");
-  };
+  const formatAnswer = (t) =>
+    t
+      ? t
+          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+          .replace(
+            /^## (.+)$/gm,
+            '<div style="font-weight:600;margin:8px 0 4px">$1</div>',
+          )
+          .replace(
+            /^[•\-\*] (.+)$/gm,
+            '<div style="padding-left:12px">• $1</div>',
+          )
+          .replace(/\n/g, "<br>")
+      : "";
 
-  // ── Chunk stats ──
   const chunkStats =
     chunks.length > 0
       ? {
           total: chunks.length,
-          textCount: chunks.filter((c) => c.type === "text").length,
-          tableCount: chunks.filter((c) => c.type === "table").length,
-          avgSize: Math.round(
+          text: chunks.filter((c) => c.type === "text").length,
+          table: chunks.filter((c) => c.type === "table").length,
+          avg: Math.round(
             chunks.reduce((a, c) => a + c.char_count, 0) / chunks.length,
           ),
-          minSize: Math.min(...chunks.map((c) => c.char_count)),
-          maxSize: Math.max(...chunks.map((c) => c.char_count)),
         }
       : null;
 
-  // ══════════════════════════════════════════════════
-  // VIEW 1: DEPARTMENT GRID
-  // ══════════════════════════════════════════════════
+  const extractedDocsCount = docs.filter(
+    (d) => d.status === "EXTRACTED",
+  ).length;
+
+  const Banners = () => (
+    <>
+      {error && (
+        <div
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            background: "#FEF2F2",
+            color: "#991B1B",
+            fontSize: 12,
+            marginBottom: 12,
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          {error}
+          <span onClick={() => setError("")} style={{ cursor: "pointer" }}>
+            ✕
+          </span>
+        </div>
+      )}
+      {success && (
+        <div
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            background: "#ECFDF5",
+            color: "#065F46",
+            fontSize: 12,
+            marginBottom: 12,
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          {success}
+          <span onClick={() => setSuccess("")} style={{ cursor: "pointer" }}>
+            ✕
+          </span>
+        </div>
+      )}
+    </>
+  );
+
+  const statusBadge = (status) => {
+    const colors = {
+      UPLOADING: { bg: "#FEF3C7", color: "#92400E" },
+      EXTRACTED: { bg: "#EFF6FF", color: "#1E40AF" },
+      PROCESSING: { bg: "#FEF3C7", color: "#92400E" },
+      INDEXED: { bg: "#ECFDF5", color: "#065F46" },
+      ERROR: { bg: "#FEF2F2", color: "#991B1B" },
+    };
+    const c = colors[status] || colors.UPLOADING;
+    return (
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 500,
+          padding: "2px 8px",
+          borderRadius: 100,
+          background: c.bg,
+          color: c.color,
+        }}
+      >
+        {status}
+      </span>
+    );
+  };
+
+  // ══════════ VIEW 1: DEPARTMENTS ══════════
   if (!activeDept) {
     return (
       <div className="rag-page">
         <h1 className="rag-title">RAG Spaces</h1>
         <p className="rag-sub">Select a department to manage its RAG spaces</p>
-        {error && (
-          <div className="rag-error">
-            {error}{" "}
-            <span
-              onClick={() => setError("")}
-              style={{ cursor: "pointer", marginLeft: 8 }}
-            >
-              ✕
-            </span>
-          </div>
-        )}
+        <Banners />
         {loading && (
           <p style={{ color: "#9CA3AF", fontSize: 13 }}>Loading...</p>
         )}
-
         <div
           style={{
             display: "grid",
@@ -280,7 +399,7 @@ const RAGSpacesPage = () => {
                 {d.name}
               </div>
               <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>
-                {spaceCountByDept(d.id)} RAG space
+                {spaceCountByDept(d.id)} space
                 {spaceCountByDept(d.id) !== 1 ? "s" : ""}
               </div>
             </div>
@@ -308,9 +427,7 @@ const RAGSpacesPage = () => {
     );
   }
 
-  // ══════════════════════════════════════════════════
-  // VIEW 2: SPACES LIST
-  // ══════════════════════════════════════════════════
+  // ══════════ VIEW 2: SPACES LIST ══════════
   if (!activeSpace) {
     return (
       <div className="rag-page">
@@ -360,31 +477,15 @@ const RAGSpacesPage = () => {
             + New RAG space
           </button>
         </div>
-
-        {error && (
-          <div className="rag-error">
-            {error}{" "}
-            <span
-              onClick={() => setError("")}
-              style={{ cursor: "pointer", marginLeft: 8 }}
-            >
-              ✕
-            </span>
-          </div>
-        )}
-
+        <Banners />
         {deptSpaces.length === 0 && (
           <div style={{ padding: 60, textAlign: "center", color: "#6B7280" }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🤖</div>
             <div style={{ fontSize: 16, fontWeight: 600, color: "#374151" }}>
               No RAG spaces yet
             </div>
-            <div style={{ fontSize: 13, marginTop: 4 }}>
-              Create your first RAG space for {activeDept.name}
-            </div>
           </div>
         )}
-
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {deptSpaces.map((s) => (
             <div
@@ -427,36 +528,9 @@ const RAGSpacesPage = () => {
                     borderRadius: 4,
                     background: "#FEF3C7",
                     color: "#92400E",
-                    border: "1px solid #FCD34D",
                   }}
                 >
                   {s.chunk_strategy}
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    padding: "2px 8px",
-                    borderRadius: 4,
-                    background: "#EFF6FF",
-                    color: "#1D4ED8",
-                    border: "1px solid #BFDBFE",
-                  }}
-                >
-                  {s.embedding_provider}
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    padding: "2px 8px",
-                    borderRadius: 4,
-                    background: "#F0FDF4",
-                    color: "#166534",
-                    border: "1px solid #BBF7D0",
-                  }}
-                >
-                  {s.llm_provider}
                 </span>
                 <button
                   onClick={(e) => {
@@ -469,7 +543,6 @@ const RAGSpacesPage = () => {
                     color: "#DC2626",
                     cursor: "pointer",
                     fontSize: 14,
-                    padding: "0 4px",
                   }}
                 >
                   ✕
@@ -478,8 +551,6 @@ const RAGSpacesPage = () => {
             </div>
           ))}
         </div>
-
-        {/* ═══ CREATE MODAL ═══ */}
         {showCreate && (
           <div
             style={{
@@ -498,18 +569,14 @@ const RAGSpacesPage = () => {
                 background: "#fff",
                 borderRadius: 16,
                 padding: 24,
-                width: 520,
+                width: 420,
                 maxWidth: "90vw",
-                maxHeight: "85vh",
-                overflowY: "auto",
               }}
               onClick={(e) => e.stopPropagation()}
             >
               <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>
                 New RAG space in {activeDept.name}
               </h3>
-
-              {/* Name */}
               <div style={{ marginBottom: 14 }}>
                 <label
                   style={{
@@ -537,9 +604,7 @@ const RAGSpacesPage = () => {
                   }}
                 />
               </div>
-
-              {/* Description */}
-              <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 16 }}>
                 <label
                   style={{
                     fontSize: 12,
@@ -553,7 +618,7 @@ const RAGSpacesPage = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="Optional description"
+                  placeholder="Optional"
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
                   style={{
@@ -565,194 +630,20 @@ const RAGSpacesPage = () => {
                   }}
                 />
               </div>
-
-              {/* Chunking strategy */}
-              <div style={{ marginBottom: 14 }}>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "#374151",
-                    display: "block",
-                    marginBottom: 8,
-                  }}
-                >
-                  Chunking strategy
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[
-                    {
-                      value: "FIXED",
-                      label: "Fixed",
-                      desc: "Coupe tous les N caractères avec overlap",
-                      icon: "✂️",
-                    },
-                    {
-                      value: "SEMANTIC",
-                      label: "Semantic",
-                      desc: "Coupe par changement de sujet (IA)",
-                      icon: "🧠",
-                    },
-                    {
-                      value: "HIERARCHICAL",
-                      label: "Hierarchical",
-                      desc: "Parent-child (2 niveaux)",
-                      icon: "🏗️",
-                    },
-                  ].map((s) => (
-                    <div
-                      key={s.value}
-                      onClick={() => setNewStrategy(s.value)}
-                      style={{
-                        flex: 1,
-                        padding: "12px 10px",
-                        borderRadius: 10,
-                        cursor: "pointer",
-                        textAlign: "center",
-                        border:
-                          newStrategy === s.value
-                            ? "2px solid #2563EB"
-                            : "1px solid #E5E7EB",
-                        background:
-                          newStrategy === s.value ? "#EFF6FF" : "#fff",
-                        transition: "all 0.2s",
-                      }}
-                    >
-                      <div style={{ fontSize: 20, marginBottom: 4 }}>
-                        {s.icon}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: newStrategy === s.value ? 600 : 400,
-                          color:
-                            newStrategy === s.value ? "#1D4ED8" : "#374151",
-                        }}
-                      >
-                        {s.label}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "#6B7280",
-                          marginTop: 2,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {s.desc}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div
+                style={{
+                  padding: 12,
+                  background: "#F9FAFB",
+                  borderRadius: 8,
+                  marginBottom: 16,
+                  fontSize: 12,
+                  color: "#6B7280",
+                  lineHeight: 1.6,
+                }}
+              >
+                Next step: upload your documents, review the extracted text,
+                then configure and process.
               </div>
-
-              {/* Chunk size slider */}
-              <div style={{ marginBottom: 14 }}>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "#374151",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 4,
-                  }}
-                >
-                  <span>Chunk size</span>
-                  <span style={{ color: "#2563EB", fontWeight: 600 }}>
-                    {newChunkSize} chars
-                  </span>
-                </label>
-                <input
-                  type="range"
-                  min={100}
-                  max={2000}
-                  step={50}
-                  value={newChunkSize}
-                  onChange={(e) => setNewChunkSize(parseInt(e.target.value))}
-                  style={{ width: "100%", accentColor: "#2563EB" }}
-                />
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 10,
-                    color: "#9CA3AF",
-                  }}
-                >
-                  <span>100 (précis)</span>
-                  <span>2000 (contexte riche)</span>
-                </div>
-              </div>
-
-              {/* Overlap slider */}
-              <div style={{ marginBottom: 14 }}>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "#374151",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 4,
-                  }}
-                >
-                  <span>Overlap</span>
-                  <span style={{ color: "#2563EB", fontWeight: 600 }}>
-                    {newOverlap} chars
-                  </span>
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={200}
-                  step={10}
-                  value={newOverlap}
-                  onChange={(e) => setNewOverlap(parseInt(e.target.value))}
-                  style={{ width: "100%", accentColor: "#2563EB" }}
-                />
-              </div>
-
-              {/* Top-K */}
-              <div style={{ marginBottom: 20 }}>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "#374151",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 4,
-                  }}
-                >
-                  <span>Top-K results</span>
-                  <span style={{ color: "#2563EB", fontWeight: 600 }}>
-                    {newTopK}
-                  </span>
-                </label>
-                <input
-                  type="range"
-                  min={1}
-                  max={15}
-                  step={1}
-                  value={newTopK}
-                  onChange={(e) => setNewTopK(parseInt(e.target.value))}
-                  style={{ width: "100%", accentColor: "#2563EB" }}
-                />
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 10,
-                    color: "#9CA3AF",
-                  }}
-                >
-                  <span>1 (très précis)</span>
-                  <span>15 (plus de contexte)</span>
-                </div>
-              </div>
-
-              {/* Buttons */}
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={() => setShowCreate(false)}
@@ -784,7 +675,7 @@ const RAGSpacesPage = () => {
                     opacity: newName.trim() ? "1" : "0.5",
                   }}
                 >
-                  Create RAG space
+                  Create
                 </button>
               </div>
             </div>
@@ -794,12 +685,9 @@ const RAGSpacesPage = () => {
     );
   }
 
-  // ══════════════════════════════════════════════════
-  // VIEW 3: SPACE DETAIL (tabs)
-  // ══════════════════════════════════════════════════
+  // ══════════ VIEW 3: SPACE DETAIL ══════════
   return (
     <div className="rag-page">
-      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -814,6 +702,7 @@ const RAGSpacesPage = () => {
             setDocs([]);
             setChunks([]);
             setActiveDoc(null);
+            setExtractedData(null);
           }}
           style={{
             background: "none",
@@ -831,112 +720,12 @@ const RAGSpacesPage = () => {
           <h1 className="rag-title" style={{ marginBottom: 0 }}>
             {activeSpace.name}
           </h1>
-          <div
-            style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}
-          >
-            {activeSpace.department_name && (
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 500,
-                  padding: "2px 8px",
-                  borderRadius: 4,
-                  background: "#EFF6FF",
-                  color: "#1D4ED8",
-                  border: "1px solid #BFDBFE",
-                }}
-              >
-                {activeSpace.department_name}
-              </span>
-            )}
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 500,
-                padding: "2px 8px",
-                borderRadius: 4,
-                background: "#FEF3C7",
-                color: "#92400E",
-                border: "1px solid #FCD34D",
-              }}
-            >
-              {activeSpace.chunk_strategy}
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 500,
-                padding: "2px 8px",
-                borderRadius: 4,
-                background: "#F3F4F6",
-                color: "#374151",
-              }}
-            >
-              Size: {activeSpace.chunk_size}
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 500,
-                padding: "2px 8px",
-                borderRadius: 4,
-                background: "#F3F4F6",
-                color: "#374151",
-              }}
-            >
-              Overlap: {activeSpace.chunk_overlap}
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 500,
-                padding: "2px 8px",
-                borderRadius: 4,
-                background: "#F3F4F6",
-                color: "#374151",
-              }}
-            >
-              Top-K: {activeSpace.top_k}
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 500,
-                padding: "2px 8px",
-                borderRadius: 4,
-                background: "#EFF6FF",
-                color: "#1D4ED8",
-              }}
-            >
-              {activeSpace.embedding_provider}
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 500,
-                padding: "2px 8px",
-                borderRadius: 4,
-                background: "#F0FDF4",
-                color: "#166534",
-              }}
-            >
-              {activeSpace.llm_provider}
-            </span>
-          </div>
+          <p className="rag-sub" style={{ marginTop: 2 }}>
+            {activeSpace.description || "No description"}
+          </p>
         </div>
       </div>
-
-      {error && (
-        <div className="rag-error">
-          {error}{" "}
-          <span
-            onClick={() => setError("")}
-            style={{ cursor: "pointer", marginLeft: 8 }}
-          >
-            ✕
-          </span>
-        </div>
-      )}
+      <Banners />
 
       {/* Tabs */}
       <div
@@ -950,6 +739,10 @@ const RAGSpacesPage = () => {
         {[
           { key: "documents", label: `Documents (${docs.length})` },
           {
+            key: "extracted",
+            label: `Extracted text${activeDoc ? ` — ${activeDoc.file_name}` : ""}`,
+          },
+          {
             key: "chunks",
             label: `Chunks${activeDoc ? ` — ${activeDoc.file_name}` : ""}`,
           },
@@ -959,7 +752,7 @@ const RAGSpacesPage = () => {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             style={{
-              padding: "10px 20px",
+              padding: "10px 16px",
               fontSize: 13,
               fontWeight: activeTab === tab.key ? 500 : 400,
               color: activeTab === tab.key ? "#2563EB" : "#6B7280",
@@ -977,23 +770,125 @@ const RAGSpacesPage = () => {
         ))}
       </div>
 
-      {/* ── TAB: Documents ── */}
+      {/* ═══ TAB: Documents ═══ */}
       {activeTab === "documents" && (
         <div>
+          {/* Upload sources */}
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 12,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 10,
+              marginBottom: 16,
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 600, color: "#1F2937" }}>
-              Uploaded documents
-            </span>
-            <button
+            {/* Local upload */}
+            <div
               onClick={() => fileRef.current.click()}
-              disabled={uploading}
+              style={{
+                padding: "16px",
+                borderRadius: 10,
+                border: "2px dashed #E5E7EB",
+                cursor: "pointer",
+                textAlign: "center",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.borderColor = "#2563EB")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.borderColor = "#E5E7EB")
+              }
+            >
+              <div style={{ fontSize: 24, marginBottom: 6 }}>💻</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "#1F2937" }}>
+                {uploading ? "Uploading..." : "Local file"}
+              </div>
+              <div style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}>
+                PDF, DOCX, TXT, CSV, Excel, MD, HTML
+              </div>
+            </div>
+            <input
+              type="file"
+              ref={fileRef}
+              accept=".pdf,.docx,.doc,.txt,.csv,.xlsx,.xls,.md,.html,.htm"
+              onChange={handleUpload}
+              style={{ display: "none" }}
+            />
+
+            {/* Google Drive */}
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: 10,
+                border: "1px solid #E5E7EB",
+                textAlign: "center",
+                opacity: 0.5,
+                cursor: "not-allowed",
+              }}
+            >
+              <div style={{ fontSize: 24, marginBottom: 6 }}>📁</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "#1F2937" }}>
+                Google Drive
+              </div>
+              <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 2 }}>
+                Coming soon
+              </div>
+            </div>
+
+            {/* OneDrive */}
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: 10,
+                border: "1px solid #E5E7EB",
+                textAlign: "center",
+                opacity: 0.5,
+                cursor: "not-allowed",
+              }}
+            >
+              <div style={{ fontSize: 24, marginBottom: 6 }}>☁️</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "#1F2937" }}>
+                OneDrive
+              </div>
+              <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 2 }}>
+                Coming soon
+              </div>
+            </div>
+          </div>
+
+          {/* URL input */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #E5E7EB",
+                background: "#fff",
+              }}
+            >
+              <span style={{ fontSize: 14 }}>🌐</span>
+              <input
+                type="text"
+                placeholder="Paste a URL to scrape (https://...)"
+                value={scrapeUrlValue}
+                onChange={(e) => setScrapeUrlValue(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleScrape()}
+                style={{
+                  flex: 1,
+                  border: "none",
+                  outline: "none",
+                  fontSize: 13,
+                }}
+              />
+            </div>
+            <button
+              onClick={handleScrape}
+              disabled={scraping || !scrapeUrlValue.trim()}
               style={{
                 background: "#2563EB",
                 color: "#fff",
@@ -1003,33 +898,58 @@ const RAGSpacesPage = () => {
                 fontSize: 12,
                 fontWeight: 500,
                 cursor: "pointer",
-                opacity: uploading ? 0.6 : 1,
+                opacity: scraping || !scrapeUrlValue.trim() ? 0.5 : 1,
+                whiteSpace: "nowrap",
               }}
             >
-              {uploading ? "Uploading..." : "Upload document"}
+              {scraping ? "Scraping..." : "Scrape"}
             </button>
-            <input
-              type="file"
-              ref={fileRef}
-              accept=".pdf,.docx,.doc,.txt,.csv,.xlsx,.xls"
-              onChange={handleUpload}
-              style={{ display: "none" }}
-            />
           </div>
 
+          {/* Process all button */}
+          {extractedDocsCount > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginBottom: 12,
+              }}
+            >
+              <button
+                onClick={handleProcessAll}
+                disabled={processing}
+                style={{
+                  background: "#059669",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "8px 16px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  opacity: processing ? 0.5 : 1,
+                }}
+              >
+                {processing
+                  ? "Processing..."
+                  : `Process all (${extractedDocsCount} ready)`}
+              </button>
+            </div>
+          )}
+
+          {/* Documents list */}
           {docs.length === 0 && (
             <p
               style={{
                 color: "#9CA3AF",
                 fontSize: 13,
                 textAlign: "center",
-                padding: 40,
+                padding: 30,
               }}
             >
-              No documents yet — upload one!
+              No documents yet — upload a file or paste a URL
             </p>
           )}
-
           {docs.map((d) => (
             <div
               key={d.id}
@@ -1058,7 +978,9 @@ const RAGSpacesPage = () => {
                   color: "#2563EB",
                 }}
               >
-                {d.file_type?.toUpperCase() || "?"}
+                {d.source_type === "url"
+                  ? "URL"
+                  : d.file_type?.toUpperCase() || "?"}
               </div>
               <div style={{ flex: 1 }}>
                 <div
@@ -1066,29 +988,93 @@ const RAGSpacesPage = () => {
                 >
                   {d.file_name}
                 </div>
-                <div style={{ fontSize: 11, color: "#6B7280" }}>
-                  {d.num_chunks} chunks · {d.status}
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#6B7280",
+                    display: "flex",
+                    gap: 6,
+                    alignItems: "center",
+                    marginTop: 2,
+                  }}
+                >
+                  {statusBadge(d.status)}
+                  {d.num_chunks > 0 && <span>{d.num_chunks} chunks</span>}
                   {d.status === "ERROR" && d.error_msg && (
-                    <span style={{ color: "#DC2626" }}> — {d.error_msg}</span>
+                    <span style={{ color: "#DC2626" }}>{d.error_msg}</span>
                   )}
                 </div>
               </div>
+              {/* Action buttons based on status */}
+              {d.status === "EXTRACTED" && (
+                <>
+                  <button
+                    onClick={() => viewExtracted(d)}
+                    style={{
+                      background: "#EFF6FF",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 12px",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: "#1D4ED8",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Review text
+                  </button>
+                  <button
+                    onClick={() => handleProcess(d.id)}
+                    disabled={processing}
+                    style={{
+                      background: "#059669",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 12px",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: "#fff",
+                      cursor: "pointer",
+                      opacity: processing ? 0.5 : 1,
+                    }}
+                  >
+                    Process
+                  </button>
+                </>
+              )}
               {d.status === "INDEXED" && (
-                <button
-                  onClick={() => loadChunks(d)}
-                  style={{
-                    background: "#F3F4F6",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "6px 12px",
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: "#374151",
-                    cursor: "pointer",
-                  }}
-                >
-                  View chunks
-                </button>
+                <>
+                  <button
+                    onClick={() => viewExtracted(d)}
+                    style={{
+                      background: "#F3F4F6",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: "#374151",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Text
+                  </button>
+                  <button
+                    onClick={() => viewChunks(d)}
+                    style={{
+                      background: "#F3F4F6",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: "#374151",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Chunks
+                  </button>
+                </>
               )}
               <button
                 onClick={() => handleDeleteDoc(d.id)}
@@ -1107,7 +1093,187 @@ const RAGSpacesPage = () => {
         </div>
       )}
 
-      {/* ── TAB: Chunks ── */}
+      {/* ═══ TAB: Extracted text ═══ */}
+      {activeTab === "extracted" && (
+        <div>
+          {!extractedData && (
+            <p
+              style={{
+                color: "#9CA3AF",
+                fontSize: 13,
+                textAlign: "center",
+                padding: 40,
+              }}
+            >
+              Select a document and click "Review text"
+            </p>
+          )}
+          {loadingExtract && (
+            <p style={{ color: "#9CA3AF", fontSize: 13 }}>
+              Loading extracted text...
+            </p>
+          )}
+          {extractedData && (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4,1fr)",
+                  gap: 8,
+                  marginBottom: 16,
+                }}
+              >
+                {[
+                  {
+                    label: "Total blocks",
+                    value: extractedData.total_blocks,
+                    bg: "#EFF6FF",
+                    color: "#1D4ED8",
+                  },
+                  {
+                    label: "Text blocks",
+                    value: extractedData.text_blocks,
+                    bg: "#F0FDF4",
+                    color: "#166534",
+                  },
+                  {
+                    label: "Table blocks",
+                    value: extractedData.table_blocks,
+                    bg: "#FEF3C7",
+                    color: "#92400E",
+                  },
+                  {
+                    label: "Total chars",
+                    value: extractedData.total_chars?.toLocaleString(),
+                    bg: "#F3F4F6",
+                    color: "#374151",
+                  },
+                ].map((s, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      background: s.bg,
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{ fontSize: 18, fontWeight: 700, color: s.color }}
+                    >
+                      {s.value}
+                    </div>
+                    <div
+                      style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}
+                    >
+                      {s.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#1F2937",
+                  marginBottom: 8,
+                }}
+              >
+                Extracted content from "{extractedData.file_name}" —{" "}
+                {extractedData.status}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  maxHeight: "55vh",
+                  overflowY: "auto",
+                }}
+              >
+                {extractedData.blocks.map((block, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: 8,
+                      border: "1px solid #E5E7EB",
+                      background: "#fff",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            background: "#F3F4F6",
+                            color: "#374151",
+                          }}
+                        >
+                          #{i + 1}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 500,
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            background:
+                              block.type === "table" ? "#FEF3C7" : "#EFF6FF",
+                            color:
+                              block.type === "table" ? "#92400E" : "#1D4ED8",
+                          }}
+                        >
+                          {block.type}
+                        </span>
+                        <span style={{ fontSize: 10, color: "#6B7280" }}>
+                          page {block.page}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 10, color: "#6B7280" }}>
+                        {block.content.length} chars
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#374151",
+                        lineHeight: 1.6,
+                        whiteSpace: "pre-wrap",
+                        maxHeight: 200,
+                        overflowY: "auto",
+                        background: "#F9FAFB",
+                        padding: "8px 10px",
+                        borderRadius: 6,
+                        fontFamily: "'Courier New',monospace",
+                      }}
+                    >
+                      {block.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ═══ TAB: Chunks ═══ */}
       {activeTab === "chunks" && (
         <div>
           {!activeDoc && (
@@ -1119,56 +1285,42 @@ const RAGSpacesPage = () => {
                 padding: 40,
               }}
             >
-              Go to the Documents tab and click "View chunks" on a document
+              Select a document and click "Chunks"
             </p>
           )}
-
           {activeDoc && (
             <>
-              {/* Stats bar */}
               {chunkStats && (
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(6,1fr)",
+                    gridTemplateColumns: "repeat(4,1fr)",
                     gap: 8,
                     marginBottom: 16,
                   }}
                 >
                   {[
                     {
-                      label: "Total chunks",
+                      label: "Total",
                       value: chunkStats.total,
                       bg: "#EFF6FF",
                       color: "#1D4ED8",
                     },
                     {
                       label: "Text",
-                      value: chunkStats.textCount,
+                      value: chunkStats.text,
                       bg: "#F0FDF4",
                       color: "#166534",
                     },
                     {
                       label: "Tables",
-                      value: chunkStats.tableCount,
+                      value: chunkStats.table,
                       bg: "#FEF3C7",
                       color: "#92400E",
                     },
                     {
                       label: "Avg size",
-                      value: `${chunkStats.avgSize}`,
-                      bg: "#F3F4F6",
-                      color: "#374151",
-                    },
-                    {
-                      label: "Min",
-                      value: `${chunkStats.minSize}`,
-                      bg: "#F3F4F6",
-                      color: "#374151",
-                    },
-                    {
-                      label: "Max",
-                      value: `${chunkStats.maxSize}`,
+                      value: chunkStats.avg,
                       bg: "#F3F4F6",
                       color: "#374151",
                     },
@@ -1200,25 +1352,9 @@ const RAGSpacesPage = () => {
                   ))}
                 </div>
               )}
-
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#1F2937",
-                  marginBottom: 8,
-                }}
-              >
-                Chunks from "{activeDoc.file_name}" — strategy:{" "}
-                {activeSpace.chunk_strategy}
-              </div>
-
               {loadingChunks && (
-                <p style={{ color: "#9CA3AF", fontSize: 13 }}>
-                  Loading chunks...
-                </p>
+                <p style={{ color: "#9CA3AF", fontSize: 13 }}>Loading...</p>
               )}
-
               <div
                 style={{
                   display: "flex",
@@ -1293,10 +1429,10 @@ const RAGSpacesPage = () => {
                         whiteSpace: "pre-wrap",
                         maxHeight: 200,
                         overflowY: "auto",
-                        fontFamily: "'Courier New',monospace",
                         background: "#F9FAFB",
                         padding: "8px 10px",
                         borderRadius: 6,
+                        fontFamily: "'Courier New',monospace",
                       }}
                     >
                       {c.content}
@@ -1309,7 +1445,7 @@ const RAGSpacesPage = () => {
         </div>
       )}
 
-      {/* ── TAB: Chat ── */}
+      {/* ═══ TAB: Chat ═══ */}
       {activeTab === "chat" && (
         <div>
           <div
@@ -1318,7 +1454,6 @@ const RAGSpacesPage = () => {
               maxHeight: "50vh",
               overflowY: "auto",
               marginBottom: 12,
-              padding: "8px 0",
             }}
           >
             {chatHistory.length === 0 && (
@@ -1359,7 +1494,7 @@ const RAGSpacesPage = () => {
                       __html: formatAnswer(msg.content),
                     }}
                   />
-                  {msg.sources && msg.sources.length > 0 && (
+                  {msg.sources?.length > 0 && (
                     <div
                       style={{
                         marginTop: 8,
@@ -1382,13 +1517,7 @@ const RAGSpacesPage = () => {
               </div>
             ))}
             {querying && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-start",
-                  marginBottom: 8,
-                }}
-              >
+              <div style={{ display: "flex", marginBottom: 8 }}>
                 <div
                   style={{
                     padding: "10px 14px",

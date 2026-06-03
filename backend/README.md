@@ -13,8 +13,7 @@ Plateforme d'agents IA métiers avec système RAG configurable, authentification
 - **LLM** : Groq API (Llama 3.3 70B Versatile)
 - **PDF** : pdfplumber + PyPDF2
 
----
-
+---  
 ## Installation
 
 ```bash

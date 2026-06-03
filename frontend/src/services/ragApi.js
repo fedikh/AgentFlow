@@ -27,11 +27,7 @@ export const listDocuments = (spaceId) =>
 export const deleteDocument = (spaceId, docId) =>
   request("DELETE", `/rag/spaces/${spaceId}/documents/${docId}`);
 
-// Chunks — NEW
-export const listChunks = (spaceId, docId) =>
-  request("GET", `/rag/spaces/${spaceId}/documents/${docId}/chunks`);
-
-// Upload (multipart)
+// Upload (local file)
 export const uploadDocument = async (spaceId, file) => {
   const form = new FormData();
   form.append("file", file);
@@ -45,7 +41,24 @@ export const uploadDocument = async (spaceId, file) => {
   return data;
 };
 
+// Scrape URL
+export const scrapeUrl = (spaceId, url) =>
+  request("POST", `/rag/spaces/${spaceId}/scrape`, { url });
+
+// Extracted content (for review)
+export const getExtractedContent = (spaceId, docId) =>
+  request("GET", `/rag/spaces/${spaceId}/documents/${docId}/extracted`);
+
+// Process (chunking + embedding)
+export const processDocument = (spaceId, docId) =>
+  request("POST", `/rag/spaces/${spaceId}/documents/${docId}/process`);
+export const processAllDocuments = (spaceId) =>
+  request("POST", `/rag/spaces/${spaceId}/process-all`);
+
+// Chunks
+export const listChunks = (spaceId, docId) =>
+  request("GET", `/rag/spaces/${spaceId}/documents/${docId}/chunks`);
+
 // Query
-export const queryRAG = async (spaceId, question) => {
-  return request("POST", `/rag/spaces/${spaceId}/query`, { question });
-};
+export const queryRAG = (spaceId, question) =>
+  request("POST", `/rag/spaces/${spaceId}/query`, { question });
