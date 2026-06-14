@@ -1,69 +1,78 @@
 import React, { useState, useEffect, useRef } from "react";
+import "../../styles/it/rag.css";
 import {
-  listSpaces,
   createSpace,
+  listSpaces,
   deleteSpace,
+  updateSpace,
   listDocuments,
-  uploadDocument,
   deleteDocument,
+  uploadDocument,
   scrapeUrl,
+  getLoadedContent,
+  parseDocument,
+  parseAllDocuments,
   getExtractedContent,
   processDocument,
   processAllDocuments,
   listChunks,
   queryRAG,
+  listDepartments,
 } from "../../services/ragApi";
-import { listDepartments } from "../../services/usersApi";
-import { getUser } from "../../services/authApi";
-import "../../styles/it/rag.css";
 
 const RAGSpacesPage = () => {
-  const currentUser = getUser();
-  const [depts, setDepts] = useState([]);
-  const [spaces, setSpaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  const [activeDept, setActiveDept] = useState(null);
+  const [depts, setDepts] = useState([]);
+  const [spaces, setSpaces] = useState([]);
   const [activeSpace, setActiveSpace] = useState(null);
-  const [activeTab, setActiveTab] = useState("documents");
-
   const [docs, setDocs] = useState([]);
-  const [activeDoc, setActiveDoc] = useState(null);
-  const [extractedData, setExtractedData] = useState(null);
-  const [chunks, setChunks] = useState([]);
-  const [loadingExtract, setLoadingExtract] = useState(false);
-  const [loadingChunks, setLoadingChunks] = useState(false);
-  const [processing, setProcessing] = useState(false);
-
-  const fileRef = useRef(null);
-  const [uploading, setUploading] = useState(false);
-  const [scrapeUrlValue, setScrapeUrlValue] = useState("");
-  const [scraping, setScraping] = useState(false);
-
   const [showCreate, setShowCreate] = useState(false);
+  const [createDept, setCreateDept] = useState("");
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-
-  const [question, setQuestion] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [scraping, setScraping] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const fileRef = useRef(null);
+  const [modal, setModal] = useState(null);
+  const [modalData, setModalData] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [showJson, setShowJson] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
+  const [question, setQuestion] = useState("");
   const [querying, setQuerying] = useState(false);
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
     loadData();
   }, []);
+  useEffect(() => {
+    if (success) {
+      const t = setTimeout(() => setSuccess(""), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [success]);
+  useEffect(() => {
+    if (error) {
+      const t = setTimeout(() => setError(""), 6000);
+      return () => clearTimeout(t);
+    }
+  }, [error]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
 
   const loadData = async () => {
-    setLoading(true);
     try {
       const [d, s] = await Promise.all([listDepartments(), listSpaces()]);
-      const userDeptIds = currentUser?.department_ids || [];
-      const myDepts =
-        currentUser?.role === "ADMIN"
-          ? d
-          : d.filter((dept) => userDeptIds.includes(dept.id));
-      setDepts(myDepts);
+      const u = JSON.parse(localStorage.getItem("user") || "{}");
+      const ids = u.departments?.map((x) => x.id) || [];
+      setDepts(u.role === "admin" ? d : d.filter((x) => ids.includes(x.id)));
       setSpaces(s);
     } catch (e) {
       setError(e.message);
@@ -71,183 +80,181 @@ const RAGSpacesPage = () => {
       setLoading(false);
     }
   };
-
-  const deptSpaces = activeDept
-    ? spaces.filter((s) => s.department_id === activeDept.id)
-    : [];
-  const spaceCountByDept = (deptId) =>
-    spaces.filter((s) => s.department_id === deptId).length;
-
-  const selectSpace = async (space) => {
-    setActiveSpace(space);
-    setActiveTab("documents");
-    setActiveDoc(null);
-    setExtractedData(null);
-    setChunks([]);
+  const refreshDocs = async () => {
+    if (!activeSpace) return;
+    setDocs(await listDocuments(activeSpace.id));
+    const u = await listSpaces();
+    setSpaces(u);
+    const s = u.find((x) => x.id === activeSpace.id);
+    if (s) setActiveSpace(s);
+  };
+  const loadedCount = docs.filter((d) => d.status === "LOADED").length;
+  const extractedCount = docs.filter((d) => d.status === "EXTRACTED").length;
+  const openSpace = async (s) => {
+    setActiveSpace(s);
     setChatHistory([]);
+    setShowSettings(false);
     try {
-      setDocs(await listDocuments(space.id));
+      setDocs(await listDocuments(s.id));
     } catch (e) {
       setError(e.message);
     }
   };
-
+  const goBack = () => {
+    setActiveSpace(null);
+    setDocs([]);
+    setModal(null);
+    setShowSettings(false);
+  };
   const handleCreate = async () => {
-    if (!newName.trim() || !activeDept) return;
+    if (!newName.trim() || !createDept) return;
     try {
       await createSpace({
         name: newName,
         description: newDesc,
-        department_id: activeDept.id,
+        department_id: createDept,
       });
       setNewName("");
       setNewDesc("");
       setShowCreate(false);
       await loadData();
+      setSuccess("Space created");
     } catch (e) {
       setError(e.message);
     }
   };
-
-  // ── Upload local file ──
+  const handleSave = async () => {
+    if (!activeSpace) return;
+    try {
+      await updateSpace(activeSpace.id, {
+        chunk_strategy: activeSpace.chunk_strategy,
+        chunk_size: parseInt(activeSpace.chunk_size),
+        chunk_overlap: parseInt(activeSpace.chunk_overlap),
+        top_k: parseInt(activeSpace.top_k),
+      });
+      setSuccess("Saved");
+      setShowSettings(false);
+      await loadData();
+      const u = await listSpaces();
+      const s = u.find((x) => x.id === activeSpace.id);
+      if (s) setActiveSpace(s);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
   const handleUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !activeSpace) return;
+    const f = e.target.files[0];
+    if (!f || !activeSpace) return;
     setUploading(true);
     setError("");
     try {
-      await uploadDocument(activeSpace.id, file);
-      setSuccess(`"${file.name}" uploaded and text extracted`);
-      setDocs(await listDocuments(activeSpace.id));
-      await loadData();
-    } catch (err) {
-      setError(err.message);
+      await uploadDocument(activeSpace.id, f);
+      setSuccess(`"${f.name}" loaded`);
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setUploading(false);
       fileRef.current.value = "";
     }
   };
-
-  // ── Scrape URL ──
   const handleScrape = async () => {
-    if (!scrapeUrlValue.trim() || !activeSpace) return;
+    if (!urlInput.trim() || !activeSpace) return;
     setScraping(true);
     setError("");
     try {
-      await scrapeUrl(activeSpace.id, scrapeUrlValue);
-      setSuccess(`URL scraped and text extracted`);
-      setScrapeUrlValue("");
-      setDocs(await listDocuments(activeSpace.id));
-      await loadData();
-    } catch (err) {
-      setError(err.message);
+      await scrapeUrl(activeSpace.id, urlInput);
+      setSuccess("Scraped");
+      setUrlInput("");
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setScraping(false);
     }
   };
-
-  // ── View extracted text ──
-  const viewExtracted = async (doc) => {
-    setActiveDoc(doc);
-    setLoadingExtract(true);
+  const handleParse = async (id) => {
+    setParsing(true);
+    setError("");
     try {
-      const data = await getExtractedContent(activeSpace.id, doc.id);
-      setExtractedData(data);
-      setActiveTab("extracted");
+      await parseDocument(activeSpace.id, id);
+      setSuccess("Parsed");
+      await refreshDocs();
     } catch (e) {
       setError(e.message);
     } finally {
-      setLoadingExtract(false);
+      setParsing(false);
     }
   };
-
-  // ── Process one document ──
-  const handleProcess = async (docId) => {
-    setProcessing(true);
-    setError("");
+  const handleParseAll = async () => {
+    setParsing(true);
     try {
-      await processDocument(activeSpace.id, docId);
-      setSuccess("Document processed — chunks created");
-      setDocs(await listDocuments(activeSpace.id));
-      await loadData();
+      const r = await parseAllDocuments(activeSpace.id);
+      setSuccess(`${r.parsed} parsed`);
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setParsing(false);
+    }
+  };
+  const handleProcess = async (id) => {
+    setProcessing(true);
+    try {
+      await processDocument(activeSpace.id, id);
+      setSuccess("Indexed");
+      await refreshDocs();
     } catch (e) {
       setError(e.message);
     } finally {
       setProcessing(false);
     }
   };
-
-  // ── Process all ──
   const handleProcessAll = async () => {
     setProcessing(true);
-    setError("");
     try {
-      const result = await processAllDocuments(activeSpace.id);
-      setSuccess(`${result.processed} document(s) processed`);
-      setDocs(await listDocuments(activeSpace.id));
-      await loadData();
+      const r = await processAllDocuments(activeSpace.id);
+      setSuccess(`${r.processed} processed`);
+      await refreshDocs();
     } catch (e) {
       setError(e.message);
     } finally {
       setProcessing(false);
     }
   };
-
-  // ── View chunks ──
-  const viewChunks = async (doc) => {
-    setActiveDoc(doc);
-    setLoadingChunks(true);
+  const handleDeleteDoc = async (id) => {
     try {
-      setChunks(await listChunks(activeSpace.id, doc.id));
-      setActiveTab("chunks");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoadingChunks(false);
-    }
-  };
-
-  const handleDeleteDoc = async (docId) => {
-    try {
-      await deleteDocument(activeSpace.id, docId);
-      setDocs(docs.filter((d) => d.id !== docId));
-      if (activeDoc?.id === docId) {
-        setActiveDoc(null);
-        setExtractedData(null);
-        setChunks([]);
-      }
+      await deleteDocument(activeSpace.id, id);
+      setDocs((p) => p.filter((d) => d.id !== id));
     } catch (e) {
       setError(e.message);
     }
   };
-
   const handleDeleteSpace = async (id) => {
-    if (!confirm("Delete this RAG space and all its documents?")) return;
+    if (!confirm("Delete?")) return;
     try {
       await deleteSpace(id);
-      setActiveSpace(null);
-      setDocs([]);
+      goBack();
       await loadData();
     } catch (e) {
       setError(e.message);
     }
   };
-
   const handleQuery = async () => {
-    if (!question.trim() || !activeSpace) return;
+    if (!question.trim()) return;
     const q = question;
     setQuestion("");
-    setChatHistory((prev) => [...prev, { role: "user", content: q }]);
+    setChatHistory((h) => [...h, { role: "user", content: q }]);
     setQuerying(true);
     try {
-      const res = await queryRAG(activeSpace.id, q);
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "assistant", content: res.answer, sources: res.sources },
+      const r = await queryRAG(activeSpace.id, q);
+      setChatHistory((h) => [
+        ...h,
+        { role: "assistant", content: r.answer, sources: r.sources },
       ]);
     } catch (e) {
-      setChatHistory((prev) => [
-        ...prev,
+      setChatHistory((h) => [
+        ...h,
         { role: "assistant", content: `Error: ${e.message}` },
       ]);
     } finally {
@@ -255,1316 +262,726 @@ const RAGSpacesPage = () => {
     }
   };
 
-  const formatAnswer = (t) =>
+  const openModal = async (type, doc) => {
+    setModalLoading(true);
+    setModal(type);
+    setShowJson(false);
+    try {
+      if (type === "loaded")
+        setModalData(await getLoadedContent(activeSpace.id, doc.id));
+      else if (type === "parsed")
+        setModalData(await getExtractedContent(activeSpace.id, doc.id));
+      else if (type === "chunks")
+        setModalData(await listChunks(activeSpace.id, doc.id));
+    } catch (e) {
+      setError(e.message);
+      setModal(null);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+  const openChat = () => {
+    setModal("chat");
+    setModalData(null);
+  };
+  const closeModal = () => {
+    setModal(null);
+    setModalData(null);
+  };
+
+  const SL = {
+    UPLOADING: "Uploading",
+    LOADED: "Loaded",
+    EXTRACTED: "Parsed",
+    PROCESSING: "Processing",
+    INDEXED: "Indexed",
+    ERROR: "Error",
+  };
+  const SB = {
+    LOADED: "rag-badge-loaded",
+    EXTRACTED: "rag-badge-parsed",
+    INDEXED: "rag-badge-indexed",
+    ERROR: "rag-badge-error",
+  };
+  const fmt = (t) =>
     t
       ? t
           .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-          .replace(
-            /^## (.+)$/gm,
-            '<div style="font-weight:600;margin:8px 0 4px">$1</div>',
-          )
-          .replace(
-            /^[•\-\*] (.+)$/gm,
-            '<div style="padding-left:12px">• $1</div>',
-          )
           .replace(/\n/g, "<br>")
       : "";
+  const deptName = (id) => depts.find((x) => x.id === id)?.name || "";
 
-  const chunkStats =
-    chunks.length > 0
-      ? {
-          total: chunks.length,
-          text: chunks.filter((c) => c.type === "text").length,
-          table: chunks.filter((c) => c.type === "table").length,
-          avg: Math.round(
-            chunks.reduce((a, c) => a + c.char_count, 0) / chunks.length,
-          ),
-        }
-      : null;
-
-  const extractedDocsCount = docs.filter(
-    (d) => d.status === "EXTRACTED",
-  ).length;
-
-  const Banners = () => (
-    <>
-      {error && (
-        <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: 8,
-            background: "#FEF2F2",
-            color: "#991B1B",
-            fontSize: 12,
-            marginBottom: 12,
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          {error}
-          <span onClick={() => setError("")} style={{ cursor: "pointer" }}>
-            ✕
-          </span>
-        </div>
-      )}
-      {success && (
-        <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: 8,
-            background: "#ECFDF5",
-            color: "#065F46",
-            fontSize: 12,
-            marginBottom: 12,
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          {success}
-          <span onClick={() => setSuccess("")} style={{ cursor: "pointer" }}>
-            ✕
-          </span>
-        </div>
-      )}
-    </>
-  );
-
-  const statusBadge = (status) => {
-    const colors = {
-      UPLOADING: { bg: "#FEF3C7", color: "#92400E" },
-      EXTRACTED: { bg: "#EFF6FF", color: "#1E40AF" },
-      PROCESSING: { bg: "#FEF3C7", color: "#92400E" },
-      INDEXED: { bg: "#ECFDF5", color: "#065F46" },
-      ERROR: { bg: "#FEF2F2", color: "#991B1B" },
-    };
-    const c = colors[status] || colors.UPLOADING;
-    return (
-      <span
-        style={{
-          fontSize: 10,
-          fontWeight: 500,
-          padding: "2px 8px",
-          borderRadius: 100,
-          background: c.bg,
-          color: c.color,
-        }}
-      >
-        {status}
-      </span>
-    );
-  };
-
-  // ══════════ VIEW 1: DEPARTMENTS ══════════
-  if (!activeDept) {
+  if (loading)
     return (
       <div className="rag-page">
-        <h1 className="rag-title">RAG Spaces</h1>
-        <p className="rag-sub">Select a department to manage its RAG spaces</p>
-        <Banners />
-        {loading && (
-          <p style={{ color: "#9CA3AF", fontSize: 13 }}>Loading...</p>
-        )}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))",
-            gap: 12,
-            marginTop: 20,
-          }}
-        >
-          {depts.map((d) => (
-            <div
-              key={d.id}
-              onClick={() => setActiveDept(d)}
-              style={{
-                padding: "20px 16px",
-                borderRadius: 12,
-                border: "1px solid #E5E7EB",
-                cursor: "pointer",
-                background: "#fff",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#2563EB";
-                e.currentTarget.style.boxShadow =
-                  "0 2px 8px rgba(37,99,235,0.1)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#E5E7EB";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-            >
-              <div style={{ fontSize: 28, marginBottom: 10 }}>📁</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#1F2937" }}>
-                {d.name}
-              </div>
-              <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>
-                {spaceCountByDept(d.id)} space
-                {spaceCountByDept(d.id) !== 1 ? "s" : ""}
-              </div>
-            </div>
-          ))}
-          {depts.length === 0 && !loading && (
-            <div
-              style={{
-                padding: 40,
-                textAlign: "center",
-                color: "#6B7280",
-                gridColumn: "1/-1",
-              }}
-            >
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📁</div>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>
-                No departments assigned
-              </div>
-              <div style={{ fontSize: 12, marginTop: 4 }}>
-                Ask your Admin to assign you to a department
-              </div>
-            </div>
+        <div className="rag-empty-state">Loading…</div>
+      </div>
+    );
+
+  /* ════════════════════════════════
+     PAGE 1: Space cards grid
+     ════════════════════════════════ */
+  if (!activeSpace)
+    return (
+      <div className="rag-page">
+        <div className="rag-main">
+          {error && <div className="rag-toast rag-toast-error">{error}</div>}
+          {success && (
+            <div className="rag-toast rag-toast-success">{success}</div>
           )}
-        </div>
-      </div>
-    );
-  }
 
-  // ══════════ VIEW 2: SPACES LIST ══════════
-  if (!activeSpace) {
-    return (
-      <div className="rag-page">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginBottom: 20,
-          }}
-        >
-          <button
-            onClick={() => setActiveDept(null)}
-            style={{
-              background: "none",
-              border: "1px solid #E5E7EB",
-              borderRadius: 8,
-              padding: "6px 12px",
-              cursor: "pointer",
-              fontSize: 13,
-              color: "#374151",
-            }}
-          >
-            ← Back
-          </button>
-          <div style={{ flex: 1 }}>
-            <h1 className="rag-title" style={{ marginBottom: 0 }}>
-              {activeDept.name}
-            </h1>
-            <p className="rag-sub">
-              {deptSpaces.length} RAG space{deptSpaces.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            style={{
-              background: "#2563EB",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 16px",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            + New RAG space
-          </button>
-        </div>
-        <Banners />
-        {deptSpaces.length === 0 && (
-          <div style={{ padding: 60, textAlign: "center", color: "#6B7280" }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🤖</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "#374151" }}>
-              No RAG spaces yet
-            </div>
-          </div>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {deptSpaces.map((s) => (
-            <div
-              key={s.id}
-              onClick={() => selectSpace(s)}
-              style={{
-                padding: "14px 16px",
-                borderRadius: 10,
-                border: "1px solid #E5E7EB",
-                cursor: "pointer",
-                background: "#fff",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.borderColor = "#2563EB")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.borderColor = "#E5E7EB")
-              }
-            >
-              <div>
-                <div
-                  style={{ fontSize: 14, fontWeight: 600, color: "#1F2937" }}
-                >
-                  {s.name}
-                </div>
-                <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                  {s.num_documents} doc(s) · {s.num_chunks} chunks
-                </div>
+          <div className="rag-header">
+            <div>
+              <div className="rag-header-title">RAG Spaces</div>
+              <div className="rag-header-desc">
+                Build and configure RAG pipelines
               </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    padding: "2px 8px",
-                    borderRadius: 4,
-                    background: "#FEF3C7",
-                    color: "#92400E",
-                  }}
-                >
-                  {s.chunk_strategy}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteSpace(s.id);
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#DC2626",
-                    cursor: "pointer",
-                    fontSize: 14,
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-        {showCreate && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.3)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 100,
-            }}
-            onClick={() => setShowCreate(false)}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 16,
-                padding: 24,
-                width: 420,
-                maxWidth: "90vw",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>
-                New RAG space in {activeDept.name}
-              </h3>
-              <div style={{ marginBottom: 14 }}>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "#374151",
-                    display: "block",
-                    marginBottom: 4,
-                  }}
-                >
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. HR Policy Documents"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  autoFocus
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #E5E7EB",
-                    fontSize: 13,
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "#374151",
-                    display: "block",
-                    marginBottom: 4,
-                  }}
-                >
-                  Description
-                </label>
-                <input
-                  type="text"
-                  placeholder="Optional"
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #E5E7EB",
-                    fontSize: 13,
-                  }}
-                />
-              </div>
-              <div
-                style={{
-                  padding: 12,
-                  background: "#F9FAFB",
-                  borderRadius: 8,
-                  marginBottom: 16,
-                  fontSize: 12,
-                  color: "#6B7280",
-                  lineHeight: 1.6,
-                }}
-              >
-                Next step: upload your documents, review the extracted text,
-                then configure and process.
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => setShowCreate(false)}
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    borderRadius: 8,
-                    border: "1px solid #E5E7EB",
-                    background: "#fff",
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreate}
-                  disabled={!newName.trim()}
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    borderRadius: 8,
-                    border: "none",
-                    background: "#2563EB",
-                    color: "#fff",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    opacity: newName.trim() ? "1" : "0.5",
-                  }}
-                >
-                  Create
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ══════════ VIEW 3: SPACE DETAIL ══════════
-  return (
-    <div className="rag-page">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <button
-          onClick={() => {
-            setActiveSpace(null);
-            setDocs([]);
-            setChunks([]);
-            setActiveDoc(null);
-            setExtractedData(null);
-          }}
-          style={{
-            background: "none",
-            border: "1px solid #E5E7EB",
-            borderRadius: 8,
-            padding: "6px 12px",
-            cursor: "pointer",
-            fontSize: 13,
-            color: "#374151",
-          }}
-        >
-          ← Back
-        </button>
-        <div style={{ flex: 1 }}>
-          <h1 className="rag-title" style={{ marginBottom: 0 }}>
-            {activeSpace.name}
-          </h1>
-          <p className="rag-sub" style={{ marginTop: 2 }}>
-            {activeSpace.description || "No description"}
-          </p>
-        </div>
-      </div>
-      <Banners />
-
-      {/* Tabs */}
-      <div
-        style={{
-          display: "flex",
-          gap: 0,
-          borderBottom: "1px solid #E5E7EB",
-          marginBottom: 16,
-        }}
-      >
-        {[
-          { key: "documents", label: `Documents (${docs.length})` },
-          {
-            key: "extracted",
-            label: `Extracted text${activeDoc ? ` — ${activeDoc.file_name}` : ""}`,
-          },
-          {
-            key: "chunks",
-            label: `Chunks${activeDoc ? ` — ${activeDoc.file_name}` : ""}`,
-          },
-          { key: "chat", label: "Chat" },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              padding: "10px 16px",
-              fontSize: 13,
-              fontWeight: activeTab === tab.key ? 500 : 400,
-              color: activeTab === tab.key ? "#2563EB" : "#6B7280",
-              background: "none",
-              border: "none",
-              borderBottom:
-                activeTab === tab.key
-                  ? "2px solid #2563EB"
-                  : "2px solid transparent",
-              cursor: "pointer",
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ═══ TAB: Documents ═══ */}
-      {activeTab === "documents" && (
-        <div>
-          {/* Upload sources */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gap: 10,
-              marginBottom: 16,
-            }}
-          >
-            {/* Local upload */}
-            <div
-              onClick={() => fileRef.current.click()}
-              style={{
-                padding: "16px",
-                borderRadius: 10,
-                border: "2px dashed #E5E7EB",
-                cursor: "pointer",
-                textAlign: "center",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.borderColor = "#2563EB")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.borderColor = "#E5E7EB")
-              }
-            >
-              <div style={{ fontSize: 24, marginBottom: 6 }}>💻</div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#1F2937" }}>
-                {uploading ? "Uploading..." : "Local file"}
-              </div>
-              <div style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}>
-                PDF, DOCX, TXT, CSV, Excel, MD, HTML
-              </div>
-            </div>
-            <input
-              type="file"
-              ref={fileRef}
-              accept=".pdf,.docx,.doc,.txt,.csv,.xlsx,.xls,.md,.html,.htm"
-              onChange={handleUpload}
-              style={{ display: "none" }}
-            />
-
-            {/* Google Drive */}
-            <div
-              style={{
-                padding: "16px",
-                borderRadius: 10,
-                border: "1px solid #E5E7EB",
-                textAlign: "center",
-                opacity: 0.5,
-                cursor: "not-allowed",
-              }}
-            >
-              <div style={{ fontSize: 24, marginBottom: 6 }}>📁</div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#1F2937" }}>
-                Google Drive
-              </div>
-              <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 2 }}>
-                Coming soon
-              </div>
-            </div>
-
-            {/* OneDrive */}
-            <div
-              style={{
-                padding: "16px",
-                borderRadius: 10,
-                border: "1px solid #E5E7EB",
-                textAlign: "center",
-                opacity: 0.5,
-                cursor: "not-allowed",
-              }}
-            >
-              <div style={{ fontSize: 24, marginBottom: 6 }}>☁️</div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#1F2937" }}>
-                OneDrive
-              </div>
-              <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 2 }}>
-                Coming soon
-              </div>
-            </div>
-          </div>
-
-          {/* URL input */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid #E5E7EB",
-                background: "#fff",
-              }}
-            >
-              <span style={{ fontSize: 14 }}>🌐</span>
-              <input
-                type="text"
-                placeholder="Paste a URL to scrape (https://...)"
-                value={scrapeUrlValue}
-                onChange={(e) => setScrapeUrlValue(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleScrape()}
-                style={{
-                  flex: 1,
-                  border: "none",
-                  outline: "none",
-                  fontSize: 13,
-                }}
-              />
             </div>
             <button
-              onClick={handleScrape}
-              disabled={scraping || !scrapeUrlValue.trim()}
-              style={{
-                background: "#2563EB",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                padding: "8px 16px",
-                fontSize: 12,
-                fontWeight: 500,
-                cursor: "pointer",
-                opacity: scraping || !scrapeUrlValue.trim() ? 0.5 : 1,
-                whiteSpace: "nowrap",
-              }}
+              className="rag-btn rag-btn-blue"
+              onClick={() => setShowCreate(true)}
             >
-              {scraping ? "Scraping..." : "Scrape"}
+              + New Space
             </button>
           </div>
 
-          {/* Process all button */}
-          {extractedDocsCount > 0 && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                marginBottom: 12,
-              }}
-            >
-              <button
-                onClick={handleProcessAll}
-                disabled={processing}
-                style={{
-                  background: "#059669",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "8px 16px",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  opacity: processing ? 0.5 : 1,
-                }}
+          {showCreate && (
+            <div className="rag-create-card" style={{ maxWidth: 400 }}>
+              <div className="rag-create-title">New Space</div>
+              <div className="rag-create-label">Department</div>
+              <select
+                className="rag-create-input"
+                value={createDept}
+                onChange={(e) => setCreateDept(e.target.value)}
               >
-                {processing
-                  ? "Processing..."
-                  : `Process all (${extractedDocsCount} ready)`}
-              </button>
+                <option value="">Select…</option>
+                {depts.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="rag-create-input"
+                placeholder="Space name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+              <input
+                className="rag-create-input"
+                placeholder="Description (optional)"
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button className="rag-btn rag-btn-blue" onClick={handleCreate}>
+                  Create
+                </button>
+                <button
+                  className="rag-btn"
+                  onClick={() => setShowCreate(false)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Documents list */}
-          {docs.length === 0 && (
-            <p
-              style={{
-                color: "#9CA3AF",
-                fontSize: 13,
-                textAlign: "center",
-                padding: 30,
-              }}
+          <div className="rag-grid">
+            {depts.map((dept) => {
+              const ds = spaces.filter((s) => s.department_id === dept.id);
+              if (!ds.length) return null;
+              return (
+                <div key={dept.id} className="rag-dept-section">
+                  <div className="rag-dept-label">{dept.name}</div>
+                  <div className="rag-cards">
+                    {ds.map((s) => (
+                      <div
+                        key={s.id}
+                        className="rag-space-card"
+                        onClick={() => openSpace(s)}
+                      >
+                        <div className="rag-space-card-badge">
+                          {s.chunk_strategy}
+                        </div>
+                        <div className="rag-space-card-name">{s.name}</div>
+                        <div className="rag-space-card-desc">
+                          {s.description || "No description"}
+                        </div>
+                        <div className="rag-space-card-footer">
+                          <span>📄 {s.num_documents || 0} docs</span>
+                          <span>🧩 {s.num_chunks || 0} chunks</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {spaces.length === 0 && (
+              <div className="rag-empty-state">No spaces yet</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+
+  /* ════════════════════════════════
+     PAGE 2: Inside a space
+     ════════════════════════════════ */
+  return (
+    <div className="rag-page">
+      <div className="rag-main">
+        {error && <div className="rag-toast rag-toast-error">{error}</div>}
+        {success && (
+          <div className="rag-toast rag-toast-success">{success}</div>
+        )}
+
+        <div className="rag-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button className="rag-btn rag-btn-sm" onClick={goBack}>
+              ← Back
+            </button>
+            <div>
+              <div className="rag-header-title">{activeSpace.name}</div>
+              <div className="rag-header-desc">
+                {deptName(activeSpace.department_id)}
+              </div>
+            </div>
+          </div>
+          <div className="rag-header-actions">
+            <span className="rag-config-tag">
+              {activeSpace.chunk_strategy} · {activeSpace.chunk_size}
+            </span>
+            <span className="rag-config-tag">
+              {activeSpace.num_chunks} chunks
+            </span>
+            <button
+              className="rag-btn rag-btn-blue rag-btn-sm"
+              onClick={openChat}
             >
-              No documents yet — upload a file or paste a URL
-            </p>
-          )}
-          {docs.map((d) => (
+              💬 Chat
+            </button>
+            <button
+              className="rag-btn rag-btn-sm"
+              onClick={() => setShowSettings(!showSettings)}
+            >
+              ⚙ Settings
+            </button>
+            <button
+              className="rag-btn rag-btn-sm rag-btn-red"
+              onClick={() => handleDeleteSpace(activeSpace.id)}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+
+        {showSettings && (
+          <div className="rag-create-card" style={{ marginBottom: 16 }}>
             <div
-              key={d.id}
               style={{
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                gap: 12,
-                padding: "10px 14px",
-                borderRadius: 8,
-                border: "1px solid #E5E7EB",
-                marginBottom: 6,
-                background: "#fff",
+                marginBottom: 14,
               }}
             >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 8,
-                  background: "#EFF6FF",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "#2563EB",
-                }}
-              >
-                {d.source_type === "url"
-                  ? "URL"
-                  : d.file_type?.toUpperCase() || "?"}
+              <div className="rag-create-title" style={{ margin: 0 }}>
+                Configuration
               </div>
-              <div style={{ flex: 1 }}>
-                <div
-                  style={{ fontSize: 13, fontWeight: 500, color: "#1F2937" }}
-                >
-                  {d.file_name}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "#6B7280",
-                    display: "flex",
-                    gap: 6,
-                    alignItems: "center",
-                    marginTop: 2,
-                  }}
-                >
-                  {statusBadge(d.status)}
-                  {d.num_chunks > 0 && <span>{d.num_chunks} chunks</span>}
-                  {d.status === "ERROR" && d.error_msg && (
-                    <span style={{ color: "#DC2626" }}>{d.error_msg}</span>
-                  )}
-                </div>
-              </div>
-              {/* Action buttons based on status */}
-              {d.status === "EXTRACTED" && (
-                <>
-                  <button
-                    onClick={() => viewExtracted(d)}
-                    style={{
-                      background: "#EFF6FF",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 12px",
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: "#1D4ED8",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Review text
-                  </button>
-                  <button
-                    onClick={() => handleProcess(d.id)}
-                    disabled={processing}
-                    style={{
-                      background: "#059669",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 12px",
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: "#fff",
-                      cursor: "pointer",
-                      opacity: processing ? 0.5 : 1,
-                    }}
-                  >
-                    Process
-                  </button>
-                </>
-              )}
-              {d.status === "INDEXED" && (
-                <>
-                  <button
-                    onClick={() => viewExtracted(d)}
-                    style={{
-                      background: "#F3F4F6",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: "#374151",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Text
-                  </button>
-                  <button
-                    onClick={() => viewChunks(d)}
-                    style={{
-                      background: "#F3F4F6",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: "#374151",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Chunks
-                  </button>
-                </>
-              )}
               <button
-                onClick={() => handleDeleteDoc(d.id)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#DC2626",
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
+                className="rag-btn rag-btn-sm"
+                onClick={() => setShowSettings(false)}
               >
                 ✕
               </button>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* ═══ TAB: Extracted text ═══ */}
-      {activeTab === "extracted" && (
-        <div>
-          {!extractedData && (
-            <p
-              style={{
-                color: "#9CA3AF",
-                fontSize: 13,
-                textAlign: "center",
-                padding: 40,
-              }}
-            >
-              Select a document and click "Review text"
-            </p>
-          )}
-          {loadingExtract && (
-            <p style={{ color: "#9CA3AF", fontSize: 13 }}>
-              Loading extracted text...
-            </p>
-          )}
-          {extractedData && (
-            <>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4,1fr)",
-                  gap: 8,
-                  marginBottom: 16,
-                }}
-              >
-                {[
-                  {
-                    label: "Total blocks",
-                    value: extractedData.total_blocks,
-                    bg: "#EFF6FF",
-                    color: "#1D4ED8",
-                  },
-                  {
-                    label: "Text blocks",
-                    value: extractedData.text_blocks,
-                    bg: "#F0FDF4",
-                    color: "#166534",
-                  },
-                  {
-                    label: "Table blocks",
-                    value: extractedData.table_blocks,
-                    bg: "#FEF3C7",
-                    color: "#92400E",
-                  },
-                  {
-                    label: "Total chars",
-                    value: extractedData.total_chars?.toLocaleString(),
-                    bg: "#F3F4F6",
-                    color: "#374151",
-                  },
-                ].map((s, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      background: s.bg,
-                      textAlign: "center",
-                    }}
-                  >
-                    <div
-                      style={{ fontSize: 18, fontWeight: 700, color: s.color }}
-                    >
-                      {s.value}
-                    </div>
-                    <div
-                      style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}
-                    >
-                      {s.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#1F2937",
-                  marginBottom: 8,
-                }}
-              >
-                Extracted content from "{extractedData.file_name}" —{" "}
-                {extractedData.status}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  maxHeight: "55vh",
-                  overflowY: "auto",
-                }}
-              >
-                {extractedData.blocks.map((block, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: "12px 14px",
-                      borderRadius: 8,
-                      border: "1px solid #E5E7EB",
-                      background: "#fff",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: 6,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          alignItems: "center",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 600,
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            background: "#F3F4F6",
-                            color: "#374151",
-                          }}
-                        >
-                          #{i + 1}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 500,
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            background:
-                              block.type === "table" ? "#FEF3C7" : "#EFF6FF",
-                            color:
-                              block.type === "table" ? "#92400E" : "#1D4ED8",
-                          }}
-                        >
-                          {block.type}
-                        </span>
-                        <span style={{ fontSize: 10, color: "#6B7280" }}>
-                          page {block.page}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: 10, color: "#6B7280" }}>
-                        {block.content.length} chars
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#374151",
-                        lineHeight: 1.6,
-                        whiteSpace: "pre-wrap",
-                        maxHeight: 200,
-                        overflowY: "auto",
-                        background: "#F9FAFB",
-                        padding: "8px 10px",
-                        borderRadius: 6,
-                        fontFamily: "'Courier New',monospace",
-                      }}
-                    >
-                      {block.content}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ═══ TAB: Chunks ═══ */}
-      {activeTab === "chunks" && (
-        <div>
-          {!activeDoc && (
-            <p
-              style={{
-                color: "#9CA3AF",
-                fontSize: 13,
-                textAlign: "center",
-                padding: 40,
-              }}
-            >
-              Select a document and click "Chunks"
-            </p>
-          )}
-          {activeDoc && (
-            <>
-              {chunkStats && (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(4,1fr)",
-                    gap: 8,
-                    marginBottom: 16,
-                  }}
+            <div className="rag-create-label">Chunking Strategy</div>
+            <div className="rag-strategy-cards">
+              {[
+                { k: "FIXED", n: "Fixed", d: "Cut every N characters" },
+                { k: "SEMANTIC", n: "Semantic", d: "Cut when topic changes" },
+                {
+                  k: "HIERARCHICAL",
+                  n: "Hierarchical",
+                  d: "Parent + child chunks",
+                },
+              ].map((s) => (
+                <button
+                  key={s.k}
+                  className={`rag-strategy-card ${activeSpace.chunk_strategy === s.k ? "active" : ""}`}
+                  onClick={() =>
+                    setActiveSpace({ ...activeSpace, chunk_strategy: s.k })
+                  }
                 >
-                  {[
-                    {
-                      label: "Total",
-                      value: chunkStats.total,
-                      bg: "#EFF6FF",
-                      color: "#1D4ED8",
-                    },
-                    {
-                      label: "Text",
-                      value: chunkStats.text,
-                      bg: "#F0FDF4",
-                      color: "#166534",
-                    },
-                    {
-                      label: "Tables",
-                      value: chunkStats.table,
-                      bg: "#FEF3C7",
-                      color: "#92400E",
-                    },
-                    {
-                      label: "Avg size",
-                      value: chunkStats.avg,
-                      bg: "#F3F4F6",
-                      color: "#374151",
-                    },
-                  ].map((s, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 8,
-                        background: s.bg,
-                        textAlign: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 18,
-                          fontWeight: 700,
-                          color: s.color,
-                        }}
-                      >
-                        {s.value}
-                      </div>
-                      <div
-                        style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}
-                      >
-                        {s.label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {loadingChunks && (
-                <p style={{ color: "#9CA3AF", fontSize: 13 }}>Loading...</p>
-              )}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  maxHeight: "55vh",
-                  overflowY: "auto",
-                }}
-              >
-                {chunks.map((c, i) => (
-                  <div
-                    key={c.id || i}
-                    style={{
-                      padding: "12px 14px",
-                      borderRadius: 8,
-                      border: "1px solid #E5E7EB",
-                      background: "#fff",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: 6,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          alignItems: "center",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 600,
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            background: "#F3F4F6",
-                            color: "#374151",
-                          }}
-                        >
-                          #{c.chunk_index}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 500,
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            background:
-                              c.type === "table" ? "#FEF3C7" : "#EFF6FF",
-                            color: c.type === "table" ? "#92400E" : "#1D4ED8",
-                          }}
-                        >
-                          {c.type}
-                        </span>
-                        <span style={{ fontSize: 10, color: "#6B7280" }}>
-                          page {c.page}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: 10, color: "#6B7280" }}>
-                        {c.char_count} chars
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#374151",
-                        lineHeight: 1.6,
-                        whiteSpace: "pre-wrap",
-                        maxHeight: 200,
-                        overflowY: "auto",
-                        background: "#F9FAFB",
-                        padding: "8px 10px",
-                        borderRadius: 6,
-                        fontFamily: "'Courier New',monospace",
-                      }}
-                    >
-                      {c.content}
-                    </div>
-                  </div>
-                ))}
+                  <div className="rag-strategy-name">{s.n}</div>
+                  <div className="rag-strategy-desc">{s.d}</div>
+                </button>
+              ))}
+            </div>
+            <div className="rag-settings-row">
+              <div className="rag-settings-col">
+                <div className="rag-create-label">Chunk size</div>
+                <input
+                  className="rag-create-input"
+                  type="number"
+                  value={activeSpace.chunk_size}
+                  onChange={(e) =>
+                    setActiveSpace({
+                      ...activeSpace,
+                      chunk_size: e.target.value,
+                    })
+                  }
+                  style={{ marginBottom: 0 }}
+                />
+                <div className="rag-settings-hint">256–1024</div>
               </div>
-            </>
-          )}
-        </div>
-      )}
+              <div className="rag-settings-col">
+                <div className="rag-create-label">Overlap</div>
+                <input
+                  className="rag-create-input"
+                  type="number"
+                  value={activeSpace.chunk_overlap}
+                  onChange={(e) =>
+                    setActiveSpace({
+                      ...activeSpace,
+                      chunk_overlap: e.target.value,
+                    })
+                  }
+                  style={{ marginBottom: 0 }}
+                />
+                <div className="rag-settings-hint">20–100</div>
+              </div>
+              <div className="rag-settings-col">
+                <div className="rag-create-label">Top-K</div>
+                <input
+                  className="rag-create-input"
+                  type="number"
+                  value={activeSpace.top_k}
+                  onChange={(e) =>
+                    setActiveSpace({ ...activeSpace, top_k: e.target.value })
+                  }
+                  style={{ marginBottom: 0 }}
+                />
+                <div className="rag-settings-hint">Results per query</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="rag-btn rag-btn-blue" onClick={handleSave}>
+                Save
+              </button>
+              <button
+                className="rag-btn"
+                onClick={() => setShowSettings(false)}
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="rag-settings-note">
+              Changes apply to new documents only.
+            </div>
+          </div>
+        )}
 
-      {/* ═══ TAB: Chat ═══ */}
-      {activeTab === "chat" && (
-        <div>
-          <div
-            style={{
-              minHeight: 300,
-              maxHeight: "50vh",
-              overflowY: "auto",
-              marginBottom: 12,
-            }}
+        <div className="rag-upload-bar">
+          <input
+            type="file"
+            ref={fileRef}
+            onChange={handleUpload}
+            style={{ display: "none" }}
+            accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.html,.htm,.json,.xml,.pptx"
+          />
+          <button
+            className="rag-btn rag-btn-dark"
+            onClick={() => fileRef.current.click()}
+            disabled={uploading}
           >
-            {chatHistory.length === 0 && (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: 40,
-                  color: "#6B7280",
-                  fontSize: 13,
-                }}
-              >
-                Ask a question about your documents
+            {uploading ? "Uploading…" : "📁 Upload"}
+          </button>
+          <input
+            className="rag-url-input"
+            placeholder="Paste a URL to scrape…"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleScrape()}
+          />
+          <button
+            className="rag-btn"
+            onClick={handleScrape}
+            disabled={scraping}
+          >
+            {scraping ? "…" : "🔗 Scrape"}
+          </button>
+          {loadedCount > 0 && (
+            <button
+              className="rag-btn rag-btn-sm"
+              onClick={handleParseAll}
+              disabled={parsing}
+            >
+              {parsing ? "…" : `Parse all (${loadedCount})`}
+            </button>
+          )}
+          {extractedCount > 0 && (
+            <button
+              className="rag-btn rag-btn-dark rag-btn-sm"
+              onClick={handleProcessAll}
+              disabled={processing}
+            >
+              {processing ? "…" : `Process all (${extractedCount})`}
+            </button>
+          )}
+        </div>
+
+        <div className="rag-docs-list">
+          {docs.length === 0 && (
+            <div className="rag-empty-state">
+              No documents yet — upload a file or scrape a URL
+            </div>
+          )}
+          {docs.map((d) => (
+            <div key={d.id} className="rag-doc-card">
+              <div className="rag-doc-icon">
+                {d.source_type === "url"
+                  ? "URL"
+                  : (d.file_type || "?").toUpperCase()}
               </div>
-            )}
-            {chatHistory.map((msg, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  justifyContent:
-                    msg.role === "user" ? "flex-end" : "flex-start",
-                  marginBottom: 8,
-                }}
-              >
-                <div
-                  style={{
-                    maxWidth: "80%",
-                    padding: "10px 14px",
-                    borderRadius: 12,
-                    background: msg.role === "user" ? "#2563EB" : "#F3F4F6",
-                    color: msg.role === "user" ? "#fff" : "#1F2937",
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: formatAnswer(msg.content),
-                    }}
-                  />
-                  {msg.sources?.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        paddingTop: 6,
-                        borderTop: "1px solid rgba(0,0,0,0.1)",
-                        fontSize: 11,
-                        color:
-                          msg.role === "user"
-                            ? "rgba(255,255,255,0.7)"
-                            : "#6B7280",
-                      }}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="rag-doc-name">{d.file_name}</div>
+                <div className="rag-doc-meta">
+                  {d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : ""}
+                  {d.num_chunks > 0 && ` · ${d.num_chunks} chunks`}
+                </div>
+                <div className="rag-doc-btns">
+                  {d.has_loaded_content && (
+                    <button
+                      className="rag-btn rag-btn-xs"
+                      onClick={() => openModal("loaded", d)}
                     >
-                      📄{" "}
-                      {msg.sources
-                        .map((s) => `${s.document} p.${s.page}`)
-                        .join(" · ")}
-                    </div>
+                      View loaded
+                    </button>
+                  )}
+                  {d.status === "LOADED" && (
+                    <button
+                      className="rag-btn rag-btn-xs rag-btn-blue"
+                      onClick={() => handleParse(d.id)}
+                      disabled={parsing}
+                    >
+                      Parse
+                    </button>
+                  )}
+                  {d.has_extracted_content && (
+                    <button
+                      className="rag-btn rag-btn-xs"
+                      onClick={() => openModal("parsed", d)}
+                    >
+                      View parsed
+                    </button>
+                  )}
+                  {d.status === "EXTRACTED" && (
+                    <button
+                      className="rag-btn rag-btn-xs rag-btn-dark"
+                      onClick={() => handleProcess(d.id)}
+                      disabled={processing}
+                    >
+                      Process
+                    </button>
+                  )}
+                  {d.status === "INDEXED" && (
+                    <button
+                      className="rag-btn rag-btn-xs"
+                      onClick={() => openModal("chunks", d)}
+                    >
+                      View chunks
+                    </button>
                   )}
                 </div>
               </div>
-            ))}
-            {querying && (
-              <div style={{ display: "flex", marginBottom: 8 }}>
-                <div
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 12,
-                    background: "#F3F4F6",
-                    color: "#6B7280",
-                    fontSize: 13,
-                  }}
-                >
-                  Thinking...
-                </div>
+              <span className={`rag-badge ${SB[d.status] || ""}`}>
+                {SL[d.status] || d.status}
+              </span>
+              <button
+                className="rag-doc-del"
+                onClick={() => handleDeleteDoc(d.id)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ════════ MODAL ════════ */}
+      {modal && (
+        <div
+          className="rag-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal();
+          }}
+        >
+          <div className="rag-modal">
+            <div className="rag-modal-header">
+              <div className="rag-modal-title">
+                {modal === "loaded" && "Loaded Text"}
+                {modal === "parsed" && "Parsed Document"}
+                {modal === "chunks" && "Chunks"}
+                {modal === "chat" && "Chat with documents"}
               </div>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              type="text"
-              placeholder="Ask a question..."
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleQuery()}
-              disabled={querying}
-              style={{
-                flex: 1,
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #E5E7EB",
-                fontSize: 13,
-              }}
-            />
-            <button
-              onClick={handleQuery}
-              disabled={querying || !question.trim()}
-              style={{
-                background: "#2563EB",
-                color: "#fff",
-                border: "none",
-                borderRadius: 10,
-                padding: "10px 20px",
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: "pointer",
-                opacity: querying || !question.trim() ? 0.5 : 1,
-              }}
-            >
-              Send
-            </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                {modal === "parsed" && (
+                  <button
+                    className={`rag-btn rag-btn-sm ${showJson ? "rag-btn-dark" : ""}`}
+                    onClick={() => setShowJson(!showJson)}
+                  >
+                    {showJson ? "Blocks" : "JSON"}
+                  </button>
+                )}
+                <button className="rag-btn rag-btn-sm" onClick={closeModal}>
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+            <div className="rag-modal-body">
+              {modalLoading && <div className="rag-empty-state">Loading…</div>}
+
+              {/* LOADED */}
+              {modal === "loaded" && modalData && !modalLoading && (
+                <>
+                  <div className="rag-stats rag-stats-4">
+                    {[
+                      { l: "Type", v: modalData.file_type },
+                      { l: "Category", v: modalData.category },
+                      { l: "Pages", v: modalData.num_pages },
+                      {
+                        l: "Characters",
+                        v: modalData.total_chars?.toLocaleString(),
+                      },
+                    ].map((s, i) => (
+                      <div key={i} className="rag-stat">
+                        <div className="rag-stat-label">{s.l}</div>
+                        <div className="rag-stat-value">{s.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rag-raw-text">
+                    {modalData.raw_text || "Empty"}
+                  </div>
+                </>
+              )}
+
+              {/* PARSED */}
+              {modal === "parsed" && modalData && !modalLoading && (
+                <>
+                  <div className="rag-stats rag-stats-4">
+                    {[
+                      { l: "Sections", v: modalData.total_sections },
+                      { l: "Tables", v: modalData.total_tables },
+                      {
+                        l: "Characters",
+                        v: modalData.total_chars?.toLocaleString(),
+                      },
+                      { l: "OCR", v: modalData.ocr_quality },
+                    ].map((s, i) => (
+                      <div key={i} className="rag-stat">
+                        <div className="rag-stat-label">{s.l}</div>
+                        <div className="rag-stat-value">{s.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {modalData.ocr_issues?.length > 0 && (
+                    <div className="rag-ocr-warn">
+                      {modalData.ocr_issues.join(" · ")}
+                    </div>
+                  )}
+                  {showJson ? (
+                    <div className="rag-json">
+                      <pre>
+                        {JSON.stringify(modalData.parsed_document, null, 2)}
+                      </pre>
+                    </div>
+                  ) : (
+                    <>
+                      {modalData.parsed_document?.sections?.map((sec, i) => (
+                        <div key={`s${i}`} className="rag-block">
+                          <div className="rag-block-header">
+                            <div className="rag-heading-tag">
+                              <span className="rag-block-tag">
+                                Section {i + 1}
+                              </span>
+                              {sec.heading && (
+                                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                                  {sec.heading}
+                                </span>
+                              )}
+                              <span className="rag-h-level">H{sec.level}</span>
+                            </div>
+                            <span className="rag-block-meta">
+                              p.{sec.page} · {sec.content?.length}c
+                            </span>
+                          </div>
+                          <pre className="rag-block-content">{sec.content}</pre>
+                        </div>
+                      ))}
+                      {modalData.parsed_document?.tables?.map((tab, i) => (
+                        <div
+                          key={`t${i}`}
+                          className="rag-block rag-block-table"
+                        >
+                          <div className="rag-block-header">
+                            <span
+                              className="rag-block-tag"
+                              style={{
+                                background: "#FEF3C7",
+                                color: "#92400E",
+                              }}
+                            >
+                              Table {i + 1} — {tab.num_rows}×{tab.num_cols}
+                            </span>
+                            <span className="rag-block-meta">p.{tab.page}</span>
+                          </div>
+                          {tab.headers?.length > 0 && (
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "#92400E",
+                                marginBottom: 6,
+                              }}
+                            >
+                              {tab.headers.join(", ")}
+                            </div>
+                          )}
+                          <pre className="rag-block-content rag-block-content-mono">
+                            {tab.content}
+                          </pre>
+                        </div>
+                      ))}
+                      {modalData.parsed_document?.images?.map((img, i) => (
+                        <div key={`i${i}`} className="rag-block">
+                          <div className="rag-block-header">
+                            <span className="rag-block-tag">Image {i + 1}</span>
+                            <span className="rag-block-meta">p.{img.page}</span>
+                          </div>
+                          {img.caption && (
+                            <div style={{ fontSize: 13 }}>{img.caption}</div>
+                          )}
+                          {img.ocr_text && (
+                            <div style={{ fontSize: 12, color: "#525252" }}>
+                              OCR: {img.ocr_text}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* CHUNKS */}
+              {modal === "chunks" && modalData && !modalLoading && (
+                <>
+                  <div className="rag-stats rag-stats-3">
+                    {[
+                      { l: "Chunks", v: modalData.length },
+                      {
+                        l: "Avg length",
+                        v: Math.round(
+                          modalData.reduce((s, c) => s + c.content.length, 0) /
+                            (modalData.length || 1),
+                        ),
+                      },
+                      {
+                        l: "Total chars",
+                        v: modalData
+                          .reduce((s, c) => s + c.content.length, 0)
+                          .toLocaleString(),
+                      },
+                    ].map((s, i) => (
+                      <div key={i} className="rag-stat">
+                        <div className="rag-stat-label">{s.l}</div>
+                        <div className="rag-stat-value">{s.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {modalData.map((c) => (
+                    <div key={c.id} className="rag-block">
+                      <div className="rag-block-header">
+                        <span className="rag-block-tag">
+                          Chunk {c.chunk_index + 1}
+                        </span>
+                        <span className="rag-block-meta">
+                          p.{c.page} · {c.content.length}c
+                        </span>
+                      </div>
+                      <pre className="rag-block-content">{c.content}</pre>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* CHAT */}
+              {modal === "chat" && (
+                <div className="rag-chat-body">
+                  <div className="rag-chat-messages">
+                    {chatHistory.length === 0 && (
+                      <div className="rag-empty-state">
+                        Ask a question about your documents
+                      </div>
+                    )}
+                    {chatHistory.map((m, i) => (
+                      <div
+                        key={i}
+                        className={`rag-chat-msg ${m.role === "user" ? "rag-chat-msg-user" : "rag-chat-msg-ai"}`}
+                      >
+                        <div
+                          className={`rag-chat-bubble ${m.role === "user" ? "rag-chat-bubble-user" : "rag-chat-bubble-ai"}`}
+                        >
+                          {m.role === "user" ? (
+                            m.content
+                          ) : (
+                            <div
+                              dangerouslySetInnerHTML={{
+                                __html: fmt(m.content),
+                              }}
+                            />
+                          )}
+                          {m.sources?.length > 0 && (
+                            <div className="rag-chat-sources">
+                              {m.sources.map((s, j) => (
+                                <div key={j}>
+                                  📄 {s.document} (p.{s.page}, {s.score})
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {querying && (
+                      <div className="rag-chat-msg rag-chat-msg-ai">
+                        <div className="rag-chat-typing">Thinking…</div>
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+                  <div className="rag-chat-input-bar">
+                    <input
+                      className="rag-chat-input"
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleQuery()}
+                      placeholder="Ask a question…"
+                    />
+                    <button
+                      className="rag-chat-send"
+                      onClick={handleQuery}
+                      disabled={querying || !question.trim()}
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -19,3 +19,16 @@ pypdf==4.2.0
 tiktoken==0.7.0
 pdfplumber==0.11.0
 pgvector==0.3.0
+# ── LlamaIndex (Loaders & Parsers) ──
+llama-index-core>=0.12.0
+llama-index-readers-file>=0.4.0
+llama-index>=0.12.0
+ 
+# ── Required by loaders (some may already be installed) ──
+pandas>=2.0
+openpyxl>=3.1.0
+tabulate>=0.9.0
+beautifulsoup4>=4.12
+chardet>=5.0
+requests>=2.31
+unstructured[pdf,docx,md,xlsx,csv]

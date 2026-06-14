@@ -1,64 +1,76 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
-async function request(method, endpoint, body = null) {
+// ── Helper ──
+async function req(method, path, body = null) {
   const opts = {
     method,
     headers: { "Content-Type": "application/json" },
     credentials: "include",
   };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`${BASE_URL}${endpoint}`, opts);
+  const res = await fetch(`${BASE}${path}`, opts);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Something went wrong");
+  if (!res.ok) throw new Error(data.detail || "Request failed");
   return data;
 }
 
-// Spaces
-export const createSpace = (data) => request("POST", "/rag/spaces", data);
-export const listSpaces = () => request("GET", "/rag/spaces");
-export const getSpace = (id) => request("GET", `/rag/spaces/${id}`);
-export const updateSpace = (id, data) =>
-  request("PUT", `/rag/spaces/${id}`, data);
-export const deleteSpace = (id) => request("DELETE", `/rag/spaces/${id}`);
+// ── Departments ──
+export const listDepartments = () => req("GET", "/users/departments");
 
-// Documents
-export const listDocuments = (spaceId) =>
-  request("GET", `/rag/spaces/${spaceId}/documents`);
-export const deleteDocument = (spaceId, docId) =>
-  request("DELETE", `/rag/spaces/${spaceId}/documents/${docId}`);
+// ── Spaces ──
+export const createSpace = (d) => req("POST", "/rag/spaces", d);
+export const listSpaces = () => req("GET", "/rag/spaces");
+export const getSpace = (id) => req("GET", `/rag/spaces/${id}`);
+export const updateSpace = (id, d) => req("PUT", `/rag/spaces/${id}`, d);
+export const deleteSpace = (id) => req("DELETE", `/rag/spaces/${id}`);
 
-// Upload (local file)
+// ── Documents ──
+export const listDocuments = (s) => req("GET", `/rag/spaces/${s}/documents`);
+export const deleteDocument = (s, d) =>
+  req("DELETE", `/rag/spaces/${s}/documents/${d}`);
+
+// ── Upload (multipart) ──
 export const uploadDocument = async (spaceId, file) => {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${BASE_URL}/rag/spaces/${spaceId}/upload`, {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${BASE}/rag/spaces/${spaceId}/upload`, {
     method: "POST",
     credentials: "include",
-    body: form,
+    body: fd,
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || "Upload failed");
   return data;
 };
 
-// Scrape URL
-export const scrapeUrl = (spaceId, url) =>
-  request("POST", `/rag/spaces/${spaceId}/scrape`, { url });
+// ── Scrape ──
+export const scrapeUrl = (s, url) =>
+  req("POST", `/rag/spaces/${s}/scrape`, { url });
 
-// Extracted content (for review)
-export const getExtractedContent = (spaceId, docId) =>
-  request("GET", `/rag/spaces/${spaceId}/documents/${docId}/extracted`);
+// ── Loader output (raw text) ──
+export const getLoadedContent = (s, d) =>
+  req("GET", `/rag/spaces/${s}/documents/${d}/loaded`);
 
-// Process (chunking + embedding)
-export const processDocument = (spaceId, docId) =>
-  request("POST", `/rag/spaces/${spaceId}/documents/${docId}/process`);
-export const processAllDocuments = (spaceId) =>
-  request("POST", `/rag/spaces/${spaceId}/process-all`);
+// ── Parser ──
+export const parseDocument = (s, d) =>
+  req("POST", `/rag/spaces/${s}/documents/${d}/parse`);
+export const parseAllDocuments = (s) =>
+  req("POST", `/rag/spaces/${s}/parse-all`);
 
-// Chunks
-export const listChunks = (spaceId, docId) =>
-  request("GET", `/rag/spaces/${spaceId}/documents/${docId}/chunks`);
+// ── Parser output (structured blocks) ──
+export const getExtractedContent = (s, d) =>
+  req("GET", `/rag/spaces/${s}/documents/${d}/extracted`);
 
-// Query
-export const queryRAG = (spaceId, question) =>
-  request("POST", `/rag/spaces/${spaceId}/query`, { question });
+// ── Process (chunk + embed) ──
+export const processDocument = (s, d) =>
+  req("POST", `/rag/spaces/${s}/documents/${d}/process`);
+export const processAllDocuments = (s) =>
+  req("POST", `/rag/spaces/${s}/process-all`);
+
+// ── Chunks ──
+export const listChunks = (s, d) =>
+  req("GET", `/rag/spaces/${s}/documents/${d}/chunks`);
+
+// ── Query ──
+export const queryRAG = (s, q) =>
+  req("POST", `/rag/spaces/${s}/query`, { question: q });

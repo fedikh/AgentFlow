@@ -1,11 +1,14 @@
 """
-RAG Routes — updated with professional split flow.
+RAG Routes — Ingestion Layer with Loader/Parser split.
 
-New endpoints:
-  GET  /spaces/{id}/documents/{doc_id}/extracted   → see extracted text
-  POST /spaces/{id}/documents/{doc_id}/process     → chunk + embed one doc
-  POST /spaces/{id}/process-all                    → chunk + embed all EXTRACTED docs
-  POST /spaces/{id}/scrape                         → scrape a URL
+Document lifecycle:
+  POST   /upload              → LlamaIndex Loader  → status: LOADED
+  GET    /documents/{id}/loaded   → raw loaded text review
+  POST   /documents/{id}/parse    → LlamaIndex Parser → status: EXTRACTED
+  POST   /parse-all               → parse all LOADED docs
+  GET    /documents/{id}/extracted → parsed blocks review
+  POST   /documents/{id}/process  → chunk + embed   → status: INDEXED
+  POST   /process-all             → process all EXTRACTED docs
 """
 from fastapi import APIRouter, Depends, Request, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
@@ -38,27 +41,33 @@ def _get_current_user(request: Request, db: Session) -> User:
     return user
 
 
-# ── Spaces ──
+# ══════════════════════════════════════════
+# SPACES CRUD
+# ══════════════════════════════════════════
 
 @router.post("/spaces", status_code=201)
 def create_space(data: CreateRAGSpaceRequest, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return rag_service.create_space(db, data, user.organization_id, user)
 
+
 @router.get("/spaces")
 def list_spaces(request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return rag_service.list_spaces(db, user.organization_id, user)
+
 
 @router.get("/spaces/{space_id}")
 def get_space(space_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return rag_service.get_space(db, space_id, user.organization_id)
 
+
 @router.put("/spaces/{space_id}")
 def update_space(space_id: str, data: UpdateRAGSpaceRequest, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return rag_service.update_space(db, space_id, user.organization_id, data)
+
 
 @router.delete("/spaces/{space_id}")
 def delete_space(space_id: str, request: Request, db: Session = Depends(get_db)):
@@ -66,31 +75,34 @@ def delete_space(space_id: str, request: Request, db: Session = Depends(get_db))
     return rag_service.delete_space(db, space_id, user.organization_id)
 
 
-# ── Documents ──
+# ══════════════════════════════════════════
+# DOCUMENTS — Upload / List / Delete
+# ══════════════════════════════════════════
 
 @router.post("/spaces/{space_id}/upload")
-async def upload_document(space_id: str, request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Upload + extract text ONLY. No chunking yet."""
+async def upload_document(
+    space_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload file → LlamaIndex Loader → raw text. No parsing yet."""
     user = _get_current_user(request, db)
-    import traceback
-    try:
-        return await rag_service.upload_document(db, space_id, user.organization_id, file)
-    except HTTPException:
-        raise
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, f"Upload failed: {str(e)}")
+    return await rag_service.upload_document(db, space_id, user.organization_id, file)
+
 
 @router.post("/spaces/{space_id}/scrape")
 async def scrape_url(space_id: str, data: ScrapeRequest, request: Request, db: Session = Depends(get_db)):
-    """Scrape a URL and extract text. No chunking yet."""
+    """Scrape URL → raw text. No parsing yet."""
     user = _get_current_user(request, db)
     return await rag_service.upload_from_url(db, space_id, user.organization_id, data.url)
+
 
 @router.get("/spaces/{space_id}/documents")
 def list_documents(space_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return rag_service.list_documents(db, space_id, user.organization_id)
+
 
 @router.delete("/spaces/{space_id}/documents/{doc_id}")
 def delete_document(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
@@ -98,39 +110,73 @@ def delete_document(space_id: str, doc_id: str, request: Request, db: Session = 
     return rag_service.delete_document(db, space_id, doc_id, user.organization_id)
 
 
-# ── Extracted content (for review) ──
+# ══════════════════════════════════════════
+# LOADED CONTENT — raw text from Loader
+# ══════════════════════════════════════════
+
+@router.get("/spaces/{space_id}/documents/{doc_id}/loaded")
+def get_loaded_content(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
+    """Return raw loaded text for IT review."""
+    user = _get_current_user(request, db)
+    return rag_service.get_loaded_content(db, space_id, doc_id, user.organization_id)
+
+
+# ══════════════════════════════════════════
+# PARSE — Loader → Parser → blocks
+# ══════════════════════════════════════════
+
+@router.post("/spaces/{space_id}/documents/{doc_id}/parse")
+def parse_document(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
+    """Parse one document: raw text → structured blocks."""
+    user = _get_current_user(request, db)
+    return rag_service.parse_document(db, space_id, doc_id, user.organization_id)
+
+
+@router.post("/spaces/{space_id}/parse-all")
+def parse_all(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """Parse ALL documents with status LOADED."""
+    user = _get_current_user(request, db)
+    return rag_service.parse_all_documents(db, space_id, user.organization_id)
+
+
+# ══════════════════════════════════════════
+# EXTRACTED CONTENT — parsed blocks
+# ══════════════════════════════════════════
 
 @router.get("/spaces/{space_id}/documents/{doc_id}/extracted")
-def get_extracted(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
-    """See the raw extracted text before processing."""
+def get_extracted_content(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
+    """Return parsed/structured blocks for IT review."""
     user = _get_current_user(request, db)
     return rag_service.get_extracted_content(db, space_id, doc_id, user.organization_id)
 
 
-# ── Process (chunking + embedding) ──
+# ══════════════════════════════════════════
+# PROCESS — Chunking + Embedding
+# ══════════════════════════════════════════
 
 @router.post("/spaces/{space_id}/documents/{doc_id}/process")
 def process_document(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
-    """Process one document: chunking + embedding."""
+    """Process one document: chunking + embedding → pgvector."""
     user = _get_current_user(request, db)
     return rag_service.process_document(db, space_id, doc_id, user.organization_id)
 
+
 @router.post("/spaces/{space_id}/process-all")
 def process_all(space_id: str, request: Request, db: Session = Depends(get_db)):
-    """Process ALL extracted documents in this space."""
+    """Process ALL documents with status EXTRACTED."""
     user = _get_current_user(request, db)
     return rag_service.process_all_documents(db, space_id, user.organization_id)
 
 
-# ── Chunks ──
+# ══════════════════════════════════════════
+# CHUNKS + QUERY
+# ══════════════════════════════════════════
 
 @router.get("/spaces/{space_id}/documents/{doc_id}/chunks")
 def get_chunks(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return rag_service.list_chunks(db, space_id, doc_id, user.organization_id)
 
-
-# ── Query ──
 
 @router.post("/spaces/{space_id}/query")
 def query_space(space_id: str, data: QueryRequest, request: Request, db: Session = Depends(get_db)):
