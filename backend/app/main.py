@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine, test_connection
 from app.routes import auth, users
 from app.routes.rag import router as rag_router
+from app.routes.data_agent import router as data_agent_router
 
 # Import rag — show error if it fails
 try:
@@ -38,6 +39,8 @@ if has_rag:
     print("✅ RAG module loaded")
 else:
     print("❌ RAG module NOT loaded — check the error above")
+
+app.include_router(data_agent_router, prefix="/api")
 
 
 @app.on_event("startup")

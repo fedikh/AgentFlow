@@ -26,6 +26,10 @@ router = APIRouter(prefix="/rag", tags=["RAG"])
 class ScrapeRequest(BaseModel):
     url: str
 
+class DriveUploadRequest(BaseModel):
+    file_id: str
+    access_token: str
+    file_name: str = ""
 
 def _get_current_user(request: Request, db: Session) -> User:
     token = request.cookies.get("access_token")
@@ -109,6 +113,20 @@ def delete_document(space_id: str, doc_id: str, request: Request, db: Session = 
     user = _get_current_user(request, db)
     return rag_service.delete_document(db, space_id, doc_id, user.organization_id)
 
+@router.post("/spaces/{space_id}/upload-drive")
+async def upload_from_drive(
+    space_id: str,
+    data: DriveUploadRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Upload a file from Google Drive → same pipeline as local upload."""
+    user = _get_current_user(request, db)
+    return await rag_service.upload_from_drive(
+        db, space_id, user.organization_id,
+        data.file_id, data.access_token
+    )
+
 
 # ══════════════════════════════════════════
 # LOADED CONTENT — raw text from Loader
@@ -182,3 +200,17 @@ def get_chunks(space_id: str, doc_id: str, request: Request, db: Session = Depen
 def query_space(space_id: str, data: QueryRequest, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return rag_service.query(db, space_id, user.organization_id, data)
+
+ 
+@router.post("/spaces/{space_id}/documents/{doc_id}/load-parse")
+def load_and_parse(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
+    """Load + Parse a single document (runs loader + cleaner + parser)."""
+    user = _get_current_user(request, db)
+    return rag_service.load_and_parse_document(db, space_id, doc_id, user.organization_id)
+ 
+ 
+@router.post("/spaces/{space_id}/load-parse-all")
+def load_and_parse_all(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """Load + Parse ALL documents with status UPLOADING."""
+    user = _get_current_user(request, db)
+    return rag_service.load_and_parse_all(db, space_id, user.organization_id)

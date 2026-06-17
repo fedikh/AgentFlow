@@ -206,13 +206,7 @@ def list_chunks(db: Session, space_id: str, doc_id: str, org_id: str) -> list:
 # ══════════════════════════════════════════════════════
 # STEP 1: UPLOAD → LLAMAINDEX LOADER (raw text)
 # ══════════════════════════════════════════════════════
-
 async def upload_document(db: Session, space_id: str, org_id: str, file: UploadFile) -> dict:
-    """
-    Step 1: Upload + LOAD raw text.
-    File is saved permanently so Unstructured can read it during parsing.
-    Status: UPLOADING → LOADED (or ERROR)
-    """
     space = _find_space(db, space_id, org_id)
 
     ext = os.path.splitext(file.filename)[1].lower()
@@ -234,7 +228,6 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
     db.commit()
     db.refresh(doc)
 
-    # Save file permanently (Unstructured needs the file for parsing)
     upload_dir = os.path.join("uploads", space_id)
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, f"{doc.id}{ext}")
@@ -242,29 +235,32 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
     with open(file_path, "wb") as f:
         f.write(content)
 
+    # PDF/DOCX → just save file (Docling is slow, user clicks Load+Parse later)
+    if ext in (".pdf", ".docx"):
+        doc.loaded_content = json.dumps({"file_path": os.path.abspath(file_path)}, ensure_ascii=False)
+        db.commit()
+        db.refresh(doc)
+        return _doc_dict(doc)
+
+    # All other formats → run loader immediately (fast)
     try:
-        # ── LOADER → raw text ──
         loaded_data = li_load_document(file_path)
+
         from app.services.providers.cleaners import clean_loaded_data
         loaded_data = clean_loaded_data(loaded_data)
 
         if not loaded_data or not loaded_data.get("raw_text"):
             raise Exception("No content found in document")
 
-        # Store file_path so the parser can find the file
         loaded_data["file_path"] = os.path.abspath(file_path)
 
-        # Check if loader already produced ParsedDocument (PDF/DOCX via Docling)
         parsed_doc_data = loaded_data.pop("parsed_document", None)
-
         doc.loaded_content = json.dumps(loaded_data, ensure_ascii=False, default=str)
 
         if parsed_doc_data:
-            # Docling did both loading + parsing — skip Parse step
             doc.extracted_content = json.dumps(parsed_doc_data, ensure_ascii=False)
             doc.status = DocStatus.EXTRACTED
         else:
-            # Other formats — user clicks Parse later
             doc.status = DocStatus.LOADED
 
         db.commit()
@@ -274,13 +270,127 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
         doc.status = DocStatus.ERROR
         doc.error_msg = str(e)
         db.commit()
-        # Clean up file on error
         if os.path.exists(file_path):
             os.unlink(file_path)
         raise HTTPException(500, f"Loading failed: {str(e)}")
 
     return _doc_dict(doc)
+ 
+ 
+async def upload_from_drive(db, space_id, org_id, drive_file_id, access_token):
+    """Download from Google Drive and save. No loader, no parser. Fast."""
+    import uuid
+    from app.services.providers.google_drive import download_from_drive
+ 
+    space = _find_space(db, space_id, org_id)
+ 
+    doc_id = str(uuid.uuid4())
+    save_dir = os.path.join("uploads", space_id)
+ 
+    try:
+        drive_result = download_from_drive(drive_file_id, access_token, save_dir)
+    except Exception as e:
+        raise HTTPException(500, f"Google Drive download failed: {e}")
+ 
+    file_path = drive_result["file_path"]
+    file_name = drive_result["file_name"]
+    file_size = drive_result["file_size"]
+    ext = os.path.splitext(file_name)[1].lower()
+ 
+    doc = Document(
+        id=doc_id,
+        rag_space_id=space_id,
+        file_name=file_name,
+        file_type=ext.replace(".", ""),
+        file_size=file_size,
+        source_type="google_drive",
+        status=DocStatus.UPLOADING,
+    )
+    db.add(doc)
+    db.commit()
+ 
+    doc.loaded_content = json.dumps({"file_path": os.path.abspath(file_path)}, ensure_ascii=False)
+    db.commit()
+    db.refresh(doc)
+ 
+    return _doc_dict(doc)
 
+# ══════════════════════════════════════════════════════
+# STEP 2: LOAD + PARSE — runs loader + cleaner + parser
+# ══════════════════════════════════════════════════════
+ 
+def load_and_parse_document(db, space_id, doc_id, org_id):
+    """Run loader + cleaner on the saved file. If Docling, also parses."""
+    _find_space(db, space_id, org_id)
+    doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+ 
+    # Get file path
+    file_path = None
+    if doc.loaded_content:
+        try:
+            data = json.loads(doc.loaded_content)
+            file_path = data.get("file_path")
+        except Exception:
+            pass
+ 
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(400, "File not found — re-upload the document")
+ 
+    try:
+        # ── LOADER ──
+        loaded_data = li_load_document(file_path)
+ 
+        # ── CLEANER ──
+        from app.services.providers.cleaners import clean_loaded_data
+        loaded_data = clean_loaded_data(loaded_data)
+ 
+        if not loaded_data or not loaded_data.get("raw_text"):
+            raise Exception("No content found in document")
+ 
+        loaded_data["file_path"] = os.path.abspath(file_path)
+ 
+        # Check if loader already produced ParsedDocument (PDF/DOCX via Docling, PPTX via python-pptx)
+        parsed_doc_data = loaded_data.pop("parsed_document", None)
+ 
+        doc.loaded_content = json.dumps(loaded_data, ensure_ascii=False, default=str)
+ 
+        if parsed_doc_data:
+            doc.extracted_content = json.dumps(parsed_doc_data, ensure_ascii=False)
+            doc.status = DocStatus.EXTRACTED
+        else:
+            doc.status = DocStatus.LOADED
+ 
+        db.commit()
+        db.refresh(doc)
+ 
+    except Exception as e:
+        doc.status = DocStatus.ERROR
+        doc.error_msg = str(e)[:500]
+        db.commit()
+        raise HTTPException(500, f"Loading failed: {str(e)}")
+ 
+    return _doc_dict(doc)
+ 
+ 
+def load_and_parse_all(db, space_id, org_id):
+    """Load + Parse ALL documents with status UPLOADING."""
+    _find_space(db, space_id, org_id)
+    docs = db.query(Document).filter(
+        Document.rag_space_id == space_id,
+        Document.status == DocStatus.UPLOADING,
+    ).all()
+ 
+    results = []
+    for doc in docs:
+        try:
+            result = load_and_parse_document(db, space_id, doc.id, org_id)
+            results.append({"id": doc.id, "file_name": doc.file_name, "status": result["status"]})
+        except Exception as e:
+            results.append({"id": doc.id, "file_name": doc.file_name, "status": "ERROR", "error": str(e)})
+ 
+    return {"processed": len(results), "results": results}
 
 # ══════════════════════════════════════════════════════
 # UPLOAD FROM URL → LLAMAINDEX LOADER

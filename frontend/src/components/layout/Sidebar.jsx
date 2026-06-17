@@ -117,6 +117,11 @@ const NAV = {
           icon2: "M14 2v6h6",
         },
         {
+          to: "/it/data-agent",
+          label: "Data Agent",
+          icon: "M3 3h18v18H3zM3 9h18M9 21V9",
+        },
+        {
           to: "/it/agents",
           label: "Agents",
           icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",

@@ -74,3 +74,13 @@ export const listChunks = (s, d) =>
 // ── Query ──
 export const queryRAG = (s, q) =>
   req("POST", `/rag/spaces/${s}/query`, { question: q });
+
+export const loadAndParseDocument = (s, d) =>
+  req("POST", `/rag/spaces/${s}/documents/${d}/load-parse`);
+export const loadAndParseAll = (s) =>
+  req("POST", `/rag/spaces/${s}/load-parse-all`);
+export const uploadFromDrive = (spaceId, fileId, accessToken) =>
+  req("POST", `/rag/spaces/${spaceId}/upload-drive`, {
+    file_id: fileId,
+    access_token: accessToken,
+  });

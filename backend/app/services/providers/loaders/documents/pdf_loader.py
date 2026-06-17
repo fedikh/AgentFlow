@@ -14,7 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 10
+BATCH_SIZE = 5
 _converter = None  # reuse across calls
 
 

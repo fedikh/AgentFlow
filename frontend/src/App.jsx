@@ -18,6 +18,7 @@ import UsersPage from "./pages/admin/UsersPage";
 // ── IT pages ─────────────────────────────────────────
 import ITDashboard from "./pages/it/ITDashboard";
 import RAGSpacesPage from "./pages/it/RAGSpacesPage";
+import DataAgentPage from "./pages/it/DataAgentPage";
 
 // ── User pages ────────────────────────────────────────
 import UserDashboard from "./pages/user/UserDashboard";
@@ -98,6 +99,7 @@ export default function App() {
             <Route path="/it" element={<ITDashboard />} />
             <Route path="/it/rag" element={<RAGSpacesPage />} />
             <Route path="/it/agents" element={<ComingSoon title="Agents" />} />
+            <Route path="/it/data-agent" element={<DataAgentPage />} />
             <Route
               path="/it/workflows"
               element={<ComingSoon title="Workflows" />}

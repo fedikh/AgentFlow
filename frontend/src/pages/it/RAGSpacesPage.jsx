@@ -18,7 +18,11 @@ import {
   listChunks,
   queryRAG,
   listDepartments,
+  uploadFromDrive,
+  loadAndParseDocument,
+  loadAndParseAll,
 } from "../../services/ragApi";
+import { openGooglePicker } from "../../services/useGooglePicker";
 
 const RAGSpacesPage = () => {
   const [loading, setLoading] = useState(true);
@@ -88,8 +92,11 @@ const RAGSpacesPage = () => {
     const s = u.find((x) => x.id === activeSpace.id);
     if (s) setActiveSpace(s);
   };
+
+  const uploadingCount = docs.filter((d) => d.status === "UPLOADING").length;
   const loadedCount = docs.filter((d) => d.status === "LOADED").length;
   const extractedCount = docs.filter((d) => d.status === "EXTRACTED").length;
+
   const openSpace = async (s) => {
     setActiveSpace(s);
     setChatHistory([]);
@@ -106,6 +113,7 @@ const RAGSpacesPage = () => {
     setModal(null);
     setShowSettings(false);
   };
+
   const handleCreate = async () => {
     if (!newName.trim() || !createDept) return;
     try {
@@ -142,14 +150,18 @@ const RAGSpacesPage = () => {
       setError(e.message);
     }
   };
+
+  // ── Upload (local) ──
   const handleUpload = async (e) => {
-    const f = e.target.files[0];
-    if (!f || !activeSpace) return;
+    const files = Array.from(e.target.files);
+    if (!files.length || !activeSpace) return;
     setUploading(true);
     setError("");
     try {
-      await uploadDocument(activeSpace.id, f);
-      setSuccess(`"${f.name}" loaded`);
+      for (const f of files) {
+        await uploadDocument(activeSpace.id, f);
+      }
+      setSuccess(`${files.length} file(s) uploaded`);
       await refreshDocs();
     } catch (e) {
       setError(e.message);
@@ -158,6 +170,26 @@ const RAGSpacesPage = () => {
       fileRef.current.value = "";
     }
   };
+
+  // ── Upload (Google Drive — multi-select) ──
+  const handleDriveUpload = async () => {
+    const files = await openGooglePicker();
+    if (!files || !files.length) return;
+    setUploading(true);
+    try {
+      for (const f of files) {
+        await uploadFromDrive(activeSpace.id, f.fileId, f.accessToken);
+      }
+      setSuccess(`${files.length} file(s) imported from Drive`);
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Scrape URL ──
   const handleScrape = async () => {
     if (!urlInput.trim() || !activeSpace) return;
     setScraping(true);
@@ -173,6 +205,38 @@ const RAGSpacesPage = () => {
       setScraping(false);
     }
   };
+
+  // ── Load + Parse (single) ──
+  const handleLoadParse = async (docId) => {
+    setParsing(true);
+    setError("");
+    try {
+      await loadAndParseDocument(activeSpace.id, docId);
+      setSuccess("Loaded & parsed");
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  // ── Load + Parse All ──
+  const handleLoadParseAll = async () => {
+    setParsing(true);
+    setError("");
+    try {
+      const r = await loadAndParseAll(activeSpace.id);
+      setSuccess(`${r.processed} loaded & parsed`);
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  // ── Parse (for LOADED docs — TXT, MD, etc.) ──
   const handleParse = async (id) => {
     setParsing(true);
     setError("");
@@ -198,6 +262,8 @@ const RAGSpacesPage = () => {
       setParsing(false);
     }
   };
+
+  // ── Process ──
   const handleProcess = async (id) => {
     setProcessing(true);
     try {
@@ -222,6 +288,8 @@ const RAGSpacesPage = () => {
       setProcessing(false);
     }
   };
+
+  // ── Delete ──
   const handleDeleteDoc = async (id) => {
     try {
       await deleteDocument(activeSpace.id, id);
@@ -240,6 +308,8 @@ const RAGSpacesPage = () => {
       setError(e.message);
     }
   };
+
+  // ── Chat ──
   const handleQuery = async () => {
     if (!question.trim()) return;
     const q = question;
@@ -262,6 +332,7 @@ const RAGSpacesPage = () => {
     }
   };
 
+  // ── Modals ──
   const openModal = async (type, doc) => {
     setModalLoading(true);
     setModal(type);
@@ -290,7 +361,7 @@ const RAGSpacesPage = () => {
   };
 
   const SL = {
-    UPLOADING: "Uploading",
+    UPLOADING: "Uploaded",
     LOADED: "Loaded",
     EXTRACTED: "Parsed",
     PROCESSING: "Processing",
@@ -298,6 +369,7 @@ const RAGSpacesPage = () => {
     ERROR: "Error",
   };
   const SB = {
+    UPLOADING: "rag-badge-loaded",
     LOADED: "rag-badge-loaded",
     EXTRACTED: "rag-badge-parsed",
     INDEXED: "rag-badge-indexed",
@@ -584,6 +656,7 @@ const RAGSpacesPage = () => {
           </div>
         )}
 
+        {/* Upload bar */}
         <div className="rag-upload-bar">
           <input
             type="file"
@@ -591,6 +664,7 @@ const RAGSpacesPage = () => {
             onChange={handleUpload}
             style={{ display: "none" }}
             accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.html,.htm,.json,.xml,.pptx"
+            multiple
           />
           <button
             className="rag-btn rag-btn-dark"
@@ -598,6 +672,13 @@ const RAGSpacesPage = () => {
             disabled={uploading}
           >
             {uploading ? "Uploading…" : "📁 Upload"}
+          </button>
+          <button
+            className="rag-btn rag-btn-blue"
+            onClick={handleDriveUpload}
+            disabled={uploading}
+          >
+            ☁️ Google Drive
           </button>
           <input
             className="rag-url-input"
@@ -613,30 +694,47 @@ const RAGSpacesPage = () => {
           >
             {scraping ? "…" : "🔗 Scrape"}
           </button>
-          {loadedCount > 0 && (
-            <button
-              className="rag-btn rag-btn-sm"
-              onClick={handleParseAll}
-              disabled={parsing}
-            >
-              {parsing ? "…" : `Parse all (${loadedCount})`}
-            </button>
-          )}
-          {extractedCount > 0 && (
-            <button
-              className="rag-btn rag-btn-dark rag-btn-sm"
-              onClick={handleProcessAll}
-              disabled={processing}
-            >
-              {processing ? "…" : `Process all (${extractedCount})`}
-            </button>
-          )}
         </div>
 
+        {/* Bulk actions */}
+        {(uploadingCount > 0 || loadedCount > 0 || extractedCount > 0) && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+            {uploadingCount > 0 && (
+              <button
+                className="rag-btn rag-btn-blue rag-btn-sm"
+                onClick={handleLoadParseAll}
+                disabled={parsing}
+              >
+                {parsing ? "…" : `Load + Parse All (${uploadingCount})`}
+              </button>
+            )}
+            {loadedCount > 0 && (
+              <button
+                className="rag-btn rag-btn-sm"
+                onClick={handleParseAll}
+                disabled={parsing}
+              >
+                {parsing ? "…" : `Parse All (${loadedCount})`}
+              </button>
+            )}
+            {extractedCount > 0 && (
+              <button
+                className="rag-btn rag-btn-dark rag-btn-sm"
+                onClick={handleProcessAll}
+                disabled={processing}
+              >
+                {processing ? "…" : `Process All (${extractedCount})`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Document list */}
         <div className="rag-docs-list">
           {docs.length === 0 && (
             <div className="rag-empty-state">
-              No documents yet — upload a file or scrape a URL
+              No documents yet — upload a file, import from Drive, or scrape a
+              URL
             </div>
           )}
           {docs.map((d) => (
@@ -644,15 +742,30 @@ const RAGSpacesPage = () => {
               <div className="rag-doc-icon">
                 {d.source_type === "url"
                   ? "URL"
-                  : (d.file_type || "?").toUpperCase()}
+                  : d.source_type === "google_drive"
+                    ? "GD"
+                    : (d.file_type || "?").toUpperCase()}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="rag-doc-name">{d.file_name}</div>
                 <div className="rag-doc-meta">
                   {d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : ""}
                   {d.num_chunks > 0 && ` · ${d.num_chunks} chunks`}
+                  {d.source_type === "google_drive" && " · Google Drive"}
                 </div>
                 <div className="rag-doc-btns">
+                  {/* UPLOADING → Load + Parse */}
+                  {d.status === "UPLOADING" && (
+                    <button
+                      className="rag-btn rag-btn-xs rag-btn-blue"
+                      onClick={() => handleLoadParse(d.id)}
+                      disabled={parsing}
+                    >
+                      Load + Parse
+                    </button>
+                  )}
+
+                  {/* LOADED → View loaded + Parse */}
                   {d.has_loaded_content && (
                     <button
                       className="rag-btn rag-btn-xs"
@@ -670,6 +783,8 @@ const RAGSpacesPage = () => {
                       Parse
                     </button>
                   )}
+
+                  {/* EXTRACTED → View parsed + Process */}
                   {d.has_extracted_content && (
                     <button
                       className="rag-btn rag-btn-xs"
@@ -687,6 +802,8 @@ const RAGSpacesPage = () => {
                       Process
                     </button>
                   )}
+
+                  {/* INDEXED → View chunks */}
                   {d.status === "INDEXED" && (
                     <button
                       className="rag-btn rag-btn-xs"
