@@ -122,8 +122,8 @@ const NAV = {
           icon: "M3 3h18v18H3zM3 9h18M9 21V9",
         },
         {
-          to: "/it/agents",
-          label: "Agents",
+          to: "/it/api-agents",
+          label: "API Agent",
           icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
         },
         {

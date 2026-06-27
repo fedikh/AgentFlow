@@ -5,7 +5,7 @@ from app.database import Base, engine, test_connection
 from app.routes import auth, users
 from app.routes.rag import router as rag_router
 from app.routes.data_agent import router as data_agent_router
-
+from app.routes import models as models_routes
 # Import rag — show error if it fails
 try:
     from app.routes import rag
@@ -42,6 +42,7 @@ else:
 
 app.include_router(data_agent_router, prefix="/api")
 
+app.include_router(models_routes.router)
 
 @app.on_event("startup")
 async def startup():

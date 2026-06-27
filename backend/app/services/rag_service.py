@@ -569,6 +569,50 @@ def get_extracted_content(db: Session, space_id: str, doc_id: str, org_id: str) 
         "ocr_issues": parsed_data.get("ocr_issues", []),
     }
 
+def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: str, data) -> dict:
+    """
+    Overwrite the ParsedDocument with IT's manual edits.
+    Editable: title, sections, tables, images, metadata.
+    Preserved: num_pages, file_type, category, ocr_quality, ocr_issues.
+    Status → EXTRACTED (re-process to rebuild chunks from the edited version).
+    """
+    from app.services.providers.parsers.parsed_document import ParsedDocument
+
+    _find_space(db, space_id, org_id)
+    doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if not doc.extracted_content:
+        raise HTTPException(400, "No parsed content to edit — parse the document first")
+
+    # Start from the existing parse so read-only fields survive
+    existing = json.loads(doc.extracted_content)
+
+    payload = data.dict(exclude_unset=True)
+    if "title" in payload and payload["title"] is not None:
+        existing["title"] = payload["title"]
+    if "sections" in payload:
+        existing["sections"] = payload["sections"]
+    if "tables" in payload:
+        existing["tables"] = payload["tables"]
+    if "images" in payload:
+        existing["images"] = payload["images"]
+    if "metadata" in payload and payload["metadata"] is not None:
+        existing["metadata"] = payload["metadata"]
+
+    # Validate by round-tripping through the dataclass (raises if malformed)
+    try:
+        parsed_doc = ParsedDocument.from_dict(existing)
+    except Exception as e:
+        raise HTTPException(422, f"Invalid ParsedDocument structure: {str(e)}")
+
+    # Re-serialize via to_dict() so derived totals (total_sections, total_chars...) are recomputed
+    doc.extracted_content = json.dumps(parsed_doc.to_dict(), ensure_ascii=False)
+    doc.status = DocStatus.EXTRACTED
+    db.commit()
+    db.refresh(doc)
+
+    return get_extracted_content(db, space_id, doc_id, org_id)
 
 # ══════════════════════════════════════════════════════
 # STEP 3: PROCESS — chunking + embedding (UNCHANGED)

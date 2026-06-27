@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import "../../styles/it/rag.css";
+import "../../styles/it/ragside.css";
 import {
   createSpace,
   listSpaces,
@@ -13,6 +14,7 @@ import {
   parseDocument,
   parseAllDocuments,
   getExtractedContent,
+  updateExtractedContent,
   processDocument,
   processAllDocuments,
   listChunks,
@@ -21,8 +23,17 @@ import {
   uploadFromDrive,
   loadAndParseDocument,
   loadAndParseAll,
+  getEmbeddingModels,
+  getLLMModels,
 } from "../../services/ragApi";
 import { openGooglePicker } from "../../services/useGooglePicker";
+import { useParams, useNavigate } from "react-router-dom";
+import SpacesGrid from "../../components/it/rag/SpacesGrid";
+import RightSidebar from "../../components/it/rag/RightSidebar";
+import FlowPanel from "../../components/it/rag/FlowPanel";
+import UploadsPanel from "../../components/it/rag/UploadsPanel";
+import ConfigPanel from "../../components/it/rag/ConfigPanel";
+import DocModal from "../../components/it/rag/DocModal";
 
 const RAGSpacesPage = () => {
   const [loading, setLoading] = useState(true);
@@ -36,7 +47,6 @@ const RAGSpacesPage = () => {
   const [createDept, setCreateDept] = useState("");
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [urlInput, setUrlInput] = useState("");
@@ -51,6 +61,20 @@ const RAGSpacesPage = () => {
   const [question, setQuestion] = useState("");
   const [querying, setQuerying] = useState(false);
   const chatEndRef = useRef(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editDoc, setEditDoc] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const [panel, setPanel] = useState("uploads");
+  const [cfg, setCfg] = useState(null);
+  const [savingCfg, setSavingCfg] = useState(false);
+  const [embedModels, setEmbedModels] = useState([]);
+  const [llmModels, setLlmModels] = useState([]);
+  const [llmState, setLlmState] = useState({ available: true, error: "" });
+  const [loadingLlm, setLoadingLlm] = useState(false);
+
+  const { spaceId } = useParams();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadData();
@@ -71,6 +95,27 @@ const RAGSpacesPage = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory]);
 
+  useEffect(() => {
+    getEmbeddingModels()
+      .then((r) => setEmbedModels(r.models || []))
+      .catch(() => setEmbedModels([]));
+  }, []);
+  useEffect(() => {
+    if (!cfg) return;
+    const provider = cfg.llm_provider || "GROQ";
+    setLoadingLlm(true);
+    getLLMModels(provider)
+      .then((r) => {
+        setLlmModels(r.models || []);
+        setLlmState({ available: r.available, error: r.error || "" });
+      })
+      .catch(() => {
+        setLlmModels([]);
+        setLlmState({ available: false, error: "Loading error" });
+      })
+      .finally(() => setLoadingLlm(false));
+  }, [cfg?.llm_provider]);
+
   const loadData = async () => {
     try {
       const [d, s] = await Promise.all([listDepartments(), listSpaces()]);
@@ -90,7 +135,10 @@ const RAGSpacesPage = () => {
     const u = await listSpaces();
     setSpaces(u);
     const s = u.find((x) => x.id === activeSpace.id);
-    if (s) setActiveSpace(s);
+    if (s) {
+      setActiveSpace(s);
+      setCfg({ ...s });
+    }
   };
 
   const uploadingCount = docs.filter((d) => d.status === "UPLOADING").length;
@@ -99,19 +147,31 @@ const RAGSpacesPage = () => {
 
   const openSpace = async (s) => {
     setActiveSpace(s);
+    setCfg({ ...s });
+    setPanel("uploads");
     setChatHistory([]);
-    setShowSettings(false);
+    navigate(`/it/rag/${s.id}`);
     try {
       setDocs(await listDocuments(s.id));
     } catch (e) {
       setError(e.message);
     }
   };
+
+  // Restore the space from the URL on load / refresh
+  useEffect(() => {
+    if (spaceId && spaces.length > 0 && !activeSpace) {
+      const s = spaces.find((x) => x.id === spaceId);
+      if (s) openSpace(s);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId, spaces]);
   const goBack = () => {
     setActiveSpace(null);
     setDocs([]);
     setModal(null);
-    setShowSettings(false);
+    setCfg(null);
+    navigate("/it/rag");
   };
 
   const handleCreate = async () => {
@@ -131,36 +191,43 @@ const RAGSpacesPage = () => {
       setError(e.message);
     }
   };
-  const handleSave = async () => {
-    if (!activeSpace) return;
+
+  const setC = (f, v) => setCfg((c) => ({ ...c, [f]: v }));
+  const saveCfg = async () => {
+    setSavingCfg(true);
     try {
       await updateSpace(activeSpace.id, {
-        chunk_strategy: activeSpace.chunk_strategy,
-        chunk_size: parseInt(activeSpace.chunk_size),
-        chunk_overlap: parseInt(activeSpace.chunk_overlap),
-        top_k: parseInt(activeSpace.top_k),
+        chunk_strategy: cfg.chunk_strategy,
+        chunk_size: parseInt(cfg.chunk_size),
+        chunk_overlap: parseInt(cfg.chunk_overlap),
+        embedding_provider: cfg.embedding_provider,
+        embedding_model: cfg.embedding_model,
+        llm_provider: cfg.llm_provider,
+        llm_model: cfg.llm_model,
+        llm_temperature: parseFloat(cfg.llm_temperature),
+        top_k: parseInt(cfg.top_k),
+        semantic_weight: parseFloat(cfg.semantic_weight),
+        reranking_enabled: !!cfg.reranking_enabled,
+        system_prompt: cfg.system_prompt || null,
       });
-      setSuccess("Saved");
-      setShowSettings(false);
-      await loadData();
+      setSuccess("Configuration saved");
       const u = await listSpaces();
       const s = u.find((x) => x.id === activeSpace.id);
       if (s) setActiveSpace(s);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setSavingCfg(false);
     }
   };
 
-  // ── Upload (local) ──
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length || !activeSpace) return;
     setUploading(true);
     setError("");
     try {
-      for (const f of files) {
-        await uploadDocument(activeSpace.id, f);
-      }
+      for (const f of files) await uploadDocument(activeSpace.id, f);
       setSuccess(`${files.length} file(s) uploaded`);
       await refreshDocs();
     } catch (e) {
@@ -170,16 +237,13 @@ const RAGSpacesPage = () => {
       fileRef.current.value = "";
     }
   };
-
-  // ── Upload (Google Drive — multi-select) ──
   const handleDriveUpload = async () => {
     const files = await openGooglePicker();
     if (!files || !files.length) return;
     setUploading(true);
     try {
-      for (const f of files) {
+      for (const f of files)
         await uploadFromDrive(activeSpace.id, f.fileId, f.accessToken);
-      }
       setSuccess(`${files.length} file(s) imported from Drive`);
       await refreshDocs();
     } catch (e) {
@@ -188,8 +252,6 @@ const RAGSpacesPage = () => {
       setUploading(false);
     }
   };
-
-  // ── Scrape URL ──
   const handleScrape = async () => {
     if (!urlInput.trim() || !activeSpace) return;
     setScraping(true);
@@ -205,8 +267,6 @@ const RAGSpacesPage = () => {
       setScraping(false);
     }
   };
-
-  // ── Load + Parse (single) ──
   const handleLoadParse = async (docId) => {
     setParsing(true);
     setError("");
@@ -220,8 +280,6 @@ const RAGSpacesPage = () => {
       setParsing(false);
     }
   };
-
-  // ── Load + Parse All ──
   const handleLoadParseAll = async () => {
     setParsing(true);
     setError("");
@@ -235,8 +293,6 @@ const RAGSpacesPage = () => {
       setParsing(false);
     }
   };
-
-  // ── Parse (for LOADED docs — TXT, MD, etc.) ──
   const handleParse = async (id) => {
     setParsing(true);
     setError("");
@@ -262,8 +318,6 @@ const RAGSpacesPage = () => {
       setParsing(false);
     }
   };
-
-  // ── Process ──
   const handleProcess = async (id) => {
     setProcessing(true);
     try {
@@ -288,8 +342,6 @@ const RAGSpacesPage = () => {
       setProcessing(false);
     }
   };
-
-  // ── Delete ──
   const handleDeleteDoc = async (id) => {
     try {
       await deleteDocument(activeSpace.id, id);
@@ -309,7 +361,6 @@ const RAGSpacesPage = () => {
     }
   };
 
-  // ── Chat ──
   const handleQuery = async () => {
     if (!question.trim()) return;
     const q = question;
@@ -332,7 +383,6 @@ const RAGSpacesPage = () => {
     }
   };
 
-  // ── Modals ──
   const openModal = async (type, doc) => {
     setModalLoading(true);
     setModal(type);
@@ -358,29 +408,78 @@ const RAGSpacesPage = () => {
   const closeModal = () => {
     setModal(null);
     setModalData(null);
+    setEditMode(false);
+    setEditDoc(null);
   };
 
-  const SL = {
-    UPLOADING: "Uploaded",
-    LOADED: "Loaded",
-    EXTRACTED: "Parsed",
-    PROCESSING: "Processing",
-    INDEXED: "Indexed",
-    ERROR: "Error",
+  const startEdit = () => {
+    setEditDoc({
+      id: modalData.document_id,
+      parsed_document: JSON.parse(JSON.stringify(modalData.parsed_document)),
+    });
+    setEditMode(true);
+    setShowJson(false);
   };
-  const SB = {
-    UPLOADING: "rag-badge-loaded",
-    LOADED: "rag-badge-loaded",
-    EXTRACTED: "rag-badge-parsed",
-    INDEXED: "rag-badge-indexed",
-    ERROR: "rag-badge-error",
+  const cancelEdit = () => {
+    setEditMode(false);
+    setEditDoc(null);
   };
-  const fmt = (t) =>
-    t
-      ? t
-          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-          .replace(/\n/g, "<br>")
-      : "";
+  const editField = (kind, i, field, value) => {
+    setEditDoc((prev) => {
+      const next = { ...prev, parsed_document: { ...prev.parsed_document } };
+      const arr = [...next.parsed_document[kind]];
+      arr[i] = { ...arr[i], [field]: value };
+      next.parsed_document[kind] = arr;
+      return next;
+    });
+  };
+  const removeBlock = (kind, i) => {
+    setEditDoc((prev) => {
+      const next = { ...prev, parsed_document: { ...prev.parsed_document } };
+      next.parsed_document[kind] = next.parsed_document[kind].filter(
+        (_, idx) => idx !== i,
+      );
+      return next;
+    });
+  };
+  const addSection = () => {
+    setEditDoc((prev) => {
+      const next = { ...prev, parsed_document: { ...prev.parsed_document } };
+      next.parsed_document.sections = [
+        ...(next.parsed_document.sections || []),
+        { heading: "", content: "", level: 1, page: 1, font_size: null },
+      ];
+      return next;
+    });
+  };
+  const saveEdit = async () => {
+    setSavingEdit(true);
+    try {
+      const pd = editDoc.parsed_document;
+      const payload = {
+        title: pd.title || "",
+        sections: pd.sections || [],
+        tables: pd.tables || [],
+        images: pd.images || [],
+        metadata: pd.metadata || {},
+      };
+      const updated = await updateExtractedContent(
+        activeSpace.id,
+        editDoc.id,
+        payload,
+      );
+      setModalData(updated);
+      setEditMode(false);
+      setEditDoc(null);
+      setSuccess("Parsed content updated. Re-process to rebuild chunks.");
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const deptName = (id) => depts.find((x) => x.id === id)?.name || "";
 
   if (loading)
@@ -390,718 +489,144 @@ const RAGSpacesPage = () => {
       </div>
     );
 
-  /* ════════════════════════════════
-     PAGE 1: Space cards grid
-     ════════════════════════════════ */
+  // PAGE 1 : cards grid
   if (!activeSpace)
     return (
       <div className="rag-page">
-        <div className="rag-main">
+        {error && <div className="rag-toast rag-toast-error">{error}</div>}
+        {success && (
+          <div className="rag-toast rag-toast-success">{success}</div>
+        )}
+        <SpacesGrid
+          depts={depts}
+          spaces={spaces}
+          openSpace={openSpace}
+          showCreate={showCreate}
+          setShowCreate={setShowCreate}
+          createDept={createDept}
+          setCreateDept={setCreateDept}
+          newName={newName}
+          setNewName={setNewName}
+          newDesc={newDesc}
+          setNewDesc={setNewDesc}
+          handleCreate={handleCreate}
+        />
+      </div>
+    );
+
+  // PAGE 2 : space interior
+  return (
+    <div className="rag-page">
+      <div className="rag-space-layout">
+        <div className="rag-space-content">
           {error && <div className="rag-toast rag-toast-error">{error}</div>}
           {success && (
             <div className="rag-toast rag-toast-success">{success}</div>
           )}
 
           <div className="rag-header">
-            <div>
-              <div className="rag-header-title">RAG Spaces</div>
-              <div className="rag-header-desc">
-                Build and configure RAG pipelines
-              </div>
-            </div>
-            <button
-              className="rag-btn rag-btn-blue"
-              onClick={() => setShowCreate(true)}
-            >
-              + New Space
-            </button>
-          </div>
-
-          {showCreate && (
-            <div className="rag-create-card" style={{ maxWidth: 400 }}>
-              <div className="rag-create-title">New Space</div>
-              <div className="rag-create-label">Department</div>
-              <select
-                className="rag-create-input"
-                value={createDept}
-                onChange={(e) => setCreateDept(e.target.value)}
-              >
-                <option value="">Select…</option>
-                {depts.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="rag-create-input"
-                placeholder="Space name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-              />
-              <input
-                className="rag-create-input"
-                placeholder="Description (optional)"
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                <button className="rag-btn rag-btn-blue" onClick={handleCreate}>
-                  Create
-                </button>
-                <button
-                  className="rag-btn"
-                  onClick={() => setShowCreate(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="rag-grid">
-            {depts.map((dept) => {
-              const ds = spaces.filter((s) => s.department_id === dept.id);
-              if (!ds.length) return null;
-              return (
-                <div key={dept.id} className="rag-dept-section">
-                  <div className="rag-dept-label">{dept.name}</div>
-                  <div className="rag-cards">
-                    {ds.map((s) => (
-                      <div
-                        key={s.id}
-                        className="rag-space-card"
-                        onClick={() => openSpace(s)}
-                      >
-                        <div className="rag-space-card-badge">
-                          {s.chunk_strategy}
-                        </div>
-                        <div className="rag-space-card-name">{s.name}</div>
-                        <div className="rag-space-card-desc">
-                          {s.description || "No description"}
-                        </div>
-                        <div className="rag-space-card-footer">
-                          <span>📄 {s.num_documents || 0} docs</span>
-                          <span>🧩 {s.num_chunks || 0} chunks</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-            {spaces.length === 0 && (
-              <div className="rag-empty-state">No spaces yet</div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-
-  /* ════════════════════════════════
-     PAGE 2: Inside a space
-     ════════════════════════════════ */
-  return (
-    <div className="rag-page">
-      <div className="rag-main">
-        {error && <div className="rag-toast rag-toast-error">{error}</div>}
-        {success && (
-          <div className="rag-toast rag-toast-success">{success}</div>
-        )}
-
-        <div className="rag-header">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button className="rag-btn rag-btn-sm" onClick={goBack}>
-              ← Back
-            </button>
-            <div>
-              <div className="rag-header-title">{activeSpace.name}</div>
-              <div className="rag-header-desc">
-                {deptName(activeSpace.department_id)}
-              </div>
-            </div>
-          </div>
-          <div className="rag-header-actions">
-            <span className="rag-config-tag">
-              {activeSpace.chunk_strategy} · {activeSpace.chunk_size}
-            </span>
-            <span className="rag-config-tag">
-              {activeSpace.num_chunks} chunks
-            </span>
-            <button
-              className="rag-btn rag-btn-blue rag-btn-sm"
-              onClick={openChat}
-            >
-              💬 Chat
-            </button>
-            <button
-              className="rag-btn rag-btn-sm"
-              onClick={() => setShowSettings(!showSettings)}
-            >
-              ⚙ Settings
-            </button>
-            <button
-              className="rag-btn rag-btn-sm rag-btn-red"
-              onClick={() => handleDeleteSpace(activeSpace.id)}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-
-        {showSettings && (
-          <div className="rag-create-card" style={{ marginBottom: 16 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 14,
-              }}
-            >
-              <div className="rag-create-title" style={{ margin: 0 }}>
-                Configuration
-              </div>
-              <button
-                className="rag-btn rag-btn-sm"
-                onClick={() => setShowSettings(false)}
-              >
-                ✕
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button className="rag-btn rag-btn-sm" onClick={goBack}>
+                ← Back
               </button>
-            </div>
-            <div className="rag-create-label">Chunking Strategy</div>
-            <div className="rag-strategy-cards">
-              {[
-                { k: "FIXED", n: "Fixed", d: "Cut every N characters" },
-                { k: "SEMANTIC", n: "Semantic", d: "Cut when topic changes" },
-                {
-                  k: "HIERARCHICAL",
-                  n: "Hierarchical",
-                  d: "Parent + child chunks",
-                },
-              ].map((s) => (
-                <button
-                  key={s.k}
-                  className={`rag-strategy-card ${activeSpace.chunk_strategy === s.k ? "active" : ""}`}
-                  onClick={() =>
-                    setActiveSpace({ ...activeSpace, chunk_strategy: s.k })
-                  }
-                >
-                  <div className="rag-strategy-name">{s.n}</div>
-                  <div className="rag-strategy-desc">{s.d}</div>
-                </button>
-              ))}
-            </div>
-            <div className="rag-settings-row">
-              <div className="rag-settings-col">
-                <div className="rag-create-label">Chunk size</div>
-                <input
-                  className="rag-create-input"
-                  type="number"
-                  value={activeSpace.chunk_size}
-                  onChange={(e) =>
-                    setActiveSpace({
-                      ...activeSpace,
-                      chunk_size: e.target.value,
-                    })
-                  }
-                  style={{ marginBottom: 0 }}
-                />
-                <div className="rag-settings-hint">256–1024</div>
-              </div>
-              <div className="rag-settings-col">
-                <div className="rag-create-label">Overlap</div>
-                <input
-                  className="rag-create-input"
-                  type="number"
-                  value={activeSpace.chunk_overlap}
-                  onChange={(e) =>
-                    setActiveSpace({
-                      ...activeSpace,
-                      chunk_overlap: e.target.value,
-                    })
-                  }
-                  style={{ marginBottom: 0 }}
-                />
-                <div className="rag-settings-hint">20–100</div>
-              </div>
-              <div className="rag-settings-col">
-                <div className="rag-create-label">Top-K</div>
-                <input
-                  className="rag-create-input"
-                  type="number"
-                  value={activeSpace.top_k}
-                  onChange={(e) =>
-                    setActiveSpace({ ...activeSpace, top_k: e.target.value })
-                  }
-                  style={{ marginBottom: 0 }}
-                />
-                <div className="rag-settings-hint">Results per query</div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="rag-btn rag-btn-blue" onClick={handleSave}>
-                Save
-              </button>
-              <button
-                className="rag-btn"
-                onClick={() => setShowSettings(false)}
-              >
-                Cancel
-              </button>
-            </div>
-            <div className="rag-settings-note">
-              Changes apply to new documents only.
-            </div>
-          </div>
-        )}
-
-        {/* Upload bar */}
-        <div className="rag-upload-bar">
-          <input
-            type="file"
-            ref={fileRef}
-            onChange={handleUpload}
-            style={{ display: "none" }}
-            accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.html,.htm,.json,.xml,.pptx"
-            multiple
-          />
-          <button
-            className="rag-btn rag-btn-dark"
-            onClick={() => fileRef.current.click()}
-            disabled={uploading}
-          >
-            {uploading ? "Uploading…" : "📁 Upload"}
-          </button>
-          <button
-            className="rag-btn rag-btn-blue"
-            onClick={handleDriveUpload}
-            disabled={uploading}
-          >
-            ☁️ Google Drive
-          </button>
-          <input
-            className="rag-url-input"
-            placeholder="Paste a URL to scrape…"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleScrape()}
-          />
-          <button
-            className="rag-btn"
-            onClick={handleScrape}
-            disabled={scraping}
-          >
-            {scraping ? "…" : "🔗 Scrape"}
-          </button>
-        </div>
-
-        {/* Bulk actions */}
-        {(uploadingCount > 0 || loadedCount > 0 || extractedCount > 0) && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-            {uploadingCount > 0 && (
-              <button
-                className="rag-btn rag-btn-blue rag-btn-sm"
-                onClick={handleLoadParseAll}
-                disabled={parsing}
-              >
-                {parsing ? "…" : `Load + Parse All (${uploadingCount})`}
-              </button>
-            )}
-            {loadedCount > 0 && (
-              <button
-                className="rag-btn rag-btn-sm"
-                onClick={handleParseAll}
-                disabled={parsing}
-              >
-                {parsing ? "…" : `Parse All (${loadedCount})`}
-              </button>
-            )}
-            {extractedCount > 0 && (
-              <button
-                className="rag-btn rag-btn-dark rag-btn-sm"
-                onClick={handleProcessAll}
-                disabled={processing}
-              >
-                {processing ? "…" : `Process All (${extractedCount})`}
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Document list */}
-        <div className="rag-docs-list">
-          {docs.length === 0 && (
-            <div className="rag-empty-state">
-              No documents yet — upload a file, import from Drive, or scrape a
-              URL
-            </div>
-          )}
-          {docs.map((d) => (
-            <div key={d.id} className="rag-doc-card">
-              <div className="rag-doc-icon">
-                {d.source_type === "url"
-                  ? "URL"
-                  : d.source_type === "google_drive"
-                    ? "GD"
-                    : (d.file_type || "?").toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="rag-doc-name">{d.file_name}</div>
-                <div className="rag-doc-meta">
-                  {d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : ""}
-                  {d.num_chunks > 0 && ` · ${d.num_chunks} chunks`}
-                  {d.source_type === "google_drive" && " · Google Drive"}
-                </div>
-                <div className="rag-doc-btns">
-                  {/* UPLOADING → Load + Parse */}
-                  {d.status === "UPLOADING" && (
-                    <button
-                      className="rag-btn rag-btn-xs rag-btn-blue"
-                      onClick={() => handleLoadParse(d.id)}
-                      disabled={parsing}
-                    >
-                      Load + Parse
-                    </button>
-                  )}
-
-                  {/* LOADED → View loaded + Parse */}
-                  {d.has_loaded_content && (
-                    <button
-                      className="rag-btn rag-btn-xs"
-                      onClick={() => openModal("loaded", d)}
-                    >
-                      View loaded
-                    </button>
-                  )}
-                  {d.status === "LOADED" && (
-                    <button
-                      className="rag-btn rag-btn-xs rag-btn-blue"
-                      onClick={() => handleParse(d.id)}
-                      disabled={parsing}
-                    >
-                      Parse
-                    </button>
-                  )}
-
-                  {/* EXTRACTED → View parsed + Process */}
-                  {d.has_extracted_content && (
-                    <button
-                      className="rag-btn rag-btn-xs"
-                      onClick={() => openModal("parsed", d)}
-                    >
-                      View parsed
-                    </button>
-                  )}
-                  {d.status === "EXTRACTED" && (
-                    <button
-                      className="rag-btn rag-btn-xs rag-btn-dark"
-                      onClick={() => handleProcess(d.id)}
-                      disabled={processing}
-                    >
-                      Process
-                    </button>
-                  )}
-
-                  {/* INDEXED → View chunks */}
-                  {d.status === "INDEXED" && (
-                    <button
-                      className="rag-btn rag-btn-xs"
-                      onClick={() => openModal("chunks", d)}
-                    >
-                      View chunks
-                    </button>
-                  )}
+              <div>
+                <div className="rag-header-title">{activeSpace.name}</div>
+                <div className="rag-header-desc">
+                  {deptName(activeSpace.department_id)}
                 </div>
               </div>
-              <span className={`rag-badge ${SB[d.status] || ""}`}>
-                {SL[d.status] || d.status}
+            </div>
+            <div className="rag-header-actions">
+              <span className="rag-config-tag">
+                {activeSpace.chunk_strategy} · {activeSpace.chunk_size}
+              </span>
+              <span className="rag-config-tag">
+                {activeSpace.num_chunks} chunks
               </span>
               <button
-                className="rag-doc-del"
-                onClick={() => handleDeleteDoc(d.id)}
+                className="rag-btn rag-btn-blue rag-btn-sm"
+                onClick={openChat}
               >
-                ×
+                💬 Chat
+              </button>
+              <button
+                className="rag-btn rag-btn-sm rag-btn-red"
+                onClick={() => handleDeleteSpace(activeSpace.id)}
+              >
+                Delete
               </button>
             </div>
-          ))}
+          </div>
+
+          {panel === "uploads" && (
+            <UploadsPanel
+              docs={docs}
+              fileRef={fileRef}
+              uploading={uploading}
+              scraping={scraping}
+              parsing={parsing}
+              processing={processing}
+              urlInput={urlInput}
+              setUrlInput={setUrlInput}
+              handleUpload={handleUpload}
+              handleDriveUpload={handleDriveUpload}
+              handleScrape={handleScrape}
+              handleLoadParse={handleLoadParse}
+              handleLoadParseAll={handleLoadParseAll}
+              handleParse={handleParse}
+              handleParseAll={handleParseAll}
+              handleProcess={handleProcess}
+              handleProcessAll={handleProcessAll}
+              handleDeleteDoc={handleDeleteDoc}
+              openModal={openModal}
+              counts={{ uploadingCount, loadedCount, extractedCount }}
+            />
+          )}
+
+          {panel === "flow" && <FlowPanel space={activeSpace} />}
+
+          {panel !== "uploads" && panel !== "flow" && (
+            <ConfigPanel
+              panel={panel}
+              cfg={cfg}
+              setC={setC}
+              saveCfg={saveCfg}
+              savingCfg={savingCfg}
+              embedModels={embedModels}
+              llmModels={llmModels}
+              llmState={llmState}
+              loadingLlm={loadingLlm}
+            />
+          )}
         </div>
+
+        <RightSidebar panel={panel} setPanel={setPanel} />
       </div>
 
-      {/* ════════ MODAL ════════ */}
-      {modal && (
-        <div
-          className="rag-modal-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeModal();
-          }}
-        >
-          <div className="rag-modal">
-            <div className="rag-modal-header">
-              <div className="rag-modal-title">
-                {modal === "loaded" && "Loaded Text"}
-                {modal === "parsed" && "Parsed Document"}
-                {modal === "chunks" && "Chunks"}
-                {modal === "chat" && "Chat with documents"}
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {modal === "parsed" && (
-                  <button
-                    className={`rag-btn rag-btn-sm ${showJson ? "rag-btn-dark" : ""}`}
-                    onClick={() => setShowJson(!showJson)}
-                  >
-                    {showJson ? "Blocks" : "JSON"}
-                  </button>
-                )}
-                <button className="rag-btn rag-btn-sm" onClick={closeModal}>
-                  ✕ Close
-                </button>
-              </div>
-            </div>
-            <div className="rag-modal-body">
-              {modalLoading && <div className="rag-empty-state">Loading…</div>}
-
-              {/* LOADED */}
-              {modal === "loaded" && modalData && !modalLoading && (
-                <>
-                  <div className="rag-stats rag-stats-4">
-                    {[
-                      { l: "Type", v: modalData.file_type },
-                      { l: "Category", v: modalData.category },
-                      { l: "Pages", v: modalData.num_pages },
-                      {
-                        l: "Characters",
-                        v: modalData.total_chars?.toLocaleString(),
-                      },
-                    ].map((s, i) => (
-                      <div key={i} className="rag-stat">
-                        <div className="rag-stat-label">{s.l}</div>
-                        <div className="rag-stat-value">{s.v}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rag-raw-text">
-                    {modalData.raw_text || "Empty"}
-                  </div>
-                </>
-              )}
-
-              {/* PARSED */}
-              {modal === "parsed" && modalData && !modalLoading && (
-                <>
-                  <div className="rag-stats rag-stats-4">
-                    {[
-                      { l: "Sections", v: modalData.total_sections },
-                      { l: "Tables", v: modalData.total_tables },
-                      {
-                        l: "Characters",
-                        v: modalData.total_chars?.toLocaleString(),
-                      },
-                      { l: "OCR", v: modalData.ocr_quality },
-                    ].map((s, i) => (
-                      <div key={i} className="rag-stat">
-                        <div className="rag-stat-label">{s.l}</div>
-                        <div className="rag-stat-value">{s.v}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {modalData.ocr_issues?.length > 0 && (
-                    <div className="rag-ocr-warn">
-                      {modalData.ocr_issues.join(" · ")}
-                    </div>
-                  )}
-                  {showJson ? (
-                    <div className="rag-json">
-                      <pre>
-                        {JSON.stringify(modalData.parsed_document, null, 2)}
-                      </pre>
-                    </div>
-                  ) : (
-                    <>
-                      {modalData.parsed_document?.sections?.map((sec, i) => (
-                        <div key={`s${i}`} className="rag-block">
-                          <div className="rag-block-header">
-                            <div className="rag-heading-tag">
-                              <span className="rag-block-tag">
-                                Section {i + 1}
-                              </span>
-                              {sec.heading && (
-                                <span style={{ fontSize: 13, fontWeight: 600 }}>
-                                  {sec.heading}
-                                </span>
-                              )}
-                              <span className="rag-h-level">H{sec.level}</span>
-                            </div>
-                            <span className="rag-block-meta">
-                              p.{sec.page} · {sec.content?.length}c
-                            </span>
-                          </div>
-                          <pre className="rag-block-content">{sec.content}</pre>
-                        </div>
-                      ))}
-                      {modalData.parsed_document?.tables?.map((tab, i) => (
-                        <div
-                          key={`t${i}`}
-                          className="rag-block rag-block-table"
-                        >
-                          <div className="rag-block-header">
-                            <span
-                              className="rag-block-tag"
-                              style={{
-                                background: "#FEF3C7",
-                                color: "#92400E",
-                              }}
-                            >
-                              Table {i + 1} — {tab.num_rows}×{tab.num_cols}
-                            </span>
-                            <span className="rag-block-meta">p.{tab.page}</span>
-                          </div>
-                          {tab.headers?.length > 0 && (
-                            <div
-                              style={{
-                                fontSize: 11,
-                                color: "#92400E",
-                                marginBottom: 6,
-                              }}
-                            >
-                              {tab.headers.join(", ")}
-                            </div>
-                          )}
-                          <pre className="rag-block-content rag-block-content-mono">
-                            {tab.content}
-                          </pre>
-                        </div>
-                      ))}
-                      {modalData.parsed_document?.images?.map((img, i) => (
-                        <div key={`i${i}`} className="rag-block">
-                          <div className="rag-block-header">
-                            <span className="rag-block-tag">Image {i + 1}</span>
-                            <span className="rag-block-meta">p.{img.page}</span>
-                          </div>
-                          {img.caption && (
-                            <div style={{ fontSize: 13 }}>{img.caption}</div>
-                          )}
-                          {img.ocr_text && (
-                            <div style={{ fontSize: 12, color: "#525252" }}>
-                              OCR: {img.ocr_text}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </>
-              )}
-
-              {/* CHUNKS */}
-              {modal === "chunks" && modalData && !modalLoading && (
-                <>
-                  <div className="rag-stats rag-stats-3">
-                    {[
-                      { l: "Chunks", v: modalData.length },
-                      {
-                        l: "Avg length",
-                        v: Math.round(
-                          modalData.reduce((s, c) => s + c.content.length, 0) /
-                            (modalData.length || 1),
-                        ),
-                      },
-                      {
-                        l: "Total chars",
-                        v: modalData
-                          .reduce((s, c) => s + c.content.length, 0)
-                          .toLocaleString(),
-                      },
-                    ].map((s, i) => (
-                      <div key={i} className="rag-stat">
-                        <div className="rag-stat-label">{s.l}</div>
-                        <div className="rag-stat-value">{s.v}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {modalData.map((c) => (
-                    <div key={c.id} className="rag-block">
-                      <div className="rag-block-header">
-                        <span className="rag-block-tag">
-                          Chunk {c.chunk_index + 1}
-                        </span>
-                        <span className="rag-block-meta">
-                          p.{c.page} · {c.content.length}c
-                        </span>
-                      </div>
-                      <pre className="rag-block-content">{c.content}</pre>
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {/* CHAT */}
-              {modal === "chat" && (
-                <div className="rag-chat-body">
-                  <div className="rag-chat-messages">
-                    {chatHistory.length === 0 && (
-                      <div className="rag-empty-state">
-                        Ask a question about your documents
-                      </div>
-                    )}
-                    {chatHistory.map((m, i) => (
-                      <div
-                        key={i}
-                        className={`rag-chat-msg ${m.role === "user" ? "rag-chat-msg-user" : "rag-chat-msg-ai"}`}
-                      >
-                        <div
-                          className={`rag-chat-bubble ${m.role === "user" ? "rag-chat-bubble-user" : "rag-chat-bubble-ai"}`}
-                        >
-                          {m.role === "user" ? (
-                            m.content
-                          ) : (
-                            <div
-                              dangerouslySetInnerHTML={{
-                                __html: fmt(m.content),
-                              }}
-                            />
-                          )}
-                          {m.sources?.length > 0 && (
-                            <div className="rag-chat-sources">
-                              {m.sources.map((s, j) => (
-                                <div key={j}>
-                                  📄 {s.document} (p.{s.page}, {s.score})
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {querying && (
-                      <div className="rag-chat-msg rag-chat-msg-ai">
-                        <div className="rag-chat-typing">Thinking…</div>
-                      </div>
-                    )}
-                    <div ref={chatEndRef} />
-                  </div>
-                  <div className="rag-chat-input-bar">
-                    <input
-                      className="rag-chat-input"
-                      value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleQuery()}
-                      placeholder="Ask a question…"
-                    />
-                    <button
-                      className="rag-chat-send"
-                      onClick={handleQuery}
-                      disabled={querying || !question.trim()}
-                    >
-                      Send
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <DocModal
+        modal={modal}
+        modalData={modalData}
+        modalLoading={modalLoading}
+        closeModal={closeModal}
+        showJson={showJson}
+        setShowJson={setShowJson}
+        editMode={editMode}
+        editDoc={editDoc}
+        setEditDoc={setEditDoc}
+        savingEdit={savingEdit}
+        startEdit={startEdit}
+        cancelEdit={cancelEdit}
+        saveEdit={saveEdit}
+        editField={editField}
+        removeBlock={removeBlock}
+        addSection={addSection}
+        chatHistory={chatHistory}
+        chatEndRef={chatEndRef}
+        question={question}
+        setQuestion={setQuestion}
+        querying={querying}
+        handleQuery={handleQuery}
+      />
     </div>
   );
 };

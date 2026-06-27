@@ -22,6 +22,19 @@ class CreateSpaceRequest(BaseModel):
 class QueryRequest(BaseModel):
     question: str
 
+class DatabaseConnectRequest(BaseModel):
+    db_type: str = "postgresql"
+    host: str = "localhost"
+    port: str = "5432"
+    database: str = ""
+    username: str = ""
+    password: str = ""
+ 
+ 
+class DatabaseQueryRequest(BaseModel):
+    question: str
+    tables: list = None
+
 
 def _get_current_user(request: Request, db: Session) -> User:
     token = request.cookies.get("access_token")
@@ -95,3 +108,43 @@ def delete_file(space_id: str, file_id: str, request: Request, db: Session = Dep
 def query_data(space_id: str, data: QueryRequest, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return svc.query_data(user, space_id, data.question)
+
+@router.post("/spaces/{space_id}/database/connect")
+def connect_database(space_id: str, data: DatabaseConnectRequest, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return svc.connect_database(user, space_id, data.dict())
+ 
+ 
+@router.get("/spaces/{space_id}/database")
+def get_database_info(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return svc.get_database_info(user, space_id)
+ 
+ 
+@router.delete("/spaces/{space_id}/database")
+def disconnect_database(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return svc.disconnect_database(user, space_id)
+ 
+ 
+@router.get("/spaces/{space_id}/database/tables/{table_name}/preview")
+def table_preview(space_id: str, table_name: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return svc.get_table_preview(user, space_id, table_name)
+ 
+ 
+@router.get("/spaces/{space_id}/database/tables/{table_name}/schema")
+def table_schema(space_id: str, table_name: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return svc.get_table_schema(user, space_id, table_name)
+ 
+ 
+@router.post("/spaces/{space_id}/database/query")
+def query_database(space_id: str, data: DatabaseQueryRequest, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return svc.query_database(user, space_id, data.question, data.tables)
+
+@router.get("/spaces/{space_id}/database/full-schema")
+def full_schema(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return svc.get_database_schema(user, space_id)

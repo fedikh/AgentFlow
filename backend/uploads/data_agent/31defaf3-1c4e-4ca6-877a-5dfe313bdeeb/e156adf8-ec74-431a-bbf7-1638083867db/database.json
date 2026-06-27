@@ -1,0 +1,20 @@
+{
+  "db_type": "postgresql",
+  "host": "localhost",
+  "port": "5432",
+  "database": "agentflow",
+  "username": "postgres",
+  "db_url": "postgresql://postgres:admin123@localhost:5432/agentflow",
+  "tables": [
+    "organizations",
+    "departments",
+    "users",
+    "user_departments",
+    "documents",
+    "rag_spaces",
+    "ai_providers",
+    "api_keys",
+    "chunks"
+  ],
+  "connected": true
+}

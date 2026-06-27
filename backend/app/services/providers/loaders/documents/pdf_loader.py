@@ -4,8 +4,6 @@ PDF Loader — Docling reads once, gives both raw text AND ParsedDocument.
 Output:
   raw_text         → for "Loaded Text" tab
   parsed_document  → for "Parsed Blocks" tab (already structured)
-  
-No pdfplumber, no LlamaIndex. Just Docling.
 """
 import os
 import gc
@@ -28,6 +26,8 @@ def _get_converter():
 
         opts = PdfPipelineOptions()
         opts.generate_picture_images = False
+        opts.do_ocr = False
+
 
         _converter = DocumentConverter(
             format_options={

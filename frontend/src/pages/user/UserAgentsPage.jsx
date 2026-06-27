@@ -1,35 +1,41 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { listSpaces, queryRAG } from "../../services/ragApi";
 import "../../styles/it/rag.css";
 
-/**
- * End User Agents Page
- * Shows only ACTIVE RAG spaces from the user's departments.
- * Clean chat interface — no config pills, no upload, no delete, no debug.
- * Just pick an agent and ask questions.
- */
 const UserAgentsPage = () => {
   const [agents, setAgents] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  // Chat
   const [question, setQuestion] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [querying, setQuerying] = useState(false);
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
     loadAgents();
   }, []);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+  useEffect(() => {
+    if (error) {
+      const t = setTimeout(() => setError(""), 6000);
+      return () => clearTimeout(t);
+    }
+  }, [error]);
 
   const loadAgents = async () => {
-    setLoading(true);
     try {
-      const data = await listSpaces();
-      // End user sees all spaces returned by the backend
-      // (backend already filters by user's departments)
-      setAgents(data);
+      const all = await listSpaces();
+      const u = JSON.parse(localStorage.getItem("user") || "{}");
+      const myDepts = u.departments?.map((x) => x.id) || [];
+
+      if (u.role === "admin") {
+        setAgents(all);
+      } else {
+        setAgents(all.filter((a) => myDepts.includes(a.department_id)));
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -42,40 +48,48 @@ const UserAgentsPage = () => {
     setChatHistory([]);
     setQuestion("");
   };
-
-  // Format markdown
-  const formatAnswer = (text) => {
-    if (!text) return "";
-    return text
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/^## (.+)$/gm, '<div class="rag-md-h2">$1</div>')
-      .replace(/^### (.+)$/gm, '<div class="rag-md-h3">$1</div>')
-      .replace(/^[•\-\*] (.+)$/gm, '<div class="rag-md-li">$1</div>')
-      .replace(
-        /^(\d+)\. (.+)$/gm,
-        '<div class="rag-md-li"><span class="rag-md-num">$1.</span> $2</div>',
-      )
-      .replace(/\n/g, "<br>");
+  const goBack = () => {
+    setSelected(null);
+    setChatHistory([]);
   };
+
+  const fmt = (t) =>
+    t
+      ? t
+          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+          .replace(
+            /^## (.+)$/gm,
+            '<div style="font-size:15px;font-weight:600;margin:10px 0 4px">$1</div>',
+          )
+          .replace(
+            /^### (.+)$/gm,
+            '<div style="font-size:14px;font-weight:600;margin:8px 0 4px">$1</div>',
+          )
+          .replace(
+            /^[•\-\*] (.+)$/gm,
+            '<div style="padding-left:12px">• $1</div>',
+          )
+          .replace(/\n/g, "<br>")
+      : "";
 
   const handleQuery = async () => {
     if (!question.trim() || !selected) return;
     const q = question;
     setQuestion("");
-    setChatHistory((prev) => [...prev, { role: "user", content: q }]);
+    setChatHistory((h) => [...h, { role: "user", content: q }]);
     setQuerying(true);
     try {
       const res = await queryRAG(selected.id, q);
-      setChatHistory((prev) => [
-        ...prev,
+      setChatHistory((h) => [
+        ...h,
         { role: "assistant", content: res.answer, sources: res.sources },
       ]);
     } catch (e) {
-      setChatHistory((prev) => [
-        ...prev,
+      setChatHistory((h) => [
+        ...h,
         {
           role: "assistant",
-          content: `Sorry, something went wrong. Please try again.`,
+          content: "Sorry, something went wrong. Please try again.",
         },
       ]);
     } finally {
@@ -83,213 +97,200 @@ const UserAgentsPage = () => {
     }
   };
 
-  return (
-    <div className="rag-page">
-      <h1 className="rag-title">My AI Agents</h1>
-      <p className="rag-sub">Ask questions about your department's documents</p>
+  if (loading)
+    return (
+      <div className="rag-page">
+        <div className="rag-empty-state">Loading…</div>
+      </div>
+    );
 
-      {error && (
-        <div className="rag-error">
-          {error}{" "}
-          <span
-            onClick={() => setError("")}
-            style={{ cursor: "pointer", marginLeft: 8 }}
-          >
-            x
-          </span>
-        </div>
-      )}
+  // ═══ PAGE 1: Agent cards ═══
+  if (!selected)
+    return (
+      <div className="rag-page" style={{ display: "block" }}>
+        <div className="rag-main">
+          {error && <div className="rag-toast rag-toast-error">{error}</div>}
 
-      {loading && <p style={{ color: "#9CA3AF", fontSize: 13 }}>Loading...</p>}
+          <div className="rag-header">
+            <div>
+              <div className="rag-header-title">My AI Agents</div>
+              <div className="rag-header-desc">
+                Ask questions about your department's documents
+              </div>
+            </div>
+          </div>
 
-      {!loading && agents.length === 0 && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "60px 20px",
-            color: "#6B7280",
-          }}
-        >
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
+          {agents.length === 0 && (
+            <div className="rag-empty-state" style={{ padding: 60 }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
+              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
+                No agents available yet
+              </div>
+              <div style={{ fontSize: 13 }}>
+                Your IT team hasn't deployed any AI agents for your department
+                yet. Check back later!
+              </div>
+            </div>
+          )}
+
           <div
             style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: "#374151",
-              marginBottom: 6,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+              gap: 12,
             }}
           >
-            No agents available yet
-          </div>
-          <div style={{ fontSize: 13 }}>
-            Your IT team hasn't deployed any AI agents for your department yet.
-            Check back later!
-          </div>
-        </div>
-      )}
-
-      {!loading && agents.length > 0 && (
-        <div className="rag-layout">
-          {/* ── Left: agent cards ── */}
-          <div className="rag-sidebar">
-            <div className="rag-sidebar-header">
-              <span className="rag-sidebar-title">Agents</span>
-            </div>
-
             {agents.map((a) => (
               <div
                 key={a.id}
-                className={`rag-space-item ${selected?.id === a.id ? "active" : ""}`}
+                className="rag-space-card"
                 onClick={() => selectAgent(a)}
-                style={{ cursor: "pointer" }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 18 }}>🤖</span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 28 }}>🤖</div>
                   <div>
-                    <div className="rag-space-name">{a.name}</div>
-                    <div className="rag-space-meta">
-                      {a.num_documents} document
-                      {a.num_documents !== 1 ? "s" : ""}
-                      {a.department_name && (
-                        <span
-                          style={{
-                            marginLeft: 6,
-                            fontSize: 10,
-                            fontWeight: 500,
-                            padding: "1px 5px",
-                            borderRadius: 4,
-                            background: "#F0FDF4",
-                            color: "#166534",
-                            border: "1px solid #BBF7D0",
-                          }}
-                        >
-                          {a.department_name}
-                        </span>
-                      )}
+                    <div className="rag-space-card-name">{a.name}</div>
+                    <div className="rag-space-card-desc">
+                      {a.description ||
+                        "AI assistant powered by your documents"}
                     </div>
                   </div>
+                </div>
+                <div className="rag-space-card-footer">
+                  <span>📄 {a.num_documents || 0} docs</span>
+                  <span>🧩 {a.num_chunks || 0} chunks</span>
                 </div>
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    );
 
-          {/* ── Right: chat ── */}
-          <div className="rag-main">
-            {!selected ? (
-              <div className="rag-placeholder">
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>💬</div>
-                  <p style={{ color: "#6B7280", fontSize: 14 }}>
-                    Select an agent to start chatting
-                  </p>
+  // ═══ PAGE 2: Chat with agent ═══
+  return (
+    <div className="rag-page" style={{ display: "block" }}>
+      <div className="rag-main">
+        {error && <div className="rag-toast rag-toast-error">{error}</div>}
+
+        <div className="rag-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button className="rag-btn rag-btn-sm" onClick={goBack}>
+              ← Back
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 28 }}>🤖</span>
+              <div>
+                <div className="rag-header-title">{selected.name}</div>
+                <div className="rag-header-desc">
+                  {selected.description ||
+                    "AI assistant powered by your documents"}
                 </div>
               </div>
-            ) : (
-              <>
-                {/* Agent header — clean, no config pills */}
-                <div className="rag-detail-header">
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 10 }}
-                  >
-                    <span style={{ fontSize: 28 }}>🤖</span>
-                    <div>
-                      <h2 className="rag-detail-title">{selected.name}</h2>
-                      <p className="rag-detail-desc">
-                        {selected.description ||
-                          "AI assistant powered by your documents"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Chat — clean, no debug info */}
-                <div className="rag-section" style={{ flex: 1 }}>
-                  <div className="rag-chat-box" style={{ minHeight: 350 }}>
-                    {chatHistory.length === 0 && (
-                      <div className="rag-chat-empty">
-                        <div style={{ fontSize: 20, marginBottom: 8 }}>👋</div>
-                        Hi! I'm your AI assistant for{" "}
-                        <strong>{selected.name}</strong>.
-                        <br />
-                        Ask me anything about the documents.
-                      </div>
-                    )}
-                    {chatHistory.map((msg, i) => (
-                      <div key={i} className={`rag-chat-msg ${msg.role}`}>
-                        <div className="rag-chat-bubble">
-                          <div
-                            className="rag-md"
-                            dangerouslySetInnerHTML={{
-                              __html: formatAnswer(msg.content),
-                            }}
-                          />
-                          {/* Sources — clean display, no raw scores */}
-                          {msg.sources && msg.sources.length > 0 && (
-                            <div
-                              style={{
-                                marginTop: 10,
-                                paddingTop: 8,
-                                borderTop: "1px solid #E5E7EB",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  color: "#6B7280",
-                                  marginBottom: 4,
-                                }}
-                              >
-                                📄 Sources
-                              </div>
-                              {msg.sources.map((s, j) => (
-                                <div
-                                  key={j}
-                                  style={{
-                                    fontSize: 11,
-                                    color: "#6B7280",
-                                    padding: "2px 0",
-                                  }}
-                                >
-                                  {s.document} — page {s.page}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {querying && (
-                      <div className="rag-chat-msg assistant">
-                        <div className="rag-chat-bubble rag-typing">
-                          Thinking...
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rag-chat-input">
-                    <input
-                      type="text"
-                      placeholder="Type your question..."
-                      value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleQuery()}
-                      disabled={querying}
-                    />
-                    <button
-                      onClick={handleQuery}
-                      disabled={querying || !question.trim()}
-                    >
-                      Send
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
+            </div>
           </div>
         </div>
-      )}
+
+        <div
+          style={{
+            height: "calc(100vh - 160px)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div className="rag-chat-messages" style={{ flex: 1 }}>
+            {chatHistory.length === 0 && (
+              <div className="rag-empty-state" style={{ padding: 60 }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>👋</div>
+                <div style={{ fontSize: 15, marginBottom: 6 }}>
+                  Hi! I'm your AI assistant for <strong>{selected.name}</strong>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+                  Ask me anything about the documents
+                </div>
+              </div>
+            )}
+            {chatHistory.map((m, i) => (
+              <div
+                key={i}
+                className={`rag-chat-msg ${m.role === "user" ? "rag-chat-msg-user" : "rag-chat-msg-ai"}`}
+              >
+                <div
+                  className={`rag-chat-bubble ${m.role === "user" ? "rag-chat-bubble-user" : "rag-chat-bubble-ai"}`}
+                >
+                  {m.role === "user" ? (
+                    m.content
+                  ) : (
+                    <div dangerouslySetInnerHTML={{ __html: fmt(m.content) }} />
+                  )}
+                  {m.sources?.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        paddingTop: 8,
+                        borderTop: "1px solid var(--border)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "var(--text-3)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        📄 Sources
+                      </div>
+                      {m.sources.map((s, j) => (
+                        <div
+                          key={j}
+                          style={{
+                            fontSize: 11,
+                            color: "var(--text-3)",
+                            padding: "2px 0",
+                          }}
+                        >
+                          {s.document} — page {s.page}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {querying && (
+              <div className="rag-chat-msg rag-chat-msg-ai">
+                <div className="rag-chat-typing">Thinking…</div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+          <div className="rag-chat-input-bar">
+            <input
+              className="rag-chat-input"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleQuery()}
+              placeholder="Type your question…"
+              disabled={querying}
+            />
+            <button
+              className="rag-chat-send"
+              onClick={handleQuery}
+              disabled={querying || !question.trim()}
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

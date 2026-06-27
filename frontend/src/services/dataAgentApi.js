@@ -44,3 +44,21 @@ export const deleteDataFile = (s, id) =>
 // Query
 export const queryData = (s, q) =>
   req("POST", `/data-agent/spaces/${s}/query`, { question: q });
+
+export const connectDatabase = (s, d) =>
+  req("POST", `/data-agent/spaces/${s}/database/connect`, d);
+export const getDatabaseInfo = (s) =>
+  req("GET", `/data-agent/spaces/${s}/database`);
+export const disconnectDb = (s) =>
+  req("DELETE", `/data-agent/spaces/${s}/database`);
+export const tablePreview = (s, t) =>
+  req("GET", `/data-agent/spaces/${s}/database/tables/${t}/preview`);
+export const tableSchema = (s, t) =>
+  req("GET", `/data-agent/spaces/${s}/database/tables/${t}/schema`);
+export const queryDatabase = (s, q, tables) =>
+  req("POST", `/data-agent/spaces/${s}/database/query`, {
+    question: q,
+    tables,
+  });
+export const getFullSchema = (s) =>
+  req("GET", `/data-agent/spaces/${s}/database/full-schema`);

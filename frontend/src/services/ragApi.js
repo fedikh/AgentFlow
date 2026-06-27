@@ -60,6 +60,9 @@ export const parseAllDocuments = (s) =>
 // ── Parser output (structured blocks) ──
 export const getExtractedContent = (s, d) =>
   req("GET", `/rag/spaces/${s}/documents/${d}/extracted`);
+// ── Save edited parser output ──
+export const updateExtractedContent = (s, d, parsedDocument) =>
+  req("PUT", `/rag/spaces/${s}/documents/${d}/extracted`, parsedDocument);
 
 // ── Process (chunk + embed) ──
 export const processDocument = (s, d) =>
@@ -84,3 +87,12 @@ export const uploadFromDrive = (spaceId, fileId, accessToken) =>
     file_id: fileId,
     access_token: accessToken,
   });
+// Vue d'ensemble : tous les providers LLM + embeddings en un appel
+export const getAllModels = () => req("GET", "/api/models/all");
+
+// Liste curatée des modèles d'embedding (avec dimensions)
+export const getEmbeddingModels = () => req("GET", "/api/models/embeddings");
+
+// Modèles d'un provider LLM (GROQ / OLLAMA / OPENAI), récupérés en direct
+export const getLLMModels = (provider) =>
+  req("GET", `/api/models/llm/${provider}`);

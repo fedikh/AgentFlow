@@ -1,13 +1,18 @@
 """
-Encoding Cleaner — uses ftfy + chardet for mojibake detection and fix.
+Encoding Cleaner — uses ftfy + chardet + unicodedata for encoding fixes.
 
 ftfy fixes:
   â€™ → '     â€œ → "     Ã© → é     Ã§ → ç
   â€" → —     Â° → °     Ã¨ → è     Ã¢ → â
 
+unicodedata fixes:
+  ´ e → é     ` e → è     ˆ e → ê  (LaTeX/Docling split accents)
+
 chardet detects the original encoding if ftfy can't fix it.
 """
 import logging
+import unicodedata
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +22,7 @@ def fix_encoding(text: str) -> tuple[str, list[str]]:
         return "", []
 
     fixes = []
+    original = text
 
     # ── ftfy: primary encoding fixer ──
     try:
@@ -29,8 +35,8 @@ def fix_encoding(text: str) -> tuple[str, list[str]]:
             fix_character_width=True,
             fix_line_breaks=True,
             fix_surrogates=True,
-            uncurl_quotes=False,       # keep smart quotes (text_cleaner handles these)
-            fix_latin_ligatures=True,   # ﬁ → fi, ﬂ → fl
+            uncurl_quotes=False,
+            fix_latin_ligatures=True,
         )
 
         if fixed != text:
@@ -41,6 +47,18 @@ def fix_encoding(text: str) -> tuple[str, list[str]]:
 
     except ImportError:
         logger.warning("[ENCODING] ftfy not installed — pip install ftfy")
+
+    # ── unicodedata: fix LaTeX/Docling split accents ──
+    # Remove spaces between accent marks and letters: ´ e → ´e
+    before_accent = text
+    text = re.sub(r'([`´ˆ¨¸˜̧̀́̂̈])\s+([a-zA-Z])', r'\1\2', text)
+    # NFC normalization merges combining chars: ´e → é
+    text = unicodedata.normalize("NFC", text)
+
+    if text != before_accent:
+        diff = len(before_accent) - len(text)
+        fixes.append(f"Merged {diff} split accents (unicodedata NFC)")
+        logger.info(f"[ENCODING] Merged split accents ({diff} chars)")
 
     # ── chardet: detect if text still has encoding issues ──
     try:

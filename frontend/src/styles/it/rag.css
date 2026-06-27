@@ -164,3 +164,169 @@
 
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
+
+/* ════════ Parsed-document edit mode ════════ */
+ 
+.rag-edit-note {
+  font-size: 12px;
+  color: #525252;
+  background: #F5F5F4;
+  border: 1px solid #E7E5E4;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+ 
+.rag-edit-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #D4D4D4;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+ 
+.rag-edit-textarea {
+  width: 100%;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.4;
+  border: 1px solid #D4D4D4;
+  border-radius: 6px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+ 
+.rag-edit-fields {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+ 
+.rag-edit-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #525252;
+}
+ 
+.rag-edit-field input {
+  width: 60px;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid #D4D4D4;
+  border-radius: 4px;
+}
+/* ════════════════════════════════════════════
+   Upload zone — redesign noir & blanc pro
+   (à ajouter dans rag.css)
+   ════════════════════════════════════════════ */
+
+.rag-upload-zone {
+  background: #fff;
+  border: 1px solid #E8E8E8;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.rag-upload-zone-head { margin-bottom: 16px; }
+.rag-upload-zone-title {
+  font: 600 13px system-ui, sans-serif;
+  color: #1A1A1A;
+  margin-bottom: 4px;
+}
+.rag-upload-zone-sub {
+  font-size: 12px;
+  color: #999;
+}
+
+/* Tuiles cliquables */
+.rag-upload-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.rag-upload-tile {
+  border: 1.5px dashed #D4D4D4;
+  border-radius: 10px;
+  padding: 18px;
+  text-align: center;
+  cursor: pointer;
+  background: #fff;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+.rag-upload-tile:hover:not(:disabled) {
+  border-color: #1A1A1A;
+  background: #FAFAFA;
+}
+.rag-upload-tile:disabled { opacity: 0.6; cursor: not-allowed; }
+.rag-upload-tile-icon { font-size: 22px; }
+.rag-upload-tile-title {
+  font: 600 13px system-ui, sans-serif;
+  color: #1A1A1A;
+  margin-top: 8px;
+}
+.rag-upload-tile-sub {
+  font-size: 11px;
+  color: #999;
+  margin-top: 3px;
+}
+
+/* Séparateur "ou" */
+.rag-upload-or {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+}
+.rag-upload-or-line { flex: 1; height: 1px; background: #E8E8E8; }
+.rag-upload-or-text { font-size: 11px; color: #BBB; }
+
+/* URL row */
+.rag-upload-url-row { display: flex; gap: 8px; }
+.rag-upload-url-input {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #D4D4D4;
+  border-radius: 8px;
+  padding: 0 12px;
+}
+.rag-upload-url-input:focus-within { border-color: #1A1A1A; }
+.rag-upload-url-icon { font-size: 16px; }
+.rag-upload-url-input input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 10px 0;
+  font: 400 13px system-ui, sans-serif;
+  color: #1A1A1A;
+  background: transparent;
+}
+.rag-upload-scrape-btn {
+  background: #1A1A1A;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0 18px;
+  font: 500 13px system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rag-upload-scrape-btn:hover:not(:disabled) { background: #333; }
+.rag-upload-scrape-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .rag-upload-tiles { grid-template-columns: 1fr; }
+}

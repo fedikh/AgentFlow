@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.schemas.rag import CreateRAGSpaceRequest, UpdateRAGSpaceRequest, QueryRequest
+from app.schemas.rag import (
+    CreateRAGSpaceRequest, UpdateRAGSpaceRequest, QueryRequest, UpdateExtractedRequest
+)
 from app.services import rag_service
 from app.services.auth_service import get_user_id_from_token
 from app.models.user import User
@@ -167,6 +169,14 @@ def get_extracted_content(space_id: str, doc_id: str, request: Request, db: Sess
     user = _get_current_user(request, db)
     return rag_service.get_extracted_content(db, space_id, doc_id, user.organization_id)
 
+@router.put("/spaces/{space_id}/documents/{doc_id}/extracted")
+def update_extracted_content(
+    space_id: str, doc_id: str, data: UpdateExtractedRequest,
+    request: Request, db: Session = Depends(get_db),
+):
+    """Save IT's manual edits to the parsed ParsedDocument. Status stays EXTRACTED."""
+    user = _get_current_user(request, db)
+    return rag_service.update_extracted_content(db, space_id, doc_id, user.organization_id, data)
 
 # ══════════════════════════════════════════
 # PROCESS — Chunking + Embedding

@@ -122,3 +122,41 @@ class SourceChunk(BaseModel):
 class QueryResponse(BaseModel):
     answer:  str
     sources: list[SourceChunk]
+
+# ══════════════════════════════════════════════════════
+# EDIT EXTRACTED CONTENT (ParsedDocument)
+# ══════════════════════════════════════════════════════
+
+class SectionEdit(BaseModel):
+    heading:   str = ""
+    content:   str = ""
+    level:     int = 1
+    page:      int = 1
+    font_size: Optional[float] = None
+
+
+class TableEdit(BaseModel):
+    content:  str = ""
+    headers:  list[str] = Field(default_factory=list)
+    rows:     list[list] = Field(default_factory=list)
+    num_rows: int = 0
+    num_cols: int = 0
+    page:     int = 1
+
+
+class ImageEdit(BaseModel):
+    caption:    str = ""
+    ocr_text:   str = ""
+    image_path: str = ""
+    page:       int = 1
+    bbox:       list[float] = Field(default_factory=list)
+
+
+class UpdateExtractedRequest(BaseModel):
+    """IT-edited ParsedDocument. Only the editable arrays + title/metadata."""
+    title:    Optional[str] = None
+    sections: list[SectionEdit] = Field(default_factory=list)
+    tables:   list[TableEdit] = Field(default_factory=list)
+    images:   list[ImageEdit] = Field(default_factory=list)
+    metadata: Optional[dict] = None
+

@@ -1,0 +1,469 @@
+import React from "react";
+
+const fmt = (t) =>
+  t
+    ? t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")
+    : "";
+
+const DocModal = ({
+  modal,
+  modalData,
+  modalLoading,
+  closeModal,
+  showJson,
+  setShowJson,
+  editMode,
+  editDoc,
+  setEditDoc,
+  savingEdit,
+  startEdit,
+  cancelEdit,
+  saveEdit,
+  editField,
+  removeBlock,
+  addSection,
+  chatHistory,
+  chatEndRef,
+  question,
+  setQuestion,
+  querying,
+  handleQuery,
+}) => {
+  if (!modal) return null;
+
+  return (
+    <div
+      className="rag-modal-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !editMode) closeModal();
+      }}
+    >
+      <div className="rag-modal">
+        <div className="rag-modal-header">
+          <div className="rag-modal-title">
+            {modal === "loaded" && "Loaded Text"}
+            {modal === "parsed" &&
+              (editMode ? "Edit Parsed Document" : "Parsed Document")}
+            {modal === "chunks" && "Chunks"}
+            {modal === "chat" && "Chat with documents"}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {modal === "parsed" && !editMode && (
+              <>
+                <button
+                  className={`rag-btn rag-btn-sm ${showJson ? "rag-btn-dark" : ""}`}
+                  onClick={() => setShowJson(!showJson)}
+                >
+                  {showJson ? "Blocks" : "JSON"}
+                </button>
+                {modalData?.status !== "INDEXED" && (
+                  <button className="rag-btn rag-btn-sm" onClick={startEdit}>
+                    ✎ Edit
+                  </button>
+                )}
+              </>
+            )}
+            {modal === "parsed" && editMode && (
+              <>
+                <button
+                  className="rag-btn rag-btn-sm rag-btn-dark"
+                  onClick={saveEdit}
+                  disabled={savingEdit}
+                >
+                  {savingEdit ? "Saving…" : "Save"}
+                </button>
+                <button
+                  className="rag-btn rag-btn-sm"
+                  onClick={cancelEdit}
+                  disabled={savingEdit}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+            {!editMode && (
+              <button className="rag-btn rag-btn-sm" onClick={closeModal}>
+                ✕ Close
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="rag-modal-body">
+          {modalLoading && <div className="rag-empty-state">Loading…</div>}
+
+          {modal === "loaded" && modalData && !modalLoading && (
+            <>
+              <div className="rag-stats rag-stats-4">
+                {[
+                  { l: "Type", v: modalData.file_type },
+                  { l: "Category", v: modalData.category },
+                  { l: "Pages", v: modalData.num_pages },
+                  {
+                    l: "Characters",
+                    v: modalData.total_chars?.toLocaleString(),
+                  },
+                ].map((s, i) => (
+                  <div key={i} className="rag-stat">
+                    <div className="rag-stat-label">{s.l}</div>
+                    <div className="rag-stat-value">{s.v}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="rag-raw-text">
+                {modalData.raw_text || "Empty"}
+              </div>
+            </>
+          )}
+
+          {modal === "parsed" && modalData && !modalLoading && (
+            <>
+              <div className="rag-stats rag-stats-4">
+                {[
+                  { l: "Sections", v: modalData.total_sections },
+                  { l: "Tables", v: modalData.total_tables },
+                  {
+                    l: "Characters",
+                    v: modalData.total_chars?.toLocaleString(),
+                  },
+                  { l: "OCR", v: modalData.ocr_quality },
+                ].map((s, i) => (
+                  <div key={i} className="rag-stat">
+                    <div className="rag-stat-label">{s.l}</div>
+                    <div className="rag-stat-value">{s.v}</div>
+                  </div>
+                ))}
+              </div>
+              {modalData.ocr_issues?.length > 0 && (
+                <div className="rag-ocr-warn">
+                  {modalData.ocr_issues.join(" · ")}
+                </div>
+              )}
+              {modalData.status === "INDEXED" && !editMode && (
+                <div className="rag-edit-note">
+                  This document is already indexed — parsed content is
+                  read-only. To change it, delete and re-upload the document.
+                </div>
+              )}
+
+              {editMode && editDoc ? (
+                <>
+                  <div className="rag-edit-note">
+                    Edit sections and tables below. Saving keeps the document at{" "}
+                    <strong>Parsed</strong> — re-process to rebuild chunks from
+                    your changes.
+                  </div>
+                  <input
+                    className="rag-edit-input"
+                    placeholder="Document title"
+                    value={editDoc.parsed_document.title || ""}
+                    onChange={(e) =>
+                      setEditDoc((prev) => ({
+                        ...prev,
+                        parsed_document: {
+                          ...prev.parsed_document,
+                          title: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                  {editDoc.parsed_document.sections?.map((sec, i) => (
+                    <div key={`es${i}`} className="rag-block">
+                      <div className="rag-block-header">
+                        <span className="rag-block-tag">Section {i + 1}</span>
+                        <button
+                          className="rag-btn rag-btn-xs rag-btn-red"
+                          onClick={() => removeBlock("sections", i)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <input
+                        className="rag-edit-input"
+                        placeholder="Heading"
+                        value={sec.heading || ""}
+                        onChange={(e) =>
+                          editField("sections", i, "heading", e.target.value)
+                        }
+                      />
+                      <textarea
+                        className="rag-edit-textarea"
+                        rows={5}
+                        placeholder="Content"
+                        value={sec.content || ""}
+                        onChange={(e) =>
+                          editField("sections", i, "content", e.target.value)
+                        }
+                      />
+                      <div className="rag-edit-fields">
+                        <label className="rag-edit-field">
+                          Level
+                          <input
+                            type="number"
+                            min={1}
+                            max={6}
+                            value={sec.level || 1}
+                            onChange={(e) =>
+                              editField(
+                                "sections",
+                                i,
+                                "level",
+                                parseInt(e.target.value) || 1,
+                              )
+                            }
+                          />
+                        </label>
+                        <label className="rag-edit-field">
+                          Page
+                          <input
+                            type="number"
+                            min={1}
+                            value={sec.page || 1}
+                            onChange={(e) =>
+                              editField(
+                                "sections",
+                                i,
+                                "page",
+                                parseInt(e.target.value) || 1,
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                  {editDoc.parsed_document.tables?.map((tab, i) => (
+                    <div key={`et${i}`} className="rag-block rag-block-table">
+                      <div className="rag-block-header">
+                        <span
+                          className="rag-block-tag"
+                          style={{ background: "#FEF3C7", color: "#92400E" }}
+                        >
+                          Table {i + 1} — {tab.num_rows}×{tab.num_cols}
+                        </span>
+                        <button
+                          className="rag-btn rag-btn-xs rag-btn-red"
+                          onClick={() => removeBlock("tables", i)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <textarea
+                        className="rag-edit-textarea rag-block-content-mono"
+                        rows={6}
+                        placeholder="Table content (markdown)"
+                        value={tab.content || ""}
+                        onChange={(e) =>
+                          editField("tables", i, "content", e.target.value)
+                        }
+                      />
+                      <div className="rag-edit-fields">
+                        <label className="rag-edit-field">
+                          Page
+                          <input
+                            type="number"
+                            min={1}
+                            value={tab.page || 1}
+                            onChange={(e) =>
+                              editField(
+                                "tables",
+                                i,
+                                "page",
+                                parseInt(e.target.value) || 1,
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    className="rag-btn rag-btn-sm"
+                    onClick={addSection}
+                    style={{ marginTop: 10 }}
+                  >
+                    + Add section
+                  </button>
+                </>
+              ) : showJson ? (
+                <div className="rag-json">
+                  <pre>
+                    {JSON.stringify(modalData.parsed_document, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <>
+                  {modalData.parsed_document?.sections?.map((sec, i) => (
+                    <div key={`s${i}`} className="rag-block">
+                      <div className="rag-block-header">
+                        <div className="rag-heading-tag">
+                          <span className="rag-block-tag">Section {i + 1}</span>
+                          {sec.heading && (
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>
+                              {sec.heading}
+                            </span>
+                          )}
+                          <span className="rag-h-level">H{sec.level}</span>
+                        </div>
+                        <span className="rag-block-meta">
+                          p.{sec.page} · {sec.content?.length}c
+                        </span>
+                      </div>
+                      <pre className="rag-block-content">{sec.content}</pre>
+                    </div>
+                  ))}
+                  {modalData.parsed_document?.tables?.map((tab, i) => (
+                    <div key={`t${i}`} className="rag-block rag-block-table">
+                      <div className="rag-block-header">
+                        <span
+                          className="rag-block-tag"
+                          style={{ background: "#FEF3C7", color: "#92400E" }}
+                        >
+                          Table {i + 1} — {tab.num_rows}×{tab.num_cols}
+                        </span>
+                        <span className="rag-block-meta">p.{tab.page}</span>
+                      </div>
+                      {tab.headers?.length > 0 && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#92400E",
+                            marginBottom: 6,
+                          }}
+                        >
+                          {tab.headers.join(", ")}
+                        </div>
+                      )}
+                      <pre className="rag-block-content rag-block-content-mono">
+                        {tab.content}
+                      </pre>
+                    </div>
+                  ))}
+                  {modalData.parsed_document?.images?.map((img, i) => (
+                    <div key={`i${i}`} className="rag-block">
+                      <div className="rag-block-header">
+                        <span className="rag-block-tag">Image {i + 1}</span>
+                        <span className="rag-block-meta">p.{img.page}</span>
+                      </div>
+                      {img.caption && (
+                        <div style={{ fontSize: 13 }}>{img.caption}</div>
+                      )}
+                      {img.ocr_text && (
+                        <div style={{ fontSize: 12, color: "#525252" }}>
+                          OCR: {img.ocr_text}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+
+          {modal === "chunks" && modalData && !modalLoading && (
+            <>
+              <div className="rag-stats rag-stats-3">
+                {[
+                  { l: "Chunks", v: modalData.length },
+                  {
+                    l: "Avg length",
+                    v: Math.round(
+                      modalData.reduce((s, c) => s + c.content.length, 0) /
+                        (modalData.length || 1),
+                    ),
+                  },
+                  {
+                    l: "Total chars",
+                    v: modalData
+                      .reduce((s, c) => s + c.content.length, 0)
+                      .toLocaleString(),
+                  },
+                ].map((s, i) => (
+                  <div key={i} className="rag-stat">
+                    <div className="rag-stat-label">{s.l}</div>
+                    <div className="rag-stat-value">{s.v}</div>
+                  </div>
+                ))}
+              </div>
+              {modalData.map((c) => (
+                <div key={c.id} className="rag-block">
+                  <div className="rag-block-header">
+                    <span className="rag-block-tag">
+                      Chunk {c.chunk_index + 1}
+                    </span>
+                    <span className="rag-block-meta">
+                      p.{c.page} · {c.content.length}c
+                    </span>
+                  </div>
+                  <pre className="rag-block-content">{c.content}</pre>
+                </div>
+              ))}
+            </>
+          )}
+
+          {modal === "chat" && (
+            <div className="rag-chat-body">
+              <div className="rag-chat-messages">
+                {chatHistory.length === 0 && (
+                  <div className="rag-empty-state">
+                    Ask a question about your documents
+                  </div>
+                )}
+                {chatHistory.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`rag-chat-msg ${m.role === "user" ? "rag-chat-msg-user" : "rag-chat-msg-ai"}`}
+                  >
+                    <div
+                      className={`rag-chat-bubble ${m.role === "user" ? "rag-chat-bubble-user" : "rag-chat-bubble-ai"}`}
+                    >
+                      {m.role === "user" ? (
+                        m.content
+                      ) : (
+                        <div
+                          dangerouslySetInnerHTML={{ __html: fmt(m.content) }}
+                        />
+                      )}
+                      {m.sources?.length > 0 && (
+                        <div className="rag-chat-sources">
+                          {m.sources.map((s, j) => (
+                            <div key={j}>
+                              📄 {s.document} (p.{s.page}, {s.score})
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {querying && (
+                  <div className="rag-chat-msg rag-chat-msg-ai">
+                    <div className="rag-chat-typing">Thinking…</div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+              <div className="rag-chat-input-bar">
+                <input
+                  className="rag-chat-input"
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleQuery()}
+                  placeholder="Ask a question…"
+                />
+                <button
+                  className="rag-chat-send"
+                  onClick={handleQuery}
+                  disabled={querying || !question.trim()}
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default DocModal;
