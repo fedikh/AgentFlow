@@ -96,3 +96,6 @@ export const getEmbeddingModels = () => req("GET", "/api/models/embeddings");
 // Modèles d'un provider LLM (GROQ / OLLAMA / OPENAI), récupérés en direct
 export const getLLMModels = (provider) =>
   req("GET", `/api/models/llm/${provider}`);
+// Définir la stratégie de chunking d'un document (mode PER_DOCUMENT)
+export const setDocumentStrategy = (spaceId, docId, strategy) =>
+  req("PUT", `/spaces/${spaceId}/documents/${docId}/strategy`, { strategy });

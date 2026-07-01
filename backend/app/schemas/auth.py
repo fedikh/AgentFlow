@@ -38,3 +38,13 @@ class ResetPasswordRequest(BaseModel):
     email:        EmailStr
     otp:          str
     new_password: str
+
+class UpdateProfileRequest(BaseModel):
+    name: str
+
+class UpdatePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    
+class UpdateOrganizationRequest(BaseModel):
+        name: str

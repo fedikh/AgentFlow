@@ -14,6 +14,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminRAGPage from "./pages/admin/AdminRAGPage";
 import UsersPage from "./pages/admin/UsersPage";
+import ApiProvidersPage from "./pages/admin/ApiProvidersPage";
 
 // ── IT pages ─────────────────────────────────────────
 import ITDashboard from "./pages/it/ITDashboard";
@@ -78,10 +79,7 @@ export default function App() {
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/rag" element={<AdminRAGPage />} />
-            <Route
-              path="/admin/providers"
-              element={<ComingSoon title="Providers & API Keys" />}
-            />
+            <Route path="/admin/providers" element={<ApiProvidersPage />} />
             <Route
               path="/admin/settings"
               element={<ComingSoon title="Org Settings" />}

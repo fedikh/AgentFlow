@@ -46,3 +46,5 @@ class Document(Base):
 
     rag_space = relationship("RAGSpace", back_populates="documents")
     chunks    = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
+    chunk_strategy  = Column(String, nullable=True)
+    chosen_strategy = Column(String, nullable=True)

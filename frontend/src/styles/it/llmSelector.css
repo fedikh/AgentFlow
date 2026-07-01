@@ -1,0 +1,44 @@
+/* ════════════════════════════════════════════════
+   LLM source selector (IT space config) — blue/light
+   ════════════════════════════════════════════════ */
+
+.llm-sel { display: flex; flex-direction: column; }
+
+.llm-sel-label {
+  font-size: 13px; font-weight: 700; color: #0d1f35; margin-bottom: 10px;
+}
+
+.llm-sel-tabs {
+  display: flex; gap: 6px; margin-bottom: 14px;
+  background: #f1f5f9; padding: 4px; border-radius: 10px;
+}
+.llm-tab {
+  flex: 1; padding: 8px 12px; font-size: 12px; font-weight: 600;
+  color: #64748b; background: transparent; border: none; border-radius: 7px;
+  cursor: pointer; transition: all 0.15s;
+}
+.llm-tab:hover { color: #0d1f35; }
+.llm-tab.active { background: #fff; color: #0d1f35; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+.llm-sel-body {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff;
+}
+.llm-sel-empty { font-size: 13px; color: #64748b; margin: 0; line-height: 1.5; }
+
+.llm-field { display: flex; flex-direction: column; }
+.llm-field-row { display: flex; gap: 12px; }
+.llm-field-row .llm-field { flex: 1; }
+.llm-field-label { font-size: 12px; color: #64748b; font-weight: 500; margin-bottom: 6px; }
+
+.llm-input, .llm-select {
+  width: 100%; padding: 9px 12px; font-size: 13px; color: #0d1f35;
+  border: 1px solid #e2e8f0; border-radius: 9px; outline: none;
+  box-sizing: border-box; font-family: inherit; background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.llm-input:focus, .llm-select:focus {
+  border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+.llm-input::placeholder { color: #94a3b8; }
+.llm-hint { font-size: 11px; color: #94a3b8; margin-top: 5px; }

@@ -6,6 +6,11 @@ from app.routes import auth, users
 from app.routes.rag import router as rag_router
 from app.routes.data_agent import router as data_agent_router
 from app.routes import models as models_routes
+from app.routes import api_provider
+
+# Import the ApiProvider model so Base.metadata.create_all creates its table
+from app.models.api_provider import ApiProvider  # noqa: F401
+
 # Import rag — show error if it fails
 try:
     from app.routes import rag
@@ -31,7 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router,  prefix="/api")
+app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
 if has_rag:
@@ -41,12 +46,16 @@ else:
     print("❌ RAG module NOT loaded — check the error above")
 
 app.include_router(data_agent_router, prefix="/api")
-
 app.include_router(models_routes.router)
+
+# API Providers (admin manages company LLM/embedding providers + keys)
+app.include_router(api_provider.router, prefix="/api")
+
 
 @app.on_event("startup")
 async def startup():
     test_connection()
+
 
 @app.get("/")
 def root():

@@ -25,6 +25,7 @@ import {
   loadAndParseAll,
   getEmbeddingModels,
   getLLMModels,
+  setDocumentStrategy,
 } from "../../services/ragApi";
 import { openGooglePicker } from "../../services/useGooglePicker";
 import { useParams, useNavigate } from "react-router-dom";
@@ -196,7 +197,8 @@ const RAGSpacesPage = () => {
   const saveCfg = async () => {
     setSavingCfg(true);
     try {
-      await updateSpace(activeSpace.id, {
+      const payload = {
+        chunk_mode: cfg.chunk_mode,
         chunk_strategy: cfg.chunk_strategy,
         chunk_size: parseInt(cfg.chunk_size),
         chunk_overlap: parseInt(cfg.chunk_overlap),
@@ -209,11 +211,25 @@ const RAGSpacesPage = () => {
         semantic_weight: parseFloat(cfg.semantic_weight),
         reranking_enabled: !!cfg.reranking_enabled,
         system_prompt: cfg.system_prompt || null,
-      });
+        // ── LLM source (new) ──
+        llm_provider_id: cfg.llm_provider_id || null,
+        llm_base_url: cfg.llm_base_url || null,
+      };
+      // Only send the key if the IT typed a new one (it's write-only)
+      if (cfg.llm_api_key) payload.llm_api_key = cfg.llm_api_key;
+
+      await updateSpace(activeSpace.id, payload);
       setSuccess("Configuration saved");
+
+      // clear the typed key from local state after saving
+      setCfg((c) => ({ ...c, llm_api_key: "" }));
+
       const u = await listSpaces();
       const s = u.find((x) => x.id === activeSpace.id);
-      if (s) setActiveSpace(s);
+      if (s) {
+        setActiveSpace(s);
+        setCfg((c) => ({ ...s, llm_api_key: "" }));
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -342,6 +358,17 @@ const RAGSpacesPage = () => {
       setProcessing(false);
     }
   };
+  const handleSetDocStrategy = async (docId, strategy) => {
+    try {
+      await setDocumentStrategy(activeSpace.id, docId, strategy);
+      setDocs((p) =>
+        p.map((d) => (d.id === docId ? { ...d, chunk_strategy: strategy } : d)),
+      );
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
   const handleDeleteDoc = async (id) => {
     try {
       await deleteDocument(activeSpace.id, id);
@@ -580,6 +607,8 @@ const RAGSpacesPage = () => {
               handleDeleteDoc={handleDeleteDoc}
               openModal={openModal}
               counts={{ uploadingCount, loadedCount, extractedCount }}
+              chunkMode={activeSpace.chunk_mode || "FIXED_ALL"}
+              handleSetDocStrategy={handleSetDocStrategy}
             />
           )}
 

@@ -33,6 +33,9 @@ class DriveUploadRequest(BaseModel):
     access_token: str
     file_name: str = ""
 
+class SetStrategyRequest(BaseModel):
+    strategy: str   # "FIXED" | "SEMANTIC" | "HIERARCHICAL"
+
 def _get_current_user(request: Request, db: Session) -> User:
     token = request.cookies.get("access_token")
     if not token:
@@ -131,6 +134,22 @@ async def upload_from_drive(
 
 
 # ══════════════════════════════════════════
+# PER-DOCUMENT STRATEGY (mode PER_DOCUMENT)
+# ══════════════════════════════════════════
+
+@router.put("/spaces/{space_id}/documents/{doc_id}/strategy")
+def set_document_strategy(
+    space_id: str, doc_id: str, data: SetStrategyRequest,
+    request: Request, db: Session = Depends(get_db),
+):
+    """Set the chunking strategy of a single document (PER_DOCUMENT mode)."""
+    user = _get_current_user(request, db)
+    return rag_service.set_document_strategy(
+        db, space_id, doc_id, data.strategy, user.organization_id
+    )
+
+
+# ══════════════════════════════════════════
 # LOADED CONTENT — raw text from Loader
 # ══════════════════════════════════════════
 
@@ -211,14 +230,14 @@ def query_space(space_id: str, data: QueryRequest, request: Request, db: Session
     user = _get_current_user(request, db)
     return rag_service.query(db, space_id, user.organization_id, data)
 
- 
+
 @router.post("/spaces/{space_id}/documents/{doc_id}/load-parse")
 def load_and_parse(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
     """Load + Parse a single document (runs loader + cleaner + parser)."""
     user = _get_current_user(request, db)
     return rag_service.load_and_parse_document(db, space_id, doc_id, user.organization_id)
- 
- 
+
+
 @router.post("/spaces/{space_id}/load-parse-all")
 def load_and_parse_all(space_id: str, request: Request, db: Session = Depends(get_db)):
     """Load + Parse ALL documents with status UPLOADING."""

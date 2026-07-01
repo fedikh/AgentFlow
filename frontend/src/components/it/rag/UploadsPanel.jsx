@@ -37,6 +37,8 @@ const UploadsPanel = ({
   handleDeleteDoc,
   openModal,
   counts,
+  chunkMode,
+  handleSetDocStrategy,
 }) => {
   const { uploadingCount, loadedCount, extractedCount } = counts;
 
@@ -160,6 +162,31 @@ const UploadsPanel = ({
                 {d.num_chunks > 0 && ` · ${d.num_chunks} chunks`}
                 {d.source_type === "google_drive" && " · Google Drive"}
               </div>
+
+              {/* PER_DOCUMENT : choose strategy for this file */}
+              {chunkMode === "PER_DOCUMENT" && (
+                <div className="rag-doc-strategy">
+                  <span className="rag-doc-strategy-label">Strategy</span>
+                  <select
+                    className="rag-doc-strategy-select"
+                    value={d.chunk_strategy || ""}
+                    onChange={(e) => handleSetDocStrategy(d.id, e.target.value)}
+                  >
+                    <option value="">Default</option>
+                    <option value="FIXED">Fixed</option>
+                    <option value="SEMANTIC">Semantic</option>
+                    <option value="HIERARCHICAL">Hierarchical</option>
+                  </select>
+                </div>
+              )}
+
+              {/* ADAPTIVE : show the winning strategy after processing */}
+              {chunkMode === "ADAPTIVE" && d.chosen_strategy && (
+                <div className="rag-doc-chosen">
+                  Best: <strong>{d.chosen_strategy}</strong>
+                </div>
+              )}
+
               <div className="rag-doc-btns">
                 {d.status === "UPLOADING" && (
                   <button

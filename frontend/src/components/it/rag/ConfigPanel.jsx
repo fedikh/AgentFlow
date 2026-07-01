@@ -1,4 +1,5 @@
 import React from "react";
+import LLMSourceSelector from "./LLMSourceSelector";
 
 const LABELS = {
   chunk: "Chunking",
@@ -21,6 +22,10 @@ const ConfigPanel = ({
 }) => {
   if (!cfg) return null;
 
+  // Apply a patch object coming from LLMSourceSelector via setC
+  const applyLlmPatch = (patch) =>
+    Object.entries(patch).forEach(([k, v]) => setC(k, v));
+
   return (
     <div className="rag-cfg-panel">
       <div className="rag-cfg-head">
@@ -37,7 +42,57 @@ const ConfigPanel = ({
       {/* CHUNKING */}
       {panel === "chunk" && (
         <>
-          <label className="rag-cfg-label">Strategy</label>
+          <label className="rag-cfg-label">Chunking mode</label>
+          <div className="rag-cfg-cards">
+            {[
+              {
+                k: "FIXED_ALL",
+                n: "Single",
+                d: "One strategy for all documents",
+              },
+              {
+                k: "PER_DOCUMENT",
+                n: "Per document",
+                d: "Choose strategy per file",
+              },
+              {
+                k: "ADAPTIVE",
+                n: "Adaptive",
+                d: "Auto-pick the best per file",
+              },
+            ].map((m) => (
+              <button
+                key={m.k}
+                className={`rag-cfg-card ${(cfg.chunk_mode || "FIXED_ALL") === m.k ? "active" : ""}`}
+                onClick={() => setC("chunk_mode", m.k)}
+              >
+                <div className="rag-cfg-card-n">{m.n}</div>
+                <div className="rag-cfg-card-d">{m.d}</div>
+              </button>
+            ))}
+          </div>
+
+          {(cfg.chunk_mode || "FIXED_ALL") === "ADAPTIVE" && (
+            <div className="rag-cfg-hint">
+              Adaptive mode tries every strategy on each document and keeps the
+              best one. The winning strategy is shown on each document in the
+              Uploads panel. Note: slower, since each file is chunked multiple
+              times.
+            </div>
+          )}
+          {(cfg.chunk_mode || "FIXED_ALL") === "PER_DOCUMENT" && (
+            <div className="rag-cfg-hint">
+              Pick a strategy for each document individually in the Uploads
+              panel. The strategy below is used as the default for files you
+              haven't set.
+            </div>
+          )}
+
+          <label className="rag-cfg-label">
+            {(cfg.chunk_mode || "FIXED_ALL") === "FIXED_ALL"
+              ? "Strategy"
+              : "Default strategy"}
+          </label>
           <div className="rag-cfg-cards">
             {[
               { k: "FIXED", n: "Fixed", d: "Every N characters" },
@@ -118,41 +173,13 @@ const ConfigPanel = ({
       {/* LLM */}
       {panel === "llm" && (
         <>
-          <label className="rag-cfg-label">Provider</label>
-          <select
-            className="rag-cfg-select"
-            value={cfg.llm_provider}
-            onChange={(e) => {
-              setC("llm_provider", e.target.value);
-              setC("llm_model", "");
-            }}
-          >
-            <option value="GROQ">Groq (free)</option>
-            <option value="OLLAMA">Ollama (local)</option>
-            <option value="OPENAI">OpenAI (paid)</option>
-          </select>
-          <label className="rag-cfg-label">Model</label>
-          {loadingLlm ? (
-            <div className="rag-cfg-hint">Loading…</div>
-          ) : !llmState.available ? (
-            <div className="rag-cfg-warn">
-              {llmState.error || "Unavailable"}
-            </div>
-          ) : (
-            <select
-              className="rag-cfg-select"
-              value={cfg.llm_model}
-              onChange={(e) => setC("llm_model", e.target.value)}
-            >
-              <option value="">Select…</option>
-              {llmModels.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          )}
-          <label className="rag-cfg-label">
+          <LLMSourceSelector
+            value={cfg}
+            onChange={applyLlmPatch}
+            hasOwnKey={cfg.llm_has_own_key}
+          />
+
+          <label className="rag-cfg-label" style={{ marginTop: 18 }}>
             Temperature · {cfg.llm_temperature}
           </label>
           <input
@@ -164,6 +191,7 @@ const ConfigPanel = ({
             onChange={(e) => setC("llm_temperature", e.target.value)}
             className="rag-cfg-range"
           />
+
           <label className="rag-cfg-label">System prompt</label>
           <textarea
             className="rag-cfg-textarea"

@@ -1,13 +1,22 @@
 """
-Chunking Factory — 3 strategies configurables par espace RAG.
+Chunking Factory — 3 strategies × 3 modes.
 
-FIXED:        RecursiveCharacterTextSplitter (existant, migré ici)
-SEMANTIC:     SemanticChunker de LangChain — coupe par changement de sujet
-HIERARCHICAL: Parent-child — gros chunks parents + petits chunks enfants
+═══════════════════════════════════════════════════════════════
+STRATEGIES (HOW a document is split):
+  FIXED:        RecursiveCharacterTextSplitter
+  SEMANTIC:     SemanticChunker — coupe par changement de sujet
+  HIERARCHICAL: Parent-child — gros parents + petits enfants
+
+MODES (WHICH strategy is used, set by space.chunk_mode):
+  FIXED_ALL:     une seule stratégie (space.chunk_strategy) pour TOUS les docs
+  PER_DOCUMENT:  chaque document utilise sa propre stratégie (doc.chunk_strategy)
+  ADAPTIVE:      le système essaie toutes les stratégies et garde la meilleure
+                 par document (score de qualité intrinsèque)
+═══════════════════════════════════════════════════════════════
 
 Usage:
     from app.services.providers.chunking_factory import chunk_document
-    chunks = chunk_document(content_blocks, space)
+    chunks = chunk_document(content_blocks, space, document=doc)
 """
 
 import logging
@@ -15,30 +24,148 @@ from app.models.rag_space import ChunkStrategy
 
 logger = logging.getLogger(__name__)
 
+# Les stratégies que le mode ADAPTIVE va essayer puis comparer.
+ADAPTIVE_CANDIDATES = ["FIXED", "HIERARCHICAL", "SEMANTIC"]
 
-def chunk_document(content_blocks: list[dict], space) -> list[dict]:
+
+# ══════════════════════════════════════════════════════
+# POINT D'ENTRÉE — dispatcher des 3 modes
+# ══════════════════════════════════════════════════════
+
+def chunk_document(content_blocks: list[dict], space, document=None) -> list[dict]:
     """
-    Point d'entrée unique. Lit space.chunk_strategy et appelle la bonne méthode.
+    Point d'entrée unique. Lit space.chunk_mode et route vers le bon mode.
 
     Args:
-        content_blocks: résultat de extract_document() — list[{type, content, page}]
-        space: RAGSpace model avec chunk_strategy, chunk_size, chunk_overlap
+        content_blocks: list[{type, content, page}] (sortie de to_content_blocks())
+        space:    RAGSpace — chunk_mode, chunk_strategy, chunk_size, chunk_overlap
+        document: Document (optionnel) — utilisé en mode PER_DOCUMENT pour lire
+                  document.chunk_strategy. En ADAPTIVE, on y écrira la stratégie
+                  gagnante (document.chosen_strategy) si l'objet est fourni.
 
     Returns:
-        list[dict] — chaque dict a : content, page, chunk_index, type, parent_id (optionnel)
+        list[dict] — content, page, chunk_index, type, strategy, (parent_id...)
     """
+    mode = getattr(space, "chunk_mode", None) or "FIXED_ALL"
+
+    logger.info(f"Chunking mode={mode}")
+
+    if mode == "ADAPTIVE":
+        return _adaptive_chunk(content_blocks, space, document)
+
+    if mode == "PER_DOCUMENT":
+        # La stratégie vient du document ; fallback sur celle du space.
+        strategy = (
+            getattr(document, "chunk_strategy", None)
+            or space.chunk_strategy
+            or "FIXED"
+        )
+        return chunk_with_strategy(content_blocks, strategy, space)
+
+    # FIXED_ALL (défaut) — comportement historique
     strategy = space.chunk_strategy or "FIXED"
+    return chunk_with_strategy(content_blocks, strategy, space)
+
+
+# ══════════════════════════════════════════════════════
+# SÉLECTION DE STRATÉGIE (ancien corps de chunk_document)
+# ══════════════════════════════════════════════════════
+
+def chunk_with_strategy(content_blocks: list[dict], strategy, space) -> list[dict]:
+    """
+    Applique UNE stratégie donnée. C'est l'ancien dispatcher, isolé ici pour
+    être réutilisable par tous les modes (notamment ADAPTIVE qui l'appelle en boucle).
+    """
     chunk_size = space.chunk_size or 512
     chunk_overlap = space.chunk_overlap or 50
 
-    logger.info(f"Chunking with strategy={strategy}, size={chunk_size}, overlap={chunk_overlap}")
+    # Normalise (accepte enum ChunkStrategy ou string)
+    strat = strategy.value if isinstance(strategy, ChunkStrategy) else str(strategy)
 
-    if strategy == "SEMANTIC" or strategy == ChunkStrategy.SEMANTIC:
+    logger.info(f"  strategy={strat}, size={chunk_size}, overlap={chunk_overlap}")
+
+    if strat == "SEMANTIC":
         return _chunk_semantic(content_blocks, chunk_size)
-    elif strategy == "HIERARCHICAL" or strategy == ChunkStrategy.HIERARCHICAL:
+    elif strat == "HIERARCHICAL":
         return _chunk_hierarchical(content_blocks, chunk_size, chunk_overlap)
     else:
         return _chunk_fixed(content_blocks, chunk_size, chunk_overlap)
+
+
+# ══════════════════════════════════════════════════════
+# ADAPTIVE — essaie toutes les stratégies, garde la meilleure
+# ══════════════════════════════════════════════════════
+
+def _adaptive_chunk(content_blocks: list[dict], space, document=None) -> list[dict]:
+    """
+    Pour CE document : essaie chaque stratégie candidate, score le résultat,
+    et garde la stratégie avec le meilleur score.
+
+    NOTE: coûteux — chunke le document N fois (une par stratégie). À utiliser
+    quand la qualité prime sur la vitesse.
+
+    Le score est pour l'instant TEMPORAIRE (voir _temp_quality_score).
+    Il sera remplacé par les vraies métriques intrinsèques (Size Compliance,
+    Block Integrity, etc.) à l'étape suivante.
+    """
+    target = space.chunk_size or 512
+    best_strategy = None
+    best_chunks = None
+    best_score = float("-inf")
+
+    for strategy in ADAPTIVE_CANDIDATES:
+        try:
+            candidate_chunks = chunk_with_strategy(content_blocks, strategy, space)
+            if not candidate_chunks:
+                continue
+            score = _temp_quality_score(candidate_chunks, target)
+            logger.info(f"  [adaptive] {strategy}: {len(candidate_chunks)} chunks, score={score:.3f}")
+
+            if score > best_score:
+                best_score = score
+                best_strategy = strategy
+                best_chunks = candidate_chunks
+        except Exception as e:
+            logger.warning(f"  [adaptive] {strategy} failed: {e}")
+            continue
+
+    # Sécurité : si tout échoue, fallback FIXED
+    if best_chunks is None:
+        logger.warning("  [adaptive] all candidates failed, falling back to FIXED")
+        best_strategy = "FIXED"
+        best_chunks = chunk_with_strategy(content_blocks, "FIXED", space)
+
+    logger.info(f"  [adaptive] WINNER = {best_strategy} (score={best_score:.3f})")
+
+    # Mémorise la stratégie gagnante sur le document (pour l'afficher à l'IT)
+    if document is not None:
+        try:
+            document.chosen_strategy = best_strategy
+        except Exception:
+            pass  # le champ n'existe peut-être pas encore en base
+
+    # Tag chaque chunk avec la stratégie gagnante
+    for c in best_chunks:
+        c["strategy"] = best_strategy
+
+    return best_chunks
+
+
+def _temp_quality_score(chunks: list[dict], target_size: int) -> float:
+    """
+    SCORE TEMPORAIRE — à remplacer par les vraies métriques intrinsèques.
+
+    Pour l'instant : fraction de chunks dont la taille (en caractères) est
+    proche de la cible (entre 0.5× et 1.5× target). Rapide, sans embeddings.
+    Plus la fraction est haute, meilleur est le score.
+    """
+    if not chunks:
+        return 0.0
+
+    lo = target_size * 0.5
+    hi = target_size * 1.5
+    in_range = sum(1 for c in chunks if lo <= len(c["content"]) <= hi)
+    return in_range / len(chunks)
 
 
 # ══════════════════════════════════════════════════════
@@ -113,15 +240,7 @@ def _chunk_fixed(content_blocks: list[dict], chunk_size: int, chunk_overlap: int
 def _chunk_semantic(content_blocks: list[dict], max_chunk_size: int) -> list[dict]:
     """
     Utilise les embeddings pour détecter les frontières de sujet.
-
-    Comment ça marche :
-    1. On découpe le texte en phrases
-    2. On embed chaque phrase
-    3. On compare les embeddings de phrases consécutives
-    4. Quand la similarité chute → on coupe (changement de sujet)
-
-    Les chunks sont de taille variable mais chacun couvre un sujet cohérent.
-    max_chunk_size est utilisé comme limite haute pour éviter les chunks géants.
+    max_chunk_size = limite haute pour éviter les chunks géants.
     """
     chunks = []
     idx = 0
@@ -177,7 +296,6 @@ def _chunk_semantic(content_blocks: list[dict], max_chunk_size: int) -> list[dic
                     if not content:
                         continue
 
-                    # Si le chunk sémantique est trop gros, le re-découper en fixe
                     if len(content) > max_chunk_size * 1.5:
                         from langchain.text_splitter import RecursiveCharacterTextSplitter
                         sub_splitter = RecursiveCharacterTextSplitter(
@@ -227,24 +345,19 @@ def _chunk_semantic(content_blocks: list[dict], max_chunk_size: int) -> list[dic
 
 def _chunk_hierarchical(content_blocks: list[dict], chunk_size: int, chunk_overlap: int) -> list[dict]:
     """
-    Crée 2 niveaux de chunks :
-    - Parents (~chunk_size * 4 chars) — gros blocs pour le contexte riche
-    - Enfants (~chunk_size chars) — petits blocs pour la recherche précise
-
-    La recherche cible les enfants (précision).
-    Le contexte envoyé au LLM inclut le parent (richesse).
-
-    Chaque enfant a un parent_id qui pointe vers son parent.
+    2 niveaux de chunks :
+    - Parents (~chunk_size * 4 chars) — contexte riche
+    - Enfants (~chunk_size chars) — recherche précise
     """
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_core.documents import Document as LCDoc
 
-    parent_size = chunk_size * 4      # ex: 2048 si chunk_size=512
-    child_size = chunk_size            # ex: 512
+    parent_size = chunk_size * 4
+    child_size = chunk_size
 
     parent_splitter = RecursiveCharacterTextSplitter(
         chunk_size=parent_size,
-        chunk_overlap=100,
+        chunk_overlap=chunk_overlap,
         length_function=len,
         separators=["\n\n", "\n", ". ", " ", ""],
     )
@@ -287,14 +400,12 @@ def _chunk_hierarchical(content_blocks: list[dict], chunk_size: int, chunk_overl
                 idx += 1
                 continue
 
-            # Créer les parents
             parent_docs = parent_splitter.split_documents([LCDoc(page_content=text_content)])
 
             for parent_doc in parent_docs:
                 parent_content = parent_doc.page_content
                 parent_idx = idx
 
-                # Ajouter le parent
                 chunks.append({
                     "content": parent_content,
                     "page": block["page"],
@@ -306,7 +417,6 @@ def _chunk_hierarchical(content_blocks: list[dict], chunk_size: int, chunk_overl
                 })
                 idx += 1
 
-                # Créer les enfants de ce parent
                 child_docs = child_splitter.split_documents([LCDoc(page_content=parent_content)])
 
                 for child_doc in child_docs:
@@ -317,7 +427,7 @@ def _chunk_hierarchical(content_blocks: list[dict], chunk_size: int, chunk_overl
                         "type": "text",
                         "strategy": "HIERARCHICAL",
                         "chunk_level": "child",
-                        "parent_id": parent_idx,    # pointe vers le parent
+                        "parent_id": parent_idx,
                     })
                     idx += 1
 

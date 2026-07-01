@@ -288,3 +288,60 @@ def _user_dict(user, org=None, db=None) -> dict:
         "department_ids":   department_ids,
         "created_at":       str(user.created_at),
     }
+
+def update_profile(db: Session, token: str, data) -> dict:
+    user_id = get_user_id_from_token(token)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    name = (data.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Name cannot be empty")
+
+    user.name = name
+    db.commit()
+    db.refresh(user)
+    org = user.organization if hasattr(user, "organization") else None
+    return _user_dict(user, org, db)
+
+
+def update_password(db: Session, token: str, data) -> dict:
+    user_id = get_user_id_from_token(token)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(400, "Current password is incorrect")
+
+    if len(data.new_password) < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+
+    user.password_hash = hash_password(data.new_password)
+    db.commit()
+    return {"message": "Password changed successfully"}
+
+def update_organization(db: Session, token: str, data) -> dict:
+    user_id = get_user_id_from_token(token)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+ 
+    # Seul un ADMIN peut renommer l'organisation
+    if user.role != RoleType.ADMIN:
+        raise HTTPException(403, "Only Admin can edit the organization")
+ 
+    name = (data.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Organization name cannot be empty")
+ 
+    org = db.query(Organization).filter(Organization.id == user.organization_id).first()
+    if not org:
+        raise HTTPException(404, "Organization not found")
+ 
+    org.name = name
+    db.commit()
+    db.refresh(org)
+ 
+    return {"id": org.id, "name": org.name, "type": str(org.type)}

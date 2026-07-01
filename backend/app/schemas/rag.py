@@ -21,6 +21,11 @@ class ChunkStrategy(str, Enum):
     SEMANTIC     = "SEMANTIC"
     HIERARCHICAL = "HIERARCHICAL"
 
+class ChunkMode(str, Enum):
+    FIXED_ALL    = "FIXED_ALL"
+    PER_DOCUMENT = "PER_DOCUMENT"
+    ADAPTIVE     = "ADAPTIVE"
+
 
 class EmbeddingProvider(str, Enum):
     LOCAL   = "LOCAL"
@@ -50,9 +55,11 @@ class CreateRAGSpaceRequest(BaseModel):
     department_id:  str                                             # requis
 
     # ── Chunking ──
+    chunk_mode: ChunkMode = ChunkMode.FIXED_ALL
     chunk_size:     int = Field(default=512, ge=100, le=3000)       # min 100, max 3000
     chunk_overlap:  int = Field(default=50, ge=0, le=500)           # min 0, max 500
     chunk_strategy: ChunkStrategy = ChunkStrategy.FIXED
+
 
     # ── Embedding ──
     embedding_provider: EmbeddingProvider = EmbeddingProvider.LOCAL
@@ -84,6 +91,7 @@ class UpdateRAGSpaceRequest(BaseModel):
     description:        Optional[str] = None
     department_id:      Optional[str] = None
 
+    chunk_mode: Optional[ChunkMode] = None
     chunk_size:         Optional[int] = None
     chunk_overlap:      Optional[int] = None
     chunk_strategy:     Optional[ChunkStrategy] = None
@@ -95,6 +103,11 @@ class UpdateRAGSpaceRequest(BaseModel):
     llm_model:          Optional[str] = None
     llm_temperature:    Optional[float] = None
     llm_max_tokens:     Optional[int] = None
+
+    # ── LLM source (NEW) ──
+    llm_provider_id:    Optional[str] = None   # company provider (api_providers.id)
+    llm_api_key:        Optional[str] = None   # IT's own key, PLAINTEXT in — encrypted at rest
+    llm_base_url:       Optional[str] = None
 
     top_k:              Optional[int] = None
     search_engine:      Optional[str] = None
@@ -159,4 +172,3 @@ class UpdateExtractedRequest(BaseModel):
     tables:   list[TableEdit] = Field(default_factory=list)
     images:   list[ImageEdit] = Field(default_factory=list)
     metadata: Optional[dict] = None
-

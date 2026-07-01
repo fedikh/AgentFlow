@@ -1,0 +1,335 @@
+/* ════════════════════════════════════════════════
+   Profile page — blue/light theme, full width, modals
+   ════════════════════════════════════════════════ */
+
+.pf-page {
+  width: 100%;
+}
+
+/* ── Page title ── */
+.pf-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0d1f35;
+  letter-spacing: -0.4px;
+  margin: 0;
+}
+.pf-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+/* ── Feedback banner ── */
+.pf-banner {
+  margin-bottom: 18px;
+  padding: 11px 15px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.pf-banner-success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.pf-banner-error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* ── Avatar header ── */
+.pf-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 28px;
+  margin-bottom: 18px;
+  background: linear-gradient(135deg, #0d1f35 0%, #1e3a5f 100%);
+  border-radius: 18px;
+  color: #fff;
+}
+.pf-avatar {
+  width: 68px;
+  height: 68px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+}
+.pf-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pf-header-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.pf-header-email {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+}
+.pf-header-role {
+  align-self: flex-start;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 11px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  letter-spacing: 0.3px;
+}
+
+/* ── Cards grid (full width, 2 columns) ── */
+.pf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.pf-card {
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.pf-card-head {
+  padding: 15px 20px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pf-card-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #eff6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+.pf-card-icon-org {
+  background: #f0f9ff;
+}
+.pf-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0d1f35;
+  flex: 1;
+}
+.pf-card-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* org avatar inside org card body */
+.pf-org-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+  margin-bottom: 2px;
+}
+.pf-org-avatar {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb 0%, #1e3a5f 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+.pf-org-avatar-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0d1f35;
+}
+.pf-org-avatar-type {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* ── Info rows ── */
+.pf-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pf-row-label {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+.pf-row-value {
+  font-size: 13px;
+  color: #0d1f35;
+  font-weight: 500;
+}
+.pf-role-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+/* ── Header-action edit button (in card head) ── */
+.pf-edit-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pf-edit-btn:hover {
+  background: #dbeafe;
+}
+
+/* ── Modal ── */
+.pf-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 31, 53, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.pf-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+.pf-modal-head {
+  padding: 18px 22px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pf-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0d1f35;
+}
+.pf-modal-close {
+  font-size: 18px;
+  color: #94a3b8;
+  background: none;
+  border: none;
+  cursor: pointer;
+  line-height: 1;
+}
+.pf-modal-close:hover {
+  color: #0d1f35;
+}
+.pf-modal-body {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Form fields ── */
+.pf-field-label {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+  margin-bottom: 6px;
+  display: block;
+}
+.pf-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #0d1f35;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pf-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+.pf-input::placeholder {
+  color: #94a3b8;
+}
+
+.pf-divider {
+  height: 0.5px;
+  background: rgba(0, 0, 0, 0.07);
+}
+.pf-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0d1f35;
+  margin-bottom: 2px;
+}
+.pf-pw-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pf-btn {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #0d1f35;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.pf-btn:hover:not(:disabled) {
+  background: #1e3a5f;
+}
+.pf-btn:disabled {
+  background: #94a3b8;
+  cursor: default;
+}
+.pf-btn-full {
+  width: 100%;
+}
+
+.pf-loading {
+  color: #94a3b8;
+  font-size: 14px;
+}

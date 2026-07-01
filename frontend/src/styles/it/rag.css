@@ -330,3 +330,47 @@
 @media (max-width: 640px) {
   .rag-upload-tiles { grid-template-columns: 1fr; }
 }
+/* ════════════════════════════════════════════════
+   Provider list with logos (IT LLM selector)
+   Ajoute ces règles à ton ragside.css (ou rag.css)
+   ════════════════════════════════════════════════ */
+
+.rag-cfg-provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.rag-cfg-provider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #0d1f35;
+  text-align: left;
+  transition: all 0.15s;
+}
+.rag-cfg-provider:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+.rag-cfg-provider.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+.rag-cfg-provider span:nth-child(2) {
+  font-weight: 600;
+  flex: 1;
+}
+.rag-cfg-provider-fam {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: ui-monospace, monospace;
+}

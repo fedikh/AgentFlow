@@ -182,3 +182,26 @@
 /* Page 1 (cards grid) keeps its inner padding even though .rag-page lost it */
 .rag-main { padding: 28px 32px; }
 .rag-space-content.rag-main, .rag-space-content { padding: 28px 32px; }
+
+
+ 
+.rag-doc-strategy {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+}
+.rag-doc-strategy-label {
+  font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.rag-doc-strategy-select {
+  font: 400 12px system-ui, sans-serif; color: #1A1A1A;
+  padding: 4px 8px; border: 1px solid #E0E0E0; border-radius: 7px; background: #fff;
+  cursor: pointer;
+}
+.rag-doc-strategy-select:focus { outline: none; border-color: #1A1A1A; }
+ 
+.rag-doc-chosen {
+  display: inline-block; margin-top: 8px;
+  font-size: 11px; color: #059669;
+  background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px;
+  padding: 3px 9px;
+}
+.rag-doc-chosen strong { font-weight: 600; }

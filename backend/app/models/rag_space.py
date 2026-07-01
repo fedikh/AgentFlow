@@ -5,6 +5,7 @@ Ajout de tous les champs configurables pour le pipeline RAG.
 NOUVEAUX CHAMPS:
   Embedding: embedding_provider, embedding_model
   LLM:       llm_provider, llm_model, llm_temperature, llm_max_tokens
+  LLM source: llm_provider_id (company provider), llm_api_key_enc (own key), llm_base_url
   Recherche: search_engine, semantic_weight, reranking_enabled
   Prompt:    system_prompt
   Status:    status (DRAFT → ACTIVE)
@@ -26,6 +27,10 @@ class ChunkStrategy(str, enum.Enum):
     SEMANTIC     = "SEMANTIC"
     HIERARCHICAL = "HIERARCHICAL"
 
+class ChunkMode(str, enum.Enum):
+    FIXED_ALL    = "FIXED_ALL"
+    PER_DOCUMENT = "PER_DOCUMENT"
+    ADAPTIVE     = "ADAPTIVE"
 
 class EmbeddingProvider(str, enum.Enum):
     LOCAL   = "LOCAL"       # sentence-transformers (gratuit)
@@ -66,6 +71,7 @@ class RAGSpace(Base):
     department_id   = Column(String, ForeignKey("departments.id"), nullable=True)
 
     # ── Chunking config ──
+    chunk_mode = Column(SAEnum(ChunkMode), default=ChunkMode.FIXED_ALL)
     chunk_size      = Column(Integer, default=512)
     chunk_overlap   = Column(Integer, default=50)
     chunk_strategy  = Column(SAEnum(ChunkStrategy), default=ChunkStrategy.FIXED)
@@ -79,6 +85,13 @@ class RAGSpace(Base):
     llm_model       = Column(String, default="llama-3.3-70b-versatile")
     llm_temperature = Column(Float, default=0.2)
     llm_max_tokens  = Column(Integer, default=1024)
+
+    # ── LLM source (NEW) ──
+    # Option A: point to a company provider (api_providers table)
+    llm_provider_id = Column(String, ForeignKey("api_providers.id"), nullable=True)
+    # Option B: IT's own key for this space (encrypted at rest)
+    llm_api_key_enc = Column(Text, nullable=True)
+    llm_base_url    = Column(String, nullable=True)
 
     # ── Search config ──                                                           # NEW
     top_k              = Column(Integer, default=5)

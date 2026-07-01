@@ -3,9 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.auth import (
-    RegisterRequest, LoginRequest,
-    ForgotPasswordRequest, VerifyOtpRequest, ResetPasswordRequest
-)
+        RegisterRequest, LoginRequest,
+        ForgotPasswordRequest, VerifyOtpRequest, ResetPasswordRequest,
+        UpdateProfileRequest, UpdatePasswordRequest, UpdateOrganizationRequest,
+    )
 from app.services import auth_service
 from app.config import settings
 
@@ -22,6 +23,16 @@ def set_auth_cookie(response: Response, token: str):
         samesite="lax",                       # CSRF protection
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
+
+def _get_token(request: Request) -> str:
+    """Extract the JWT from cookie first, then Authorization header."""
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        token = authorization.split(" ")[1]
+    return token
 
 @router.post("/register", status_code=201)
 def register(data: RegisterRequest, response: Response, db: Session = Depends(get_db)):
@@ -55,11 +66,24 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
 
 @router.get("/me")
 def get_me(request: Request, db: Session = Depends(get_db)):
-    # Try cookie first, then Authorization header
-    token = request.cookies.get(COOKIE_NAME)
-    if not token:
-        authorization = request.headers.get("Authorization")
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        token = authorization.split(" ")[1]
+    token = _get_token(request)
     return auth_service.get_me(db, token)
+
+@router.put("/me")
+def update_me(data: UpdateProfileRequest, request: Request, db: Session = Depends(get_db)):
+    """Update the current user's profile (name)."""
+    token = _get_token(request)
+    return auth_service.update_profile(db, token, data)
+
+@router.put("/me/password")
+def update_my_password(data: UpdatePasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Change the current user's password (verifies the current one)."""
+    token = _get_token(request)
+    return auth_service.update_password(db, token, data)
+
+@router.put("/organization")
+def update_org(data: UpdateOrganizationRequest, request: Request, db: Session = Depends(get_db)):
+    """Update the organization name (ADMIN only)."""
+    token = _get_token(request)
+    return auth_service.update_organization(db, token, data)
+

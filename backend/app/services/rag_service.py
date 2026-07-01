@@ -1,19 +1,14 @@
 """
-RAG Service v6 — LlamaIndex Loaders & Parsers Edition
+RAG Service v7 — LLM Factory Edition
 
-THREE-STEP FLOW:
-  1. upload_document()    → LlamaIndex LOADER → raw text → status: LOADED
-  2. parse_document()     → LlamaIndex PARSER → structured blocks → status: EXTRACTED
-  3. process_document()   → chunking + embedding → status: INDEXED
+CHANGES from v6:
+  - generate_answer() removed (the hardcoded Groq one).
+  - Now imports generate_answer from app.services.llm_factory.
+  - query() calls generate_answer(db, space, question, context, sources_text)
+    → the LLM provider/model/key/prompt are now resolved from the space config
+      (space's own key → company provider → local GROQ fallback).
 
-New:
-  - get_loaded_content()   → returns raw loaded text for review
-  - parse_document()       → triggers LlamaIndex parsing after loader review
-  - get_extracted_content() → returns parsed/structured blocks for review
-
-KEPT UNCHANGED:
-  - process_document()     → chunking + embedding (same as before)
-  - query()               → hybrid search + Groq LLM (same as before)
+Everything else (loaders, parsers, chunking, embedding, search) is UNCHANGED.
 """
 
 import os
@@ -30,7 +25,7 @@ from app.models.chunk import Chunk
 from app.schemas.rag import CreateRAGSpaceRequest, UpdateRAGSpaceRequest, QueryRequest
 from app.config import settings
 
-# ── Modular Loaders & Parsers (replaces processing_factory) ──
+# ── Modular Loaders & Parsers ──
 from app.services.providers.loaders import (
     load_document as li_load_document,
     load_from_url as li_load_from_url,
@@ -39,13 +34,11 @@ from app.services.providers.loaders import (
 from app.services.providers.loaders._utils import validate_url, get_url_filename
 from app.services.providers.parsers import parse_document as li_parse_document
 
-# ── Chunking factory (UNCHANGED) ──
+# ── Chunking factory ──
 from app.services.providers.chunking_factory import chunk_document
 
-# ── LangChain (UNCHANGED) ──
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage, SystemMessage
+# ── LLM Factory (NEW) — replaces the hardcoded Groq generate_answer ──
+from app.services.llm_factory import generate_answer
 
 # ── Embeddings (UNCHANGED) ──
 _embed_model = None
@@ -103,12 +96,16 @@ def _space_dict(db, space):
         "department_id": space.department_id,
         "chunk_size": space.chunk_size, "chunk_overlap": space.chunk_overlap,
         "chunk_strategy": space.chunk_strategy,
+        "chunk_mode": getattr(space, 'chunk_mode', 'FIXED_ALL') or 'FIXED_ALL',
         "embedding_provider": getattr(space, 'embedding_provider', 'LOCAL') or 'LOCAL',
         "embedding_model": getattr(space, 'embedding_model', 'BAAI/bge-m3') or 'BAAI/bge-m3',
         "llm_provider": getattr(space, 'llm_provider', 'GROQ') or 'GROQ',
         "llm_model": getattr(space, 'llm_model', 'llama-3.3-70b-versatile') or 'llama-3.3-70b-versatile',
         "llm_temperature": getattr(space, 'llm_temperature', 0.2) if getattr(space, 'llm_temperature', None) is not None else 0.2,
         "llm_max_tokens": getattr(space, 'llm_max_tokens', 1024) or 1024,
+        # NEW: provider source for the IT selector (safe getattr — may not exist yet)
+        "llm_provider_id": getattr(space, 'llm_provider_id', None),
+        "llm_has_own_key": bool(getattr(space, 'llm_api_key_enc', None)),
         "top_k": space.top_k,
         "search_engine": getattr(space, 'search_engine', 'HYBRID') or 'HYBRID',
         "semantic_weight": getattr(space, 'semantic_weight', 0.7) if getattr(space, 'semantic_weight', None) is not None else 0.7,
@@ -119,7 +116,6 @@ def _space_dict(db, space):
     }
 
 def _doc_dict(doc):
-    # Force status to plain string (enum can serialize as "DocStatus.LOADED" otherwise)
     status = doc.status.value if hasattr(doc.status, 'value') else str(doc.status)
     return {
         "id": doc.id, "file_name": doc.file_name, "file_type": doc.file_type,
@@ -127,6 +123,8 @@ def _doc_dict(doc):
         "source_type": getattr(doc, 'source_type', 'local') or 'local',
         "source_url": getattr(doc, 'source_url', None),
         "num_chunks": doc.num_chunks, "status": status, "error_msg": doc.error_msg,
+        "chunk_strategy": getattr(doc, 'chunk_strategy', None),
+        "chosen_strategy": getattr(doc, 'chosen_strategy', None),
         "has_loaded_content": bool(doc.loaded_content) if hasattr(doc, 'loaded_content') else False,
         "has_extracted_content": bool(doc.extracted_content) if hasattr(doc, 'extracted_content') else False,
         "rag_space_id": doc.rag_space_id, "uploaded_at": str(doc.uploaded_at),
@@ -134,7 +132,7 @@ def _doc_dict(doc):
 
 
 # ══════════════════════════════════════════════════════
-# SPACES CRUD (UNCHANGED)
+# SPACES CRUD
 # ══════════════════════════════════════════════════════
 
 def create_space(db: Session, data: CreateRAGSpaceRequest, org_id: str, user) -> dict:
@@ -143,6 +141,7 @@ def create_space(db: Session, data: CreateRAGSpaceRequest, org_id: str, user) ->
         organization_id=org_id, department_id=data.department_id,
         chunk_size=data.chunk_size or 512, chunk_overlap=data.chunk_overlap or 50,
         chunk_strategy=data.chunk_strategy or "FIXED",
+        chunk_mode=getattr(data, 'chunk_mode', None) or "FIXED_ALL",
     )
     db.add(space)
     db.commit()
@@ -159,9 +158,21 @@ def get_space(db: Session, space_id: str, org_id: str) -> dict:
 
 def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRequest) -> dict:
     space = _find_space(db, space_id, org_id)
-    for field, value in data.dict(exclude_unset=True).items():
+    payload = data.dict(exclude_unset=True)
+ 
+    # Chiffre la clé propre de l'IT si fournie (jamais stockée en clair)
+    if "llm_api_key" in payload:
+        raw = payload.pop("llm_api_key")
+        if raw:
+            from app.services.providers_crypto import encrypt_key
+            space.llm_api_key_enc = encrypt_key(raw)
+        else:
+            space.llm_api_key_enc = None   # clé vidée
+ 
+    for field, value in payload.items():
         if value is not None:
             setattr(space, field, value)
+ 
     db.commit()
     db.refresh(space)
     return _space_dict(db, space)
@@ -183,7 +194,6 @@ def delete_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dic
     if not doc:
         raise HTTPException(404, "Document not found")
 
-    # Delete saved file if it exists
     if doc.loaded_content:
         try:
             loaded = json.loads(doc.loaded_content)
@@ -204,7 +214,29 @@ def list_chunks(db: Session, space_id: str, doc_id: str, org_id: str) -> list:
 
 
 # ══════════════════════════════════════════════════════
-# STEP 1: UPLOAD → LLAMAINDEX LOADER (raw text)
+# PER-DOCUMENT STRATEGY
+# ══════════════════════════════════════════════════════
+
+def set_document_strategy(db: Session, space_id: str, doc_id: str, strategy: str, org_id: str) -> dict:
+    _find_space(db, space_id, org_id)
+    doc = db.query(Document).filter(
+        Document.id == doc_id,
+        Document.rag_space_id == space_id,
+    ).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    if strategy not in ("FIXED", "SEMANTIC", "HIERARCHICAL"):
+        raise HTTPException(400, "Invalid strategy")
+
+    doc.chunk_strategy = strategy
+    db.commit()
+    db.refresh(doc)
+    return _doc_dict(doc)
+
+
+# ══════════════════════════════════════════════════════
+# STEP 1: UPLOAD
 # ══════════════════════════════════════════════════════
 async def upload_document(db: Session, space_id: str, org_id: str, file: UploadFile) -> dict:
     space = _find_space(db, space_id, org_id)
@@ -235,14 +267,12 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # PDF/DOCX → just save file (Docling is slow, user clicks Load+Parse later)
     if ext in (".pdf", ".docx"):
         doc.loaded_content = json.dumps({"file_path": os.path.abspath(file_path)}, ensure_ascii=False)
         db.commit()
         db.refresh(doc)
         return _doc_dict(doc)
 
-    # All other formats → run loader immediately (fast)
     try:
         loaded_data = li_load_document(file_path)
 
@@ -275,28 +305,27 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
         raise HTTPException(500, f"Loading failed: {str(e)}")
 
     return _doc_dict(doc)
- 
- 
+
+
 async def upload_from_drive(db, space_id, org_id, drive_file_id, access_token):
-    """Download from Google Drive and save. No loader, no parser. Fast."""
     import uuid
     from app.services.providers.google_drive import download_from_drive
- 
+
     space = _find_space(db, space_id, org_id)
- 
+
     doc_id = str(uuid.uuid4())
     save_dir = os.path.join("uploads", space_id)
- 
+
     try:
         drive_result = download_from_drive(drive_file_id, access_token, save_dir)
     except Exception as e:
         raise HTTPException(500, f"Google Drive download failed: {e}")
- 
+
     file_path = drive_result["file_path"]
     file_name = drive_result["file_name"]
     file_size = drive_result["file_size"]
     ext = os.path.splitext(file_name)[1].lower()
- 
+
     doc = Document(
         id=doc_id,
         rag_space_id=space_id,
@@ -308,25 +337,23 @@ async def upload_from_drive(db, space_id, org_id, drive_file_id, access_token):
     )
     db.add(doc)
     db.commit()
- 
+
     doc.loaded_content = json.dumps({"file_path": os.path.abspath(file_path)}, ensure_ascii=False)
     db.commit()
     db.refresh(doc)
- 
+
     return _doc_dict(doc)
 
 # ══════════════════════════════════════════════════════
-# STEP 2: LOAD + PARSE — runs loader + cleaner + parser
+# STEP 2: LOAD + PARSE
 # ══════════════════════════════════════════════════════
- 
+
 def load_and_parse_document(db, space_id, doc_id, org_id):
-    """Run loader + cleaner on the saved file. If Docling, also parses."""
     _find_space(db, space_id, org_id)
     doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
     if not doc:
         raise HTTPException(404, "Document not found")
- 
-    # Get file path
+
     file_path = None
     if doc.loaded_content:
         try:
@@ -334,54 +361,50 @@ def load_and_parse_document(db, space_id, doc_id, org_id):
             file_path = data.get("file_path")
         except Exception:
             pass
- 
+
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(400, "File not found — re-upload the document")
- 
+
     try:
-        # ── LOADER ──
         loaded_data = li_load_document(file_path)
- 
-        # ── CLEANER ──
+
         from app.services.providers.cleaners import clean_loaded_data
         loaded_data = clean_loaded_data(loaded_data)
- 
+
         if not loaded_data or not loaded_data.get("raw_text"):
             raise Exception("No content found in document")
- 
+
         loaded_data["file_path"] = os.path.abspath(file_path)
- 
-        # Check if loader already produced ParsedDocument (PDF/DOCX via Docling, PPTX via python-pptx)
+
         parsed_doc_data = loaded_data.pop("parsed_document", None)
- 
+
         doc.loaded_content = json.dumps(loaded_data, ensure_ascii=False, default=str)
- 
+
         if parsed_doc_data:
             doc.extracted_content = json.dumps(parsed_doc_data, ensure_ascii=False)
             doc.status = DocStatus.EXTRACTED
         else:
             doc.status = DocStatus.LOADED
- 
+
         db.commit()
         db.refresh(doc)
- 
+
     except Exception as e:
         doc.status = DocStatus.ERROR
         doc.error_msg = str(e)[:500]
         db.commit()
         raise HTTPException(500, f"Loading failed: {str(e)}")
- 
+
     return _doc_dict(doc)
- 
- 
+
+
 def load_and_parse_all(db, space_id, org_id):
-    """Load + Parse ALL documents with status UPLOADING."""
     _find_space(db, space_id, org_id)
     docs = db.query(Document).filter(
         Document.rag_space_id == space_id,
         Document.status == DocStatus.UPLOADING,
     ).all()
- 
+
     results = []
     for doc in docs:
         try:
@@ -389,18 +412,14 @@ def load_and_parse_all(db, space_id, org_id):
             results.append({"id": doc.id, "file_name": doc.file_name, "status": result["status"]})
         except Exception as e:
             results.append({"id": doc.id, "file_name": doc.file_name, "status": "ERROR", "error": str(e)})
- 
+
     return {"processed": len(results), "results": results}
 
 # ══════════════════════════════════════════════════════
-# UPLOAD FROM URL → LLAMAINDEX LOADER
+# UPLOAD FROM URL
 # ══════════════════════════════════════════════════════
 
 async def upload_from_url(db: Session, space_id: str, org_id: str, url: str) -> dict:
-    """
-    Upload from a URL — scrape and save HTML for Unstructured parsing.
-    Status: UPLOADING → LOADED (or ERROR)
-    """
     space = _find_space(db, space_id, org_id)
 
     url = validate_url(url)
@@ -425,7 +444,6 @@ async def upload_from_url(db: Session, space_id: str, org_id: str, url: str) -> 
         if not loaded_data or not loaded_data.get("raw_text"):
             raise Exception(f"No content found at {url}")
 
-        # Save scraped content to file for Unstructured parsing
         upload_dir = os.path.join("uploads", space_id)
         os.makedirs(upload_dir, exist_ok=True)
         file_path = os.path.join(upload_dir, f"{doc.id}.html")
@@ -449,11 +467,10 @@ async def upload_from_url(db: Session, space_id: str, org_id: str, url: str) -> 
 
 
 # ══════════════════════════════════════════════════════
-# GET LOADED CONTENT — raw text for IT review
+# GET LOADED CONTENT
 # ══════════════════════════════════════════════════════
 
 def get_loaded_content(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
-    """Returns the raw loaded text (from LlamaIndex loader) for IT to review."""
     _find_space(db, space_id, org_id)
     doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
     if not doc:
@@ -477,14 +494,10 @@ def get_loaded_content(db: Session, space_id: str, doc_id: str, org_id: str) -> 
 
 
 # ══════════════════════════════════════════════════════
-# STEP 2: PARSE — LlamaIndex parser → structured blocks
+# STEP 2: PARSE
 # ══════════════════════════════════════════════════════
 
 def parse_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
-    """
-    Step 2: Parse loaded text into ParsedDocument.
-    Status: LOADED → EXTRACTED (or ERROR)
-    """
     _find_space(db, space_id, org_id)
     doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
     if not doc:
@@ -496,13 +509,11 @@ def parse_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict
     try:
         loaded_data = json.loads(doc.loaded_content)
 
-        # ── Parser produces ParsedDocument ──
         parsed_doc = li_parse_document(loaded_data)
 
         if not parsed_doc.total_sections and not parsed_doc.total_tables:
             raise Exception("Parser produced no sections or tables")
 
-        # Store ParsedDocument as JSON
         doc.extracted_content = parsed_doc.to_json()
         doc.status = DocStatus.EXTRACTED
         db.commit()
@@ -514,17 +525,10 @@ def parse_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict
         db.commit()
         raise HTTPException(500, f"Parsing failed: {str(e)}")
 
-    except Exception as e:
-        doc.status = DocStatus.ERROR
-        doc.error_msg = str(e)
-        db.commit()
-        raise HTTPException(500, f"Parsing failed: {str(e)}")
-
     return _doc_dict(doc)
 
 
 def parse_all_documents(db: Session, space_id: str, org_id: str) -> dict:
-    """Parse ALL documents with status LOADED in this space."""
     _find_space(db, space_id, org_id)
     docs = db.query(Document).filter(
         Document.rag_space_id == space_id,
@@ -543,11 +547,10 @@ def parse_all_documents(db: Session, space_id: str, org_id: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════
-# GET EXTRACTED (PARSED) CONTENT — for IT review
+# GET EXTRACTED CONTENT
 # ══════════════════════════════════════════════════════
 
 def get_extracted_content(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
-    """Returns the ParsedDocument for IT to review."""
     _find_space(db, space_id, org_id)
     doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
     if not doc:
@@ -570,12 +573,6 @@ def get_extracted_content(db: Session, space_id: str, doc_id: str, org_id: str) 
     }
 
 def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: str, data) -> dict:
-    """
-    Overwrite the ParsedDocument with IT's manual edits.
-    Editable: title, sections, tables, images, metadata.
-    Preserved: num_pages, file_type, category, ocr_quality, ocr_issues.
-    Status → EXTRACTED (re-process to rebuild chunks from the edited version).
-    """
     from app.services.providers.parsers.parsed_document import ParsedDocument
 
     _find_space(db, space_id, org_id)
@@ -585,7 +582,6 @@ def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: st
     if not doc.extracted_content:
         raise HTTPException(400, "No parsed content to edit — parse the document first")
 
-    # Start from the existing parse so read-only fields survive
     existing = json.loads(doc.extracted_content)
 
     payload = data.dict(exclude_unset=True)
@@ -600,13 +596,11 @@ def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: st
     if "metadata" in payload and payload["metadata"] is not None:
         existing["metadata"] = payload["metadata"]
 
-    # Validate by round-tripping through the dataclass (raises if malformed)
     try:
         parsed_doc = ParsedDocument.from_dict(existing)
     except Exception as e:
         raise HTTPException(422, f"Invalid ParsedDocument structure: {str(e)}")
 
-    # Re-serialize via to_dict() so derived totals (total_sections, total_chars...) are recomputed
     doc.extracted_content = json.dumps(parsed_doc.to_dict(), ensure_ascii=False)
     doc.status = DocStatus.EXTRACTED
     db.commit()
@@ -615,15 +609,10 @@ def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: st
     return get_extracted_content(db, space_id, doc_id, org_id)
 
 # ══════════════════════════════════════════════════════
-# STEP 3: PROCESS — chunking + embedding (UNCHANGED)
+# STEP 3: PROCESS — chunking + embedding
 # ══════════════════════════════════════════════════════
 
 def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
-    """
-    Step 3: After IT reviews the parsed blocks, process them.
-    Chunking + embedding → store in pgvector.
-    Status: EXTRACTED → PROCESSING → INDEXED (or ERROR)
-    """
     space = _find_space(db, space_id, org_id)
     doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
     if not doc:
@@ -638,7 +627,6 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
     try:
         parsed_data = json.loads(doc.extracted_content)
 
-        # Convert ParsedDocument → content_blocks for the Chunking Engine
         from app.services.providers.parsers.parsed_document import ParsedDocument
         parsed_doc = ParsedDocument.from_dict(parsed_data)
         content_blocks = parsed_doc.to_content_blocks()
@@ -646,20 +634,16 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
         if not content_blocks:
             raise Exception("No content blocks from parsed document")
 
-        # Delete old chunks if re-processing
         db.query(Chunk).filter(Chunk.document_id == doc.id).delete()
         db.flush()
 
-        # Step 1: Chunk using the space's strategy
-        chunks = chunk_document(content_blocks, space)
+        chunks = chunk_document(content_blocks, space, document=doc)
         if not chunks:
             raise Exception("No chunks generated")
 
-        # Step 2: Embed
         chunk_texts = [c["content"] for c in chunks]
         embeddings = embed_texts(chunk_texts)
 
-        # Step 3: Store in pgvector
         for i, chunk_data in enumerate(chunks):
             db_chunk = Chunk(
                 content=chunk_data["content"],
@@ -686,7 +670,6 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
 
 
 def process_all_documents(db: Session, space_id: str, org_id: str) -> dict:
-    """Process ALL documents with status EXTRACTED in this space."""
     space = _find_space(db, space_id, org_id)
     docs = db.query(Document).filter(
         Document.rag_space_id == space_id,
@@ -705,7 +688,7 @@ def process_all_documents(db: Session, space_id: str, org_id: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════
-# SEARCH + LLM (COMPLETELY UNCHANGED)
+# SEARCH (UNCHANGED)
 # ══════════════════════════════════════════════════════
 
 def pgvector_search(db, space_id, query_embedding, top_k):
@@ -748,27 +731,12 @@ def hybrid_search(db, space_id, query_text, query_embedding, top_k):
     return candidates[:top_k]
 
 
-def generate_answer(question, context, sources_info):
-    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2, groq_api_key=settings.GROQ_API_KEY)
-    system_prompt = f"""You are a professional AI assistant for an enterprise organization.
-Answer questions using ONLY the provided context. Format your answers clearly.
-Use **bold** for important terms.
-If the context doesn't contain relevant information, say so clearly.
-Always cite your sources at the end.
-
-CONTEXT:
-{context}
-
-SOURCES AVAILABLE:
-{sources_info}"""
-
-    messages = [SystemMessage(content=system_prompt), HumanMessage(content=question)]
-    response = llm.invoke(messages)
-    return response.content
-
+# ══════════════════════════════════════════════════════
+# QUERY — now uses the LLM Factory (provider resolved per space)
+# ══════════════════════════════════════════════════════
 
 def query(db: Session, space_id: str, org_id: str, data: QueryRequest) -> dict:
-    """Query the RAG space — hybrid search + Groq LLM (UNCHANGED)."""
+    """Query the RAG space — hybrid search + configurable LLM (via factory)."""
     space = _find_space(db, space_id, org_id)
 
     query_embedding = embed_query(data.question)
@@ -779,7 +747,6 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest) -> dict:
     if not results:
         return {"answer": "No relevant information found in the documents.", "sources": []}
 
-    # Build context
     context_parts = []
     sources_info = []
     doc_cache = {}
@@ -797,7 +764,8 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest) -> dict:
     context = "\n\n---\n\n".join(context_parts)
     sources_text = "\n".join(sources_info)
 
-    answer = generate_answer(data.question, context, sources_text)
+    # ── LLM Factory: resolves provider/model/key/prompt from the space ──
+    answer = generate_answer(db, space, data.question, context, sources_text)
 
     sources = [
         {"content": r["content"][:200], "document": doc_cache.get(r["document_id"], "Unknown"),

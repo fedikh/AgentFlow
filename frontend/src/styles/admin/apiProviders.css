@@ -1,0 +1,190 @@
+/* ════════════════════════════════════════════════
+   API Providers (admin) — blue/light theme
+   ════════════════════════════════════════════════ */
+
+.ap-page { width: 100%; }
+
+.ap-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+.ap-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0d1f35;
+  letter-spacing: -0.4px;
+  margin: 0;
+}
+.ap-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin-top: 4px;
+  max-width: 560px;
+}
+
+.ap-btn {
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #0d1f35;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.ap-btn:hover:not(:disabled) { background: #1e3a5f; }
+.ap-btn:disabled { background: #94a3b8; cursor: default; }
+
+.ap-btn-ghost {
+  background: #fff;
+  color: #0d1f35;
+  border: 1px solid #e2e8f0;
+}
+.ap-btn-ghost:hover:not(:disabled) { background: #f8fafc; }
+
+.ap-btn-danger {
+  background: #fff;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+.ap-btn-danger:hover:not(:disabled) { background: #fef2f2; }
+
+/* ── Banner ── */
+.ap-banner {
+  margin-bottom: 16px;
+  padding: 11px 15px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.ap-banner-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+.ap-banner-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+/* ── Grid of provider cards ── */
+.ap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.ap-card {
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.ap-card-head {
+  padding: 14px 18px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ap-card-icon {
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  background: #eff6ff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; color: #2563eb;
+}
+.ap-card-name { font-size: 14px; font-weight: 700; color: #0d1f35; flex: 1; }
+
+.ap-kind-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 3px 9px; border-radius: 100px;
+  letter-spacing: 0.3px;
+}
+.ap-kind-llm { background: #ecfdf5; color: #065f46; }
+.ap-kind-emb { background: #f5f3ff; color: #6d28d9; }
+
+.ap-card-body {
+  padding: 14px 18px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ap-row {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.ap-row-label { font-size: 12px; color: #64748b; font-weight: 500; }
+.ap-row-value { font-size: 13px; color: #0d1f35; font-weight: 500; }
+.ap-row-value.mono { font-family: ui-monospace, monospace; }
+
+.ap-models {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;
+}
+.ap-model-pill {
+  font-size: 11px; font-weight: 500;
+  padding: 3px 9px; border-radius: 7px;
+  background: #f1f5f9; color: #334155;
+  font-family: ui-monospace, monospace;
+}
+
+.ap-card-actions {
+  display: flex; gap: 8px; padding: 12px 18px;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+.ap-card-actions .ap-btn,
+.ap-card-actions .ap-btn-ghost,
+.ap-card-actions .ap-btn-danger {
+  flex: 1; padding: 7px 12px; font-size: 12px;
+  border-radius: 8px; text-align: center;
+}
+
+/* ── Empty state ── */
+.ap-empty {
+  text-align: center; padding: 60px 20px;
+  border: 1px dashed #cbd5e1; border-radius: 14px;
+  color: #64748b;
+}
+.ap-empty-title { font-size: 15px; font-weight: 700; color: #0d1f35; margin-bottom: 6px; }
+
+/* ── Modal ── */
+.ap-overlay {
+  position: fixed; inset: 0;
+  background: rgba(13, 31, 53, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 20px;
+}
+.ap-modal {
+  background: #fff; border-radius: 16px;
+  width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+.ap-modal-head {
+  padding: 18px 22px; border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ap-modal-title { font-size: 16px; font-weight: 700; color: #0d1f35; }
+.ap-modal-close {
+  font-size: 18px; color: #94a3b8; background: none; border: none; cursor: pointer; line-height: 1;
+}
+.ap-modal-close:hover { color: #0d1f35; }
+.ap-modal-body { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+.ap-modal-foot {
+  padding: 16px 22px; border-top: 0.5px solid rgba(0, 0, 0, 0.08);
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+
+/* ── Form fields ── */
+.ap-field { display: flex; flex-direction: column; }
+.ap-label { font-size: 12px; color: #64748b; font-weight: 500; margin-bottom: 6px; }
+.ap-input, .ap-select {
+  width: 100%; padding: 10px 12px; font-size: 13px; color: #0d1f35;
+  border: 1px solid #e2e8f0; border-radius: 9px; outline: none;
+  box-sizing: border-box; font-family: inherit; background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ap-input:focus, .ap-select:focus {
+  border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+.ap-input::placeholder { color: #94a3b8; }
+.ap-hint { font-size: 11px; color: #94a3b8; margin-top: 5px; }
+
+.ap-field-row { display: flex; gap: 12px; }
+.ap-field-row .ap-field { flex: 1; }
+
+.ap-loading { color: #94a3b8; font-size: 14px; }

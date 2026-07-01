@@ -24,6 +24,18 @@ async function get(endpoint) {
   return data;
 }
 
+async function put(endpoint, body) {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: body !== null ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Something went wrong");
+  return data;
+}
+
 // ── Session helpers ───────────────────────────────────
 // Only store non-sensitive user info in localStorage
 // The JWT stays in the httpOnly cookie — never accessible to JS
@@ -55,6 +67,13 @@ export const resetPassword = (email, otp, new_password) =>
   post("/auth/reset-password", { email, otp, new_password });
 export const fetchMe = () => get("/auth/me");
 
+// ── Profile ───────────────────────────────────────────
+export const updateProfile = (payload) => put("/auth/me", payload);
+export const updatePassword = (payload) => put("/auth/me/password", payload);
+export const changePassword = (payload) => put("/auth/me/password", payload);
+export const updateOrganization = (payload) =>
+  put("/auth/organization", payload);
+
 export const checkSession = async () => {
   try {
     await get("/auth/me");
@@ -64,3 +83,4 @@ export const checkSession = async () => {
     return false;
   }
 };
+
