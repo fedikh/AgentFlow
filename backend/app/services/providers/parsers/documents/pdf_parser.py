@@ -3,7 +3,7 @@ PDF Parser — uses the ParsedDocument that the loader already produced.
 Docling ran during loading, so no need to read the file again.
 
 If parsed_document exists in loaded_data → use it directly.
-If not (legacy data) → fall back to re-parsing with Docling.
+If not (legacy data) → fall back to re-parsing with Docling (images ON).
 """
 import logging
 from app.services.providers.parsers.parsed_document import ParsedDocument
@@ -17,7 +17,7 @@ def parse(loaded_data: dict) -> ParsedDocument:
         logger.info("[PDF_PARSER] Using pre-parsed document from loader (no re-read)")
         return ParsedDocument.from_dict(loaded_data["parsed_document"])
 
-    # ── Fallback: re-parse with Docling (for legacy loaded_data without parsed_document) ──
+    # ── Fallback: re-parse with Docling (for legacy loaded_data) ──
     file_path = loaded_data.get("file_path")
     if not file_path:
         raise ValueError("No file path and no pre-parsed document")
@@ -30,15 +30,19 @@ def parse(loaded_data: dict) -> ParsedDocument:
     from app.services.providers.parsers._docling import docling_to_parsed_document
 
     opts = PdfPipelineOptions()
-    opts.generate_picture_images = False
+    opts.generate_picture_images = True   # ← match the loader
+    opts.images_scale = 2.0
+    opts.do_ocr = False
     converter = DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}
     )
     result = converter.convert(file_path)
 
+    metadata = dict(loaded_data.get("metadata", {}))
+    metadata.setdefault("file_path", file_path)
     return docling_to_parsed_document(
         result=result,
         file_type="PDF",
         category="document",
-        metadata=loaded_data.get("metadata", {}),
+        metadata=metadata,
     )

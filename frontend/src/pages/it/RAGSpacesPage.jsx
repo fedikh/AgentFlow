@@ -655,6 +655,7 @@ const RAGSpacesPage = () => {
         setQuestion={setQuestion}
         querying={querying}
         handleQuery={handleQuery}
+        spaceId={activeSpace?.id}
       />
     </div>
   );

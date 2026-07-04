@@ -28,6 +28,7 @@ const DocModal = ({
   setQuestion,
   querying,
   handleQuery,
+  spaceId,
 }) => {
   if (!modal) return null;
 
@@ -344,14 +345,60 @@ const DocModal = ({
                         <span className="rag-block-tag">Image {i + 1}</span>
                         <span className="rag-block-meta">p.{img.page}</span>
                       </div>
-                      {img.caption && (
-                        <div style={{ fontSize: 13 }}>{img.caption}</div>
-                      )}
-                      {img.ocr_text && (
-                        <div style={{ fontSize: 12, color: "#525252" }}>
-                          OCR: {img.ocr_text}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 14,
+                          alignItems: "flex-start",
+                        }}
+                      >
+                        <img
+                          src={`${import.meta.env.VITE_API_URL || "http://localhost:8000/api"}/rag/spaces/${spaceId}/image?path=${encodeURIComponent(img.image_path)}`}
+                          alt={`Image page ${img.page}`}
+                          style={{
+                            width: 160,
+                            height: 160,
+                            objectFit: "contain",
+                            borderRadius: 8,
+                            background: "#F8FAFC",
+                            border: "1px solid #F1F1F1",
+                            flexShrink: 0,
+                          }}
+                          onError={(e) => {
+                            e.target.style.opacity = 0.2;
+                          }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {img.text_for_embedding ? (
+                            <div
+                              style={{
+                                fontSize: 13,
+                                lineHeight: 1.6,
+                                color: "#1A1A1A",
+                              }}
+                            >
+                              {img.text_for_embedding}
+                            </div>
+                          ) : img.caption ? (
+                            <div style={{ fontSize: 13 }}>{img.caption}</div>
+                          ) : (
+                            <div style={{ fontSize: 13, color: "#9CA3AF" }}>
+                              No description
+                            </div>
+                          )}
+                          {img.ocr_text && (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "#525252",
+                                marginTop: 6,
+                              }}
+                            >
+                              OCR: {img.ocr_text}
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   ))}
                 </>

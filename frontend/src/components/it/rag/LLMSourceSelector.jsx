@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   listProviders,
   getProviderModels,
@@ -7,10 +7,113 @@ import ProviderLogo from "../../ProviderLogo";
 
 /**
  * LLMSourceSelector — Local / Company / Own key.
- * Company mode fetches the provider's models LIVE from its API.
- * Uses rag-cfg-* classes to match ConfigPanel.
+ * Provider dropdown shows logos; Model dropdown uses the same custom design
+ * without logos. Native <select> can't render logos inside <option>, so both
+ * use a custom dropdown for a consistent look.
  */
 const FAMILIES = ["GROQ", "OPENAI", "ANTHROPIC", "GOOGLE", "OLLAMA", "CUSTOM"];
+
+/* ── Custom dropdown. If an option has `family`, its logo is shown. ── */
+function CustomDropdown({ options, value, onChange, placeholder, showLogo }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+
+  const rowBase = {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    fontSize: 13,
+    color: "#0d1f35",
+    textAlign: "left",
+    cursor: "pointer",
+  };
+
+  return (
+    <div
+      ref={ref}
+      style={{ position: "relative", width: "100%", marginBottom: 12 }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          ...rowBase,
+          borderRadius: 8,
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+        }}
+      >
+        {selected ? (
+          <>
+            {showLogo && <ProviderLogo family={selected.family} size={18} />}
+            <span style={{ flex: 1 }}>{selected.label}</span>
+          </>
+        ) : (
+          <span style={{ flex: 1, color: "#94a3b8" }}>{placeholder}</span>
+        )}
+        <span style={{ color: "#94a3b8", fontSize: 10 }}>▼</span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            background: "#fff",
+            border: "1px solid #e2e8f0",
+            borderRadius: 8,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+            zIndex: 50,
+            overflow: "hidden",
+            maxHeight: 260,
+            overflowY: "auto",
+          }}
+        >
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+              style={{
+                ...rowBase,
+                border: "none",
+                background: o.value === value ? "#eff6ff" : "#fff",
+              }}
+              onMouseEnter={(e) => {
+                if (o.value !== value)
+                  e.currentTarget.style.background = "#f8fafc";
+              }}
+              onMouseLeave={(e) => {
+                if (o.value !== value)
+                  e.currentTarget.style.background = "#fff";
+              }}
+            >
+              {showLogo && <ProviderLogo family={o.family} size={18} />}
+              <span>{o.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
   const [providers, setProviders] = useState([]);
@@ -27,7 +130,6 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
       .catch(() => setProviders([]));
   }, []);
 
-  // Fetch live models whenever a company provider is selected
   useEffect(() => {
     if (mode !== "company" || !value.llm_provider_id) {
       setCompanyModels([]);
@@ -99,27 +201,23 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
           ) : (
             <>
               <label className="rag-cfg-label">Provider</label>
-              <div className="rag-cfg-provider-list">
-                {providers.map((p) => (
-                  <button
-                    key={p.id}
-                    className={`rag-cfg-provider ${value.llm_provider_id === p.id ? "active" : ""}`}
-                    onClick={() =>
-                      onChange({ llm_provider_id: p.id, llm_model: "" })
-                    }
-                  >
-                    <ProviderLogo family={p.family} size={16} />
-                    <span>{p.name}</span>
-                    <span className="rag-cfg-provider-fam">{p.family}</span>
-                  </button>
-                ))}
-              </div>
+              <CustomDropdown
+                showLogo
+                options={providers.map((p) => ({
+                  value: p.id,
+                  label: `${p.name} (${p.family})`,
+                  family: p.family,
+                }))}
+                value={value.llm_provider_id || ""}
+                onChange={(id) =>
+                  onChange({ llm_provider_id: id, llm_model: "" })
+                }
+                placeholder="Select a provider…"
+              />
 
               <label className="rag-cfg-label">Model</label>
               {loadingModels ? (
-                <div className="rag-cfg-hint">
-                  Loading models from the provider…
-                </div>
+                <div className="rag-cfg-hint">Loading models…</div>
               ) : modelError ? (
                 <div className="rag-cfg-warn">{modelError}</div>
               ) : companyModels.length === 0 ? (
@@ -127,20 +225,15 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
                   Select a provider to load its models.
                 </div>
               ) : (
-                <select
-                  className="rag-cfg-select"
+                <CustomDropdown
+                  options={companyModels.map((m) => ({
+                    value: m.id,
+                    label: m.label,
+                  }))}
                   value={value.llm_model || ""}
-                  onChange={(e) => onChange({ llm_model: e.target.value })}
-                >
-                  <option value="">
-                    Select a model… ({companyModels.length} available)
-                  </option>
-                  {companyModels.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => onChange({ llm_model: id })}
+                  placeholder={`Select a model… (${companyModels.length})`}
+                />
               )}
             </>
           )}
@@ -151,17 +244,17 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
       {mode === "own" && (
         <>
           <label className="rag-cfg-label">Provider</label>
-          <select
-            className="rag-cfg-select"
+          <CustomDropdown
+            showLogo
+            options={FAMILIES.map((f) => ({
+              value: f,
+              label: f,
+              family: f,
+            }))}
             value={value.llm_provider || "OPENAI"}
-            onChange={(e) => onChange({ llm_provider: e.target.value })}
-          >
-            {FAMILIES.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
+            onChange={(f) => onChange({ llm_provider: f, llm_model: "" })}
+            placeholder="Select a provider…"
+          />
 
           <label className="rag-cfg-label">Model</label>
           <input

@@ -11,8 +11,10 @@ Document lifecycle:
   POST   /process-all             → process all EXTRACTED docs
 """
 from fastapi import APIRouter, Depends, Request, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+import os
 
 from app.database import get_db
 from app.schemas.rag import (
@@ -243,3 +245,14 @@ def load_and_parse_all(space_id: str, request: Request, db: Session = Depends(ge
     """Load + Parse ALL documents with status UPLOADING."""
     user = _get_current_user(request, db)
     return rag_service.load_and_parse_all(db, space_id, user.organization_id)
+
+@router.get("/spaces/{space_id}/image")
+def serve_image(space_id: str, path: str, db: Session = Depends(get_db)):
+    """Serve an extracted image. `path` must be under uploads/{space_id}."""
+    safe_root = os.path.abspath(os.path.join("uploads", space_id))
+    full = os.path.abspath(path)
+    if not full.startswith(safe_root):
+        raise HTTPException(403, "Forbidden path")
+    if not os.path.exists(full):
+        raise HTTPException(404, "Image not found")
+    return FileResponse(full)

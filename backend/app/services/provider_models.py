@@ -1,44 +1,48 @@
 """
-Provider model catalog — the models the system knows for each family.
+Provider model catalog — recommended chat models per family (fixed list).
 
-The Admin does NOT type model names. They only add: name + family + key.
-The IT then picks a model from this catalog for the chosen family.
+The admin adds only name + family + key. The IT picks a model from this
+curated list for the chosen family. No live API call — reliable and fast.
 
-Keep this list current as providers release/retire models. These are the
-model IDs sent to the provider's API (must match exactly).
+Models current as of mid-2026. To add/remove a model, edit this file only.
+Only chat/generation models are listed (no embeddings/vision/audio).
 """
 
 PROVIDER_MODELS = {
     "OPENAI": [
-        {"id": "gpt-4o-mini",   "label": "GPT-4o mini"},
-        {"id": "gpt-4o",        "label": "GPT-4o"},
-        {"id": "gpt-4-turbo",   "label": "GPT-4 Turbo"},
-        {"id": "gpt-4.1-mini",  "label": "GPT-4.1 mini"},
+        {"id": "gpt-5.4-mini",  "label": "GPT-5.4 mini (fast, cheap)"},
+        {"id": "gpt-5.4",       "label": "GPT-5.4"},
+        {"id": "gpt-5.4-nano",  "label": "GPT-5.4 nano (cheapest)"},
+        {"id": "gpt-5.5",       "label": "GPT-5.5 (flagship)"},
+        {"id": "gpt-4o-mini",   "label": "GPT-4o mini (legacy)"},
+        {"id": "gpt-4o",        "label": "GPT-4o (legacy)"},
     ],
     "ANTHROPIC": [
-        {"id": "claude-haiku-4-5",   "label": "Claude Haiku 4.5"},
-        {"id": "claude-sonnet-4-5",  "label": "Claude Sonnet 4.5"},
+        {"id": "claude-haiku-4-5",   "label": "Claude Haiku 4.5 (fast, cheap)"},
+        {"id": "claude-sonnet-4-6",  "label": "Claude Sonnet 4.6 (balanced)"},
+        {"id": "claude-opus-4-8",    "label": "Claude Opus 4.8 (flagship)"},
     ],
     "GOOGLE": [
-        {"id": "gemini-2.5-flash",       "label": "Gemini 2.5 Flash"},
-        {"id": "gemini-2.5-flash-lite",  "label": "Gemini 2.5 Flash-Lite"},
-        {"id": "gemini-2.0-flash",       "label": "Gemini 2.0 Flash"},
+        {"id": "gemini-2.5-flash-lite",  "label": "Gemini 2.5 Flash-Lite (cheapest)"},
+        {"id": "gemini-2.5-flash",       "label": "Gemini 2.5 Flash (best value)"},
+        {"id": "gemini-2.5-pro",         "label": "Gemini 2.5 Pro"},
+        {"id": "gemini-3.5-flash",       "label": "Gemini 3.5 Flash"},
+        {"id": "gemini-3.1-flash-lite",  "label": "Gemini 3.1 Flash-Lite"},
+        {"id": "gemini-3.1-pro",         "label": "Gemini 3.1 Pro (flagship)"},
     ],
     "GROQ": [
-        {"id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B"},
-        {"id": "llama-3.1-8b-instant",    "label": "Llama 3.1 8B (fast)"},
+        {"id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B (default)"},
+        {"id": "llama-3.1-8b-instant",    "label": "Llama 3.1 8B (fastest)"},
     ],
     "OLLAMA": [
         {"id": "llama3",  "label": "Llama 3 (local)"},
         {"id": "mistral", "label": "Mistral (local)"},
         {"id": "phi3",    "label": "Phi-3 (local)"},
     ],
-    "VOYAGE": [],   # embeddings only
-    "LOCAL":  [],
     "CUSTOM": [],
 }
 
 
 def models_for_family(family: str) -> list:
-    """Return the known models for a provider family (empty if unknown)."""
+    """Return the recommended models for a provider family (empty if unknown)."""
     return PROVIDER_MODELS.get((family or "").upper(), [])

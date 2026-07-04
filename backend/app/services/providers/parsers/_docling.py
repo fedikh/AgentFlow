@@ -27,10 +27,11 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
     img_counter = 0
 
     # Determine image save directory from file_path
-    file_path = (metadata or {}).get("source", "")
+    file_path = (metadata or {}).get("file_path", "")
     if not file_path:
-        file_path = (metadata or {}).get("file_path", "")
+        file_path = (metadata or {}).get("source", "")
     images_dir = _get_images_dir(file_path)
+
 
     for item, level in doc.iterate_items():
         class_name = type(item).__name__

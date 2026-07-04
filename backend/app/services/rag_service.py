@@ -40,6 +40,11 @@ from app.services.providers.chunking_factory import chunk_document
 # ── LLM Factory (NEW) — replaces the hardcoded Groq generate_answer ──
 from app.services.llm_factory import generate_answer
 
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 # ── Embeddings (UNCHANGED) ──
 _embed_model = None
 
@@ -353,7 +358,7 @@ def load_and_parse_document(db, space_id, doc_id, org_id):
     doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
     if not doc:
         raise HTTPException(404, "Document not found")
-
+ 
     file_path = None
     if doc.loaded_content:
         try:
@@ -361,40 +366,56 @@ def load_and_parse_document(db, space_id, doc_id, org_id):
             file_path = data.get("file_path")
         except Exception:
             pass
-
+ 
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(400, "File not found — re-upload the document")
-
+ 
     try:
         loaded_data = li_load_document(file_path)
-
+ 
         from app.services.providers.cleaners import clean_loaded_data
         loaded_data = clean_loaded_data(loaded_data)
-
+ 
         if not loaded_data or not loaded_data.get("raw_text"):
             raise Exception("No content found in document")
-
+ 
         loaded_data["file_path"] = os.path.abspath(file_path)
-
+ 
         parsed_doc_data = loaded_data.pop("parsed_document", None)
-
+ 
         doc.loaded_content = json.dumps(loaded_data, ensure_ascii=False, default=str)
-
+ 
         if parsed_doc_data:
+            # ── Étape 4 : résumer les images avec Gemini ──
+            # Remplit text_for_embedding sur chaque image du ParsedDocument,
+            # pour qu'il soit visible dans l'aperçu ET indexable ensuite.
+            try:
+                from app.services.providers.parsers.parsed_document import ParsedDocument
+                from app.services.providers.parsers.image_summarizer import summarize_images_in_parsed
+ 
+                pd = ParsedDocument.from_dict(parsed_doc_data)
+                if pd.images:
+                    n = summarize_images_in_parsed(pd)   # appelle Gemini par image
+                    logger.info(f"[LOAD+PARSE] {doc.file_name}: summarized {n}/{len(pd.images)} image(s)")
+                    parsed_doc_data = pd.to_dict()        # re-sérialise AVEC les résumés
+            except Exception as img_err:
+                # Ne bloque jamais le parsing si le résumé échoue
+                logger.warning(f"[LOAD+PARSE] image summary skipped: {img_err}")
+ 
             doc.extracted_content = json.dumps(parsed_doc_data, ensure_ascii=False)
             doc.status = DocStatus.EXTRACTED
         else:
             doc.status = DocStatus.LOADED
-
+ 
         db.commit()
         db.refresh(doc)
-
+ 
     except Exception as e:
         doc.status = DocStatus.ERROR
         doc.error_msg = str(e)[:500]
         db.commit()
         raise HTTPException(500, f"Loading failed: {str(e)}")
-
+ 
     return _doc_dict(doc)
 
 

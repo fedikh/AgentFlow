@@ -1,6 +1,3 @@
-"""
-ParsedDocument — the structured contract between Parser and Chunking Engine.
-"""
 from dataclasses import dataclass, field
 from typing import Optional, Any
 import json
@@ -33,15 +30,21 @@ class Image:
     page: int = 1
     bbox: list[float] = field(default_factory=list)  # [x0, y0, x1, y1]
 
-    @property
-    def text_for_embedding(self) -> str:
-        """Combined text used for chunking/embedding."""
+    # Vision-LLM summary (Gemini). Stored field now, not a read-only property,
+    # so it can be filled at parse time. Falls back to caption+ocr if empty.
+    text_for_embedding: str = ""
+
+    def get_embedding_text(self) -> str:
+        """Text used for embedding: stored summary, else caption + ocr."""
+        if self.text_for_embedding:
+            return self.text_for_embedding
         parts = []
         if self.caption:
             parts.append(self.caption)
         if self.ocr_text:
             parts.append(self.ocr_text)
         return " — ".join(parts) if parts else ""
+
 
 
 @dataclass
@@ -112,27 +115,29 @@ class ParsedDocument:
 
     @classmethod
     def from_dict(cls, d):
-        sections = [Section(**s) for s in d.get("sections", [])]
-        tables = [Table(**t) for t in d.get("tables", [])]
-        images = []
-        for img in d.get("images", []):
-            images.append(Image(
-                caption=img.get("caption", ""),
-                ocr_text=img.get("ocr_text", ""),
-                image_path=img.get("image_path", ""),
-                page=img.get("page", 1),
-                bbox=img.get("bbox", []),
-            ))
-        return cls(
-            title=d.get("title", ""),
-            sections=sections, tables=tables, images=images,
-            metadata=d.get("metadata", {}),
-            num_pages=d.get("num_pages", 1),
-            file_type=d.get("file_type", ""),
-            category=d.get("category", "document"),
-            ocr_quality=d.get("ocr_quality", "good"),
-            ocr_issues=d.get("ocr_issues", []),
-        )
+            sections = [Section(**s) for s in d.get("sections", [])]
+            tables = [Table(**t) for t in d.get("tables", [])]
+            images = []
+            for img in d.get("images", []):
+                images.append(Image(
+                    caption=img.get("caption", ""),
+                    ocr_text=img.get("ocr_text", ""),
+                    image_path=img.get("image_path", ""),
+                    page=img.get("page", 1),
+                    bbox=img.get("bbox", []),
+                    text_for_embedding=img.get("text_for_embedding", "")
+                ))
+            return cls(
+                title=d.get("title", ""),
+                sections=sections, tables=tables, images=images,
+                metadata=d.get("metadata", {}),
+                num_pages=d.get("num_pages", 1),
+                file_type=d.get("file_type", ""),
+                category=d.get("category", "document"),
+                ocr_quality=d.get("ocr_quality", "good"),
+                ocr_issues=d.get("ocr_issues", []),
+
+            )
 
     def to_content_blocks(self):
         """Convert to [{type, content, page}] for the chunking engine."""

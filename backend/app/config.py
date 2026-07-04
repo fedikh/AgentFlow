@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Encryption key for stored API keys (Fernet). Generate once with:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     FERNET_KEY: str = ""
+    VISION_API_KEY: str = ""
 
     # RAG defaults
     CHUNK_SIZE: int = 512

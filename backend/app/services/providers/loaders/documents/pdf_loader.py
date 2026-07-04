@@ -4,6 +4,10 @@ PDF Loader — Docling reads once, gives both raw text AND ParsedDocument.
 Output:
   raw_text         → for "Loaded Text" tab
   parsed_document  → for "Parsed Blocks" tab (already structured)
+
+Images: generate_picture_images = True so PictureItems carry a PIL image
+that _docling._save_image() can write to disk. OCR stays off (do_ocr=False)
+because the vision LLM (Gemini) reads any text inside images at summary time.
 """
 import os
 import gc
@@ -25,16 +29,16 @@ def _get_converter():
         from docling.datamodel.pipeline_options import PdfPipelineOptions
 
         opts = PdfPipelineOptions()
-        opts.generate_picture_images = False
-        opts.do_ocr = False
-
+        opts.generate_picture_images = True   # ← extract images to disk
+        opts.images_scale = 2.0               # ← higher-res crops for the vision LLM
+        opts.do_ocr = False                   # vision LLM reads in-image text instead
 
         _converter = DocumentConverter(
             format_options={
                 InputFormat.PDF: PdfFormatOption(pipeline_options=opts)
             }
         )
-        logger.info("[PDF_LOADER] Docling converter created (reusable)")
+        logger.info("[PDF_LOADER] Docling converter created (images ON)")
     return _converter
 
 
@@ -69,8 +73,13 @@ def _load_single(converter, file_path, num_pages):
     from app.services.providers.loaders._utils import clean_text
     raw_text = clean_text(raw_text)
 
-    # ParsedDocument from Docling's structure
-    metadata = {"source": os.path.basename(file_path), "parser": "docling"}
+    # ParsedDocument from Docling's structure.
+    # NOTE: pass the real file_path so _docling saves images next to it.
+    metadata = {
+        "source": os.path.basename(file_path),
+        "file_path": os.path.abspath(file_path),
+        "parser": "docling",
+    }
     parsed_doc = docling_to_parsed_document(
         result=result,
         file_type="PDF",
@@ -126,8 +135,12 @@ def _load_batched(converter, file_path, num_pages):
             if batch_text.strip():
                 all_raw_parts.append(batch_text.strip())
 
-            # Structure for this batch
-            metadata = {"source": os.path.basename(file_path)}
+            # Structure for this batch — pass real file_path so images save
+            # under the ORIGINAL file's folder, not the temp batch file.
+            metadata = {
+                "source": os.path.basename(file_path),
+                "file_path": os.path.abspath(file_path),
+            }
             batch_doc = docling_to_parsed_document(
                 result=result, file_type="PDF", category="document", metadata=metadata,
             )
@@ -167,6 +180,7 @@ def _load_batched(converter, file_path, num_pages):
 
     metadata = {
         "source": os.path.basename(file_path),
+        "file_path": os.path.abspath(file_path),
         "parser": "docling_batched",
         "batch_size": BATCH_SIZE,
     }
@@ -186,7 +200,8 @@ def _load_batched(converter, file_path, num_pages):
         ocr_issues=[f"Pages {failed_pages} failed"] if failed_pages else [],
     )
 
-    logger.info(f"[PDF_LOADER] Done: {parsed_doc.total_sections} sections, {parsed_doc.total_tables} tables")
+    logger.info(f"[PDF_LOADER] Done: {parsed_doc.total_sections} sections, "
+                f"{parsed_doc.total_tables} tables, {parsed_doc.total_images} images")
 
     return {
         "raw_text": raw_text,
