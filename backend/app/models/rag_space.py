@@ -80,6 +80,13 @@ class RAGSpace(Base):
     embedding_provider = Column(String, default="LOCAL")
     embedding_model    = Column(String, default="BAAI/bge-m3")
 
+    # ── Embedding source (Batch 6) — mirrors the LLM source ──
+    # Option A: company provider (api_providers.id, EMBEDDING kind)
+    embedding_provider_id = Column(String, ForeignKey("api_providers.id"), nullable=True)
+    # Option B: IT's own key for this space (encrypted at rest)
+    embedding_api_key_enc = Column(Text, nullable=True)
+    embedding_base_url    = Column(String, nullable=True)
+
     # ── LLM config ──                                                              # NEW
     llm_provider    = Column(String, default="GROQ")
     llm_model       = Column(String, default="llama-3.3-70b-versatile")

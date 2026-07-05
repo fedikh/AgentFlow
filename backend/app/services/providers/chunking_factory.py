@@ -201,6 +201,9 @@ def _chunk_fixed(content_blocks: list[dict], chunk_size: int, chunk_overlap: int
                 "strategy": "FIXED",
             })
             idx += 1
+        elif block["type"] == "image":
+            chunks.append(_image_chunk(block, idx, "FIXED"))
+            idx += 1
         elif block["type"] == "text":
             text_content = block["content"]
             current_title = _detect_section_title(text_content)
@@ -272,6 +275,9 @@ def _chunk_semantic(content_blocks: list[dict], max_chunk_size: int) -> list[dic
                 "type": "table",
                 "strategy": "SEMANTIC",
             })
+            idx += 1
+        elif block["type"] == "image":
+            chunks.append(_image_chunk(block, idx, "SEMANTIC"))
             idx += 1
         elif block["type"] == "text":
             text_content = block["content"]
@@ -384,6 +390,9 @@ def _chunk_hierarchical(content_blocks: list[dict], chunk_size: int, chunk_overl
                 "parent_id": None,
             })
             idx += 1
+        elif block["type"] == "image":
+            chunks.append(_image_chunk(block, idx, "HIERARCHICAL"))
+            idx += 1
         elif block["type"] == "text":
             text_content = block["content"]
 
@@ -445,3 +454,19 @@ def _detect_section_title(text: str) -> str:
         if stripped and len(stripped) < 80 and (stripped.isupper() or stripped.endswith(":")):
             return stripped
     return ""
+
+
+def _image_chunk(block: dict, idx: int, strategy: str) -> dict:
+    """
+    Batch 5: an image block becomes its own chunk (never split). The Gemini
+    summary is the embeddable content; image_path is carried so the chat can
+    render the image inline.
+    """
+    return {
+        "content": block["content"],
+        "page": block.get("page", 1),
+        "chunk_index": idx,
+        "type": "image_summary",
+        "image_path": block.get("image_path", ""),
+        "strategy": strategy,
+    }

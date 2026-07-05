@@ -24,9 +24,17 @@ class ProviderFamily(str, enum.Enum):
     ANTHROPIC = "ANTHROPIC"
     GOOGLE    = "GOOGLE"
     GROQ      = "GROQ"
+    VOYAGE    = "VOYAGE"      # embedding-only provider
     OLLAMA    = "OLLAMA"
     LOCAL     = "LOCAL"
     CUSTOM    = "CUSTOM"
+
+
+# Batch 7: which provider families are valid for each provider kind.
+FAMILIES_BY_KIND = {
+    "LLM":       {"OPENAI", "ANTHROPIC", "GOOGLE", "GROQ", "CUSTOM"},
+    "EMBEDDING": {"OPENAI", "VOYAGE"},
+}
 
 
 class ApiProvider(Base):

@@ -8,7 +8,7 @@ Deleting a provider used by spaces is blocked (Option C safety).
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
-from app.models.api_provider import ApiProvider, ProviderKind, ProviderFamily
+from app.models.api_provider import ApiProvider, ProviderKind, ProviderFamily, FAMILIES_BY_KIND
 from app.models.user import User, RoleType
 from app.services.providers_crypto import encrypt_key, decrypt_key, mask_key
 from app.services.provider_models import models_for_family
@@ -23,16 +23,17 @@ def _provider_dict(p: ApiProvider) -> dict:
         except Exception:
             masked = "•••"
     fam = p.family.value if hasattr(p.family, "value") else str(p.family)
+    kind = p.kind.value if hasattr(p.kind, "value") else str(p.kind)
     return {
         "id": p.id,
         "organization_id": p.organization_id,
         "name": p.name,
-        "kind": p.kind.value if hasattr(p.kind, "value") else str(p.kind),
+        "kind": kind,
         "family": fam,
         "base_url": p.base_url,
         "api_key_masked": masked,
         "has_key": has_key,
-        "models": models_for_family(fam),
+        "models": models_for_family(fam, kind),
         "created_at": str(p.created_at),
     }
 
@@ -49,6 +50,14 @@ def _validate_enums(kind: str, family: str):
         raise HTTPException(400, f"Invalid kind. Use one of: {', '.join(valid_kind)}")
     if family not in valid_family:
         raise HTTPException(400, f"Invalid family. Use one of: {', '.join(valid_family)}")
+    # Batch 7: the family must be valid for the chosen kind
+    allowed = FAMILIES_BY_KIND.get(kind, set())
+    if family not in allowed:
+        raise HTTPException(
+            400,
+            f"Family '{family}' is not valid for a {kind} provider. "
+            f"Allowed for {kind}: {', '.join(sorted(allowed))}",
+        )
 
 
 def list_providers(db: Session, org_id: str) -> list[dict]:
@@ -136,4 +145,5 @@ def get_provider_models(db: Session, org_id: str, provider_id: str) -> dict:
     if not p:
         raise HTTPException(404, "Provider not found")
     fam = p.family.value if hasattr(p.family, "value") else str(p.family)
-    return {"provider_id": p.id, "family": fam, "models": models_for_family(fam)}
+    kind = p.kind.value if hasattr(p.kind, "value") else str(p.kind)
+    return {"provider_id": p.id, "family": fam, "models": models_for_family(fam, kind)}

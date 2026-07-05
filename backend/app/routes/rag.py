@@ -87,6 +87,17 @@ def delete_space(space_id: str, request: Request, db: Session = Depends(get_db))
 
 
 # ══════════════════════════════════════════
+# ACCESS CONTROL (Batch 1) — department user pool
+# ══════════════════════════════════════════
+
+@router.get("/departments/{dept_id}/users")
+def list_department_users(dept_id: str, request: Request, db: Session = Depends(get_db)):
+    """List the USER-role members of a department (pool for 'who can use this space')."""
+    user = _get_current_user(request, db)
+    return rag_service.list_department_users(db, dept_id, user.organization_id)
+
+
+# ══════════════════════════════════════════
 # DOCUMENTS — Upload / List / Delete
 # ══════════════════════════════════════════
 
@@ -230,7 +241,8 @@ def get_chunks(space_id: str, doc_id: str, request: Request, db: Session = Depen
 @router.post("/spaces/{space_id}/query")
 def query_space(space_id: str, data: QueryRequest, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
-    return rag_service.query(db, space_id, user.organization_id, data)
+    # Batch 1: pass the user so per-user access control is enforced
+    return rag_service.query(db, space_id, user.organization_id, data, user)
 
 
 @router.post("/spaces/{space_id}/documents/{doc_id}/load-parse")

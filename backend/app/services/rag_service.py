@@ -20,8 +20,11 @@ from sqlalchemy import text
 from fastapi import HTTPException, UploadFile
 
 from app.models.rag_space import RAGSpace
+from app.models.rag_space_access import RAGSpaceAccess
 from app.models.document import Document, DocStatus
 from app.models.chunk import Chunk
+from app.models.user import User, RoleType
+from app.models.department import Department
 from app.schemas.rag import CreateRAGSpaceRequest, UpdateRAGSpaceRequest, QueryRequest
 from app.config import settings
 
@@ -45,39 +48,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ── Embeddings (UNCHANGED) ──
-_embed_model = None
-
-def _get_embed_model():
-    global _embed_model
-    if _embed_model is None:
-        os.environ["TRANSFORMERS_NO_TF"] = "1"
-        os.environ["USE_TF"] = "0"
-        from sentence_transformers import SentenceTransformer
-        try:
-            print("Loading BGE-M3 model...")
-            _embed_model = SentenceTransformer("BAAI/bge-m3")
-            print("✅ BGE-M3 loaded (1024 dims)")
-        except Exception as e1:
-            print(f"⚠️ BGE-M3 failed: {e1}")
-            try:
-                _embed_model = SentenceTransformer("BAAI/bge-base-en-v1.5")
-                print("✅ BGE-base loaded (768 dims)")
-            except Exception:
-                _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-                print("✅ all-MiniLM loaded (384 dims)")
-    return _embed_model
+# ── Embeddings (Batch 6: now resolved per-space via the embedding factory) ──
+# The factory picks the space's embedding source (own key → company provider →
+# local BGE-M3) and guards the 1024-dim pgvector column. Index-time and
+# query-time both go through it with the same space config, so they stay
+# consistent. Default behaviour is unchanged (local BGE-M3).
+from app.services.embedding_factory import (
+    embed_texts as _ef_embed_texts,
+    embed_query as _ef_embed_query,
+)
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    model = _get_embed_model()
-    embeddings = model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
-    return [e.tolist() for e in embeddings]
+def embed_texts(db, space, texts: list[str]) -> list[list[float]]:
+    return _ef_embed_texts(db, space, texts)
 
-def embed_query(text: str) -> list[float]:
-    model = _get_embed_model()
-    embedding = model.encode("Represent this sentence: " + text, show_progress_bar=False, normalize_embeddings=True)
-    return embedding.tolist()
+
+def embed_query(db, space, text: str) -> list[float]:
+    return _ef_embed_query(db, space, text)
 
 
 # ══════════════════════════════════════════════════════
@@ -89,6 +76,93 @@ def _find_space(db: Session, space_id: str, org_id: str) -> RAGSpace:
     if not space:
         raise HTTPException(404, "RAG Space not found")
     return space
+
+
+# ══════════════════════════════════════════════════════
+# ACCESS CONTROL (Batch 1) — per-user access within a department
+# ══════════════════════════════════════════════════════
+
+def _get_access_user_ids(db: Session, space_id: str) -> list[str]:
+    """All user_ids explicitly allowed on this space. Empty list = no restriction."""
+    rows = db.query(RAGSpaceAccess).filter(RAGSpaceAccess.rag_space_id == space_id).all()
+    return [r.user_id for r in rows]
+
+
+def _set_space_access(db: Session, space: RAGSpace, org_id: str, user_ids):
+    """
+    Replace the access list for a space.
+      user_ids None  → do nothing (caller decides)
+      user_ids []    → clear all restrictions (every department user can query)
+      user_ids [..]  → restrict to exactly these users
+    Only users that belong to the space's department are kept (safety).
+    """
+    if user_ids is None:
+        return
+
+    # wipe current rows
+    db.query(RAGSpaceAccess).filter(RAGSpaceAccess.rag_space_id == space.id).delete()
+
+    unique_ids = list(dict.fromkeys(user_ids))  # de-dupe, keep order
+    if not unique_ids:
+        return  # cleared → unrestricted
+
+    # keep only valid users of this org that are members of the space's department
+    for uid in unique_ids:
+        user = db.query(User).filter(User.id == uid, User.organization_id == org_id).first()
+        if not user:
+            continue
+        if space.department_id and not any(d.id == space.department_id for d in user.departments):
+            continue
+        db.add(RAGSpaceAccess(rag_space_id=space.id, user_id=uid))
+
+
+def list_department_users(db: Session, dept_id: str, org_id: str) -> list[dict]:
+    """
+    List the USER-role members of a department (the pool the IT picks from
+    for 'who can use this space'). Scoped to the caller's organization.
+    """
+    dept = db.query(Department).filter(
+        Department.id == dept_id, Department.organization_id == org_id
+    ).first()
+    if not dept:
+        raise HTTPException(404, "Department not found")
+
+    users = (
+        db.query(User)
+        .filter(User.organization_id == org_id, User.role == RoleType.USER)
+        .all()
+    )
+    members = [u for u in users if any(d.id == dept_id for d in u.departments)]
+    return [
+        {
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "role": u.role.value if hasattr(u.role, "value") else str(u.role),
+            "status": u.status.value if hasattr(u.status, "value") else str(u.status),
+        }
+        for u in members
+    ]
+
+
+def check_space_access(db: Session, space: RAGSpace, user: User):
+    """
+    Enforce query-time access. Raises 403 if the user may not query this space.
+      - ADMIN / IT → always allowed (they build & test spaces)
+      - USER       → must be a member of the space's department AND
+                     (no restriction set OR listed in rag_space_access)
+    Org scoping is already handled by _find_space.
+    """
+    if user.role in (RoleType.ADMIN, RoleType.IT):
+        return
+
+    # USER must belong to the space's department
+    if space.department_id and not any(d.id == space.department_id for d in user.departments):
+        raise HTTPException(403, "You are not a member of this space's department")
+
+    allowed = _get_access_user_ids(db, space.id)
+    if allowed and user.id not in allowed:
+        raise HTTPException(403, "You are not allowed to use this space")
 
 
 def _space_dict(db, space):
@@ -104,6 +178,10 @@ def _space_dict(db, space):
         "chunk_mode": getattr(space, 'chunk_mode', 'FIXED_ALL') or 'FIXED_ALL',
         "embedding_provider": getattr(space, 'embedding_provider', 'LOCAL') or 'LOCAL',
         "embedding_model": getattr(space, 'embedding_model', 'BAAI/bge-m3') or 'BAAI/bge-m3',
+        # NEW (Batch 6): embedding source for the IT selector (mirrors LLM)
+        "embedding_provider_id": getattr(space, 'embedding_provider_id', None),
+        "embedding_has_own_key": bool(getattr(space, 'embedding_api_key_enc', None)),
+        "embedding_base_url": getattr(space, 'embedding_base_url', None),
         "llm_provider": getattr(space, 'llm_provider', 'GROQ') or 'GROQ',
         "llm_model": getattr(space, 'llm_model', 'llama-3.3-70b-versatile') or 'llama-3.3-70b-versatile',
         "llm_temperature": getattr(space, 'llm_temperature', 0.2) if getattr(space, 'llm_temperature', None) is not None else 0.2,
@@ -116,6 +194,8 @@ def _space_dict(db, space):
         "semantic_weight": getattr(space, 'semantic_weight', 0.7) if getattr(space, 'semantic_weight', None) is not None else 0.7,
         "reranking_enabled": getattr(space, 'reranking_enabled', False) or False,
         "system_prompt": getattr(space, 'system_prompt', None),
+        # NEW (Batch 1): per-user access control
+        "allowed_user_ids": _get_access_user_ids(db, space.id),
         "num_documents": num_docs, "num_chunks": num_chunks,
         "created_at": str(space.created_at),
     }
@@ -149,6 +229,11 @@ def create_space(db: Session, data: CreateRAGSpaceRequest, org_id: str, user) ->
         chunk_mode=getattr(data, 'chunk_mode', None) or "FIXED_ALL",
     )
     db.add(space)
+    db.flush()  # need space.id before adding access rows
+
+    # ── Access control (Batch 1) — optional at creation ──
+    _set_space_access(db, space, org_id, getattr(data, "allowed_user_ids", None))
+
     db.commit()
     db.refresh(space)
     return _space_dict(db, space)
@@ -164,7 +249,7 @@ def get_space(db: Session, space_id: str, org_id: str) -> dict:
 def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRequest) -> dict:
     space = _find_space(db, space_id, org_id)
     payload = data.dict(exclude_unset=True)
- 
+
     # Chiffre la clé propre de l'IT si fournie (jamais stockée en clair)
     if "llm_api_key" in payload:
         raw = payload.pop("llm_api_key")
@@ -173,11 +258,25 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
             space.llm_api_key_enc = encrypt_key(raw)
         else:
             space.llm_api_key_enc = None   # clé vidée
- 
+
+    # Batch 6: same for the embedding own key
+    if "embedding_api_key" in payload:
+        raw = payload.pop("embedding_api_key")
+        if raw:
+            from app.services.providers_crypto import encrypt_key
+            space.embedding_api_key_enc = encrypt_key(raw)
+        else:
+            space.embedding_api_key_enc = None
+
+    # ── Access control (Batch 1) — sync the allowed-user list ──
+    # Pop it out so the generic setattr loop below never sees it (not a column).
+    if "allowed_user_ids" in payload:
+        _set_space_access(db, space, org_id, payload.pop("allowed_user_ids"))
+
     for field, value in payload.items():
         if value is not None:
             setattr(space, field, value)
- 
+
     db.commit()
     db.refresh(space)
     return _space_dict(db, space)
@@ -272,7 +371,9 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
     with open(file_path, "wb") as f:
         f.write(content)
 
-    if ext in (".pdf", ".docx"):
+    # Batch 2: .pptx is deferred too (like .pdf/.docx) so image extraction +
+    # Gemini summarization run in the shared load-parse step, not at upload.
+    if ext in (".pdf", ".docx", ".pptx"):
         doc.loaded_content = json.dumps({"file_path": os.path.abspath(file_path)}, ensure_ascii=False)
         db.commit()
         db.refresh(doc)
@@ -663,7 +764,7 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
             raise Exception("No chunks generated")
 
         chunk_texts = [c["content"] for c in chunks]
-        embeddings = embed_texts(chunk_texts)
+        embeddings = embed_texts(db, space, chunk_texts)
 
         for i, chunk_data in enumerate(chunks):
             db_chunk = Chunk(
@@ -671,6 +772,9 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
                 embedding=embeddings[i],
                 page=chunk_data["page"],
                 chunk_index=chunk_data["chunk_index"],
+                # Batch 5: persist type + image path so the chat can render images
+                chunk_type=chunk_data.get("type", "text"),
+                image_path=chunk_data.get("image_path") or None,
                 document_id=doc.id,
                 rag_space_id=space_id,
             )
@@ -714,16 +818,34 @@ def process_all_documents(db: Session, space_id: str, org_id: str) -> dict:
 
 def pgvector_search(db, space_id, query_embedding, top_k):
     embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+    # Batch 5: also return chunk_type + image_path so the chat can render images.
     sql = text("""
-        SELECT id, content, page, document_id, chunk_index,
+        SELECT id, content, page, document_id, chunk_index, chunk_type, image_path,
             1 - (embedding <=> :query_vec) AS similarity_score
         FROM chunks WHERE rag_space_id = :space_id AND embedding IS NOT NULL
         ORDER BY embedding <=> :query_vec LIMIT :top_k
     """)
     result = db.execute(sql, {"query_vec": embedding_str, "space_id": space_id, "top_k": top_k})
-    return [{"content": r.content, "page": r.page, "document_id": r.document_id,
-             "score": round(float(r.similarity_score), 4),
-             "type": "table" if r.content.startswith("[TABLE]") else "text"} for r in result.fetchall()]
+    rows = []
+    for r in result.fetchall():
+        chunk_type = getattr(r, "chunk_type", None) or "text"
+        # keep the legacy "type" (used by table keyword-boosting in hybrid_search)
+        if chunk_type == "image_summary":
+            legacy_type = "image"
+        elif r.content.startswith("[TABLE]"):
+            legacy_type = "table"
+        else:
+            legacy_type = "text"
+        rows.append({
+            "content": r.content,
+            "page": r.page,
+            "document_id": r.document_id,
+            "score": round(float(r.similarity_score), 4),
+            "type": legacy_type,
+            "chunk_type": chunk_type,
+            "image_path": getattr(r, "image_path", None),
+        })
+    return rows
 
 
 def keyword_score(query, content):
@@ -756,11 +878,19 @@ def hybrid_search(db, space_id, query_text, query_embedding, top_k):
 # QUERY — now uses the LLM Factory (provider resolved per space)
 # ══════════════════════════════════════════════════════
 
-def query(db: Session, space_id: str, org_id: str, data: QueryRequest) -> dict:
-    """Query the RAG space — hybrid search + configurable LLM (via factory)."""
+def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: User = None) -> dict:
+    """Query the RAG space — hybrid search + configurable LLM (via factory).
+
+    Batch 1: enforces per-user access control. ADMIN/IT bypass; a USER must be a
+    department member and either unrestricted or in the space's allowed list.
+    """
     space = _find_space(db, space_id, org_id)
 
-    query_embedding = embed_query(data.question)
+    # ── Access control (Batch 1) ──
+    if user is not None:
+        check_space_access(db, space, user)
+
+    query_embedding = embed_query(db, space, data.question)
 
     top_k = getattr(space, 'top_k', 5) or 5
     results = hybrid_search(db, space_id, data.question, query_embedding, top_k)
@@ -788,10 +918,22 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest) -> dict:
     # ── LLM Factory: resolves provider/model/key/prompt from the space ──
     answer = generate_answer(db, space, data.question, context, sources_text)
 
-    sources = [
-        {"content": r["content"][:200], "document": doc_cache.get(r["document_id"], "Unknown"),
-         "page": r["page"], "score": r["score"]}
-        for r in results
-    ]
+    from urllib.parse import quote
+
+    sources = []
+    for r in results:
+        src = {
+            "content": r["content"][:200],
+            "document": doc_cache.get(r["document_id"], "Unknown"),
+            "page": r["page"],
+            "score": r["score"],
+        }
+        # Batch 5: if the retrieved chunk is an image, expose it so the chat can
+        # render it inline. image_url is relative to the API base; the frontend
+        # prepends VITE_API_URL (same pattern as the parsed-document preview).
+        if r.get("chunk_type") == "image_summary" and r.get("image_path"):
+            src["type"] = "image"
+            src["image_url"] = f"/rag/spaces/{space_id}/image?path={quote(r['image_path'])}"
+        sources.append(src)
 
     return {"answer": answer, "sources": sources}

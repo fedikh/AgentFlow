@@ -1,145 +1,169 @@
 """
-PPTX Loader — python-pptx with deep text extraction.
-Extracts text from ALL shapes including grouped shapes.
+PPTX Loader — Docling for text/structure + python-pptx for images (Batch 2).
+
+  * Docling converts the deck to raw text + a ParsedDocument. _docling splits
+    one section per slide (page change) so the output is structured, not one
+    blob.
+  * python-pptx extracts the embedded slide pictures (Docling's default PPTX
+    backend doesn't surface them), saving them under uploads/{space_id}/images
+    via _docling._get_images_dir so the shared image route can serve them.
+  * The real file_path is passed in metadata so image paths land in the served
+    folder.
+
+Downstream is unchanged: the shared load-parse step summarizes each image with
+Gemini (text_for_embedding) and the DocModal + image route display them — no
+PPTX-specific code needed beyond this loader.
 """
 import os
 import logging
-from pptx import Presentation
-from pptx.util import Inches
-from app.services.providers.parsers.parsed_document import ParsedDocument, Section, Table
 
 logger = logging.getLogger(__name__)
 
+_converter = None
+
+
+def _get_converter():
+    """
+    Create or reuse a Docling converter.
+
+    We intentionally use the DEFAULT converter here. Docling's default PPTX
+    pipeline already carries the option object its convert step expects (it
+    reads attributes like do_picture_classification), and the MS PowerPoint
+    backend extracts embedded images into the document model. Injecting a bare
+    custom PipelineOptions breaks convert() with:
+        'PipelineOptions' object has no attribute 'do_picture_classification'
+    The real image fix is passing the correct file_path in metadata (see load()),
+    so _docling saves the extracted images under uploads/{space_id}/images.
+    """
+    global _converter
+    if _converter is None:
+        from docling.document_converter import DocumentConverter
+        _converter = DocumentConverter()
+        logger.info("[PPTX_LOADER] Docling converter created (default pipeline)")
+    return _converter
+
 
 def load(file_path: str) -> dict:
-    logger.info(f"[PPTX_LOADER] Loading: {os.path.basename(file_path)}")
+    logger.info(f"[PPTX_LOADER] Loading with Docling: {os.path.basename(file_path)}")
 
-    prs = Presentation(file_path)
-    sections = []
-    tables = []
-    raw_parts = []
+    from app.services.providers.parsers._docling import docling_to_parsed_document
 
-    for i, slide in enumerate(prs.slides, 1):
-        slide_title = ""
-        slide_body = []
-        slide_raw = [f"[Slide {i}]"]
+    converter = _get_converter()
+    result = converter.convert(file_path)
 
-        # Extract ALL text from ALL shapes (including groups)
-        for shape in slide.shapes:
-            _extract_shape(shape, slide_title, slide_body, slide_raw, tables, i)
+    # Raw text from markdown export
+    raw_text = result.document.export_to_markdown()
 
-        # Detect title: first text that looks like a title
-        # (short, often the first text on the slide)
-        if not slide_title:
-            # Try shapes.title first
-            if slide.shapes.title and slide.shapes.title.text.strip():
-                slide_title = slide.shapes.title.text.strip()
-
-        # If still no title, use first short line as title
-        if not slide_title and slide_body:
-            first = slide_body[0]
-            if len(first) < 100:
-                slide_title = first
-                slide_body = slide_body[1:]
-
-        if slide_title:
-            slide_raw.insert(1, slide_title)
-
-        raw_parts.extend(slide_raw)
-
-        # Speaker notes
-        notes = ""
-        try:
-            if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
-                notes = slide.notes_slide.notes_text_frame.text.strip()
-                if notes:
-                    slide_body.append(f"[Notes: {notes}]")
-                    raw_parts.append(f"[Notes: {notes}]")
-        except Exception:
-            pass
-
-        # Create section
-        content = "\n".join(slide_body).strip()
-        if content or slide_title:
-            sections.append(Section(
-                heading=slide_title or f"Slide {i}",
-                content=content if content else "(empty slide)",
-                level=1,
-                page=i,
-            ))
-
-    # Raw text
-    raw_text = "\n\n".join(raw_parts)
     from app.services.providers.loaders._utils import clean_text
     raw_text = clean_text(raw_text)
 
-    if not raw_text.strip():
-        raise ValueError("PPTX contains no readable text")
-
-    num_slides = len(prs.slides)
-
-    parsed_doc = ParsedDocument(
-        title=sections[0].heading if sections else "",
-        sections=sections,
-        tables=tables,
-        metadata={"source": os.path.basename(file_path), "parser": "python-pptx", "num_slides": num_slides},
-        num_pages=num_slides,
+    # ParsedDocument from structure.
+    # NOTE: pass the real file_path so _docling saves images next to it
+    # (uploads/{space_id}/images), which the image route can then serve.
+    metadata = {
+        "source": os.path.basename(file_path),
+        "file_path": os.path.abspath(file_path),
+        "parser": "docling",
+    }
+    parsed_doc = docling_to_parsed_document(
+        result=result,
         file_type="PPTX",
         category="document",
+        metadata=metadata,
     )
 
-    logger.info(f"[PPTX_LOADER] {num_slides} slides → {len(sections)} sections, {len(tables)} tables")
+    # Docling's default PPTX backend doesn't surface slide pictures, so we
+    # extract embedded images directly with python-pptx (reliable) and append
+    # them. The shared load-parse step then summarizes each with Gemini.
+    try:
+        extra_images = _extract_pptx_images(file_path)
+        if extra_images:
+            parsed_doc.images.extend(extra_images)
+            logger.info(f"[PPTX_LOADER] python-pptx extracted {len(extra_images)} image(s)")
+    except Exception as e:
+        logger.warning(f"[PPTX_LOADER] image extraction skipped: {e}")
+
+    if not raw_text.strip() and not parsed_doc.sections:
+        raise ValueError("PPTX contains no readable text")
+
+    num_slides = parsed_doc.num_pages or 1
+
+    logger.info(f"[PPTX_LOADER] {num_slides} slide(s) → "
+                f"{parsed_doc.total_sections} sections, "
+                f"{parsed_doc.total_tables} tables, "
+                f"{parsed_doc.total_images} images")
 
     return {
         "raw_text": raw_text,
         "num_pages": num_slides,
         "file_type": "PPTX",
         "category": "document",
-        "metadata": {"source": os.path.basename(file_path), "parser": "python-pptx", "num_slides": num_slides},
+        "metadata": metadata,
         "total_chars": len(raw_text),
         "parsed_document": parsed_doc.to_dict(),
     }
 
 
-def _extract_shape(shape, title, body, raw, tables, slide_num):
-    """Recursively extract text from any shape (including groups)."""
+def _extract_pptx_images(file_path: str) -> list:
+    """
+    Extract embedded slide images with python-pptx and save them under
+    uploads/{space_id}/images (same folder _docling uses), so the shared image
+    route can serve them. Returns a list of ParsedDocument Image objects with
+    empty text_for_embedding — Gemini fills that in the load-parse step.
+    """
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    from app.services.providers.parsers.parsed_document import Image
+    from app.services.providers.parsers._docling import _get_images_dir
 
-    # Grouped shapes — recurse into each
-    if shape.shape_type == 6:  # MSO_SHAPE_TYPE.GROUP
-        for child in shape.shapes:
-            _extract_shape(child, title, body, raw, tables, slide_num)
-        return
+    images_dir = _get_images_dir(os.path.abspath(file_path))
+    if not images_dir:
+        return []
+    os.makedirs(images_dir, exist_ok=True)
 
-    # Tables
-    if shape.has_table:
-        table = shape.table
-        headers = [cell.text.strip() for cell in table.rows[0].cells]
-        rows_data = []
-        md = ["| " + " | ".join(headers) + " |"]
-        md.append("| " + " | ".join("---" for _ in headers) + " |")
+    out = []
+    counter = {"n": 0}
 
-        for row in list(table.rows)[1:]:
-            cells = [cell.text.strip() for cell in row.cells]
-            rows_data.append(cells)
-            md.append("| " + " | ".join(cells) + " |")
+    def _walk(shape, page):
+        # Recurse into grouped shapes
+        try:
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                for child in shape.shapes:
+                    _walk(child, page)
+                return
+        except Exception:
+            pass
 
-        table_md = "\n".join(md)
-        raw.append(table_md)
+        # Any shape that carries an embedded image exposes .image
+        try:
+            pic = shape.image
+        except Exception:
+            pic = None
+        if pic is None:
+            return
 
-        tables.append(Table(
-            content=table_md,
-            headers=headers,
-            rows=rows_data,
-            num_rows=len(rows_data),
-            num_cols=len(headers),
-            page=slide_num,
-        ))
-        return
+        try:
+            counter["n"] += 1
+            ext = (getattr(pic, "ext", "") or "png").lstrip(".").lower()
+            if ext == "jpg":
+                ext = "jpeg"
+            filename = f"page{page}_img{counter['n']}.{ext}"
+            save_path = os.path.join(images_dir, filename)
+            with open(save_path, "wb") as f:
+                f.write(pic.blob)
+            out.append(Image(
+                caption="Image",
+                ocr_text="",
+                image_path=save_path,
+                page=page,
+                bbox=[],
+            ))
+        except Exception as e:
+            logger.warning(f"[PPTX_LOADER] could not save one image: {e}")
 
-    # Text frames
-    if shape.has_text_frame:
-        for para in shape.text_frame.paragraphs:
-            text = para.text.strip()
-            if text:
-                body.append(text)
-                raw.append(text)
+    prs = Presentation(file_path)
+    for i, slide in enumerate(prs.slides, 1):
+        for shape in slide.shapes:
+            _walk(shape, i)
+
+    return out

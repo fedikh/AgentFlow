@@ -80,6 +80,11 @@ class CreateRAGSpaceRequest(BaseModel):
     # ── Prompt ──
     system_prompt:  Optional[str] = None                            # null = prompt par défaut
 
+    # ── Access control (Batch 1) ──
+    # None or empty  → all users of the department can query the space (default)
+    # non-empty list → only these users can query it
+    allowed_user_ids: Optional[list[str]] = None
+
 
 # ══════════════════════════════════════════════════════
 # UPDATE RAG SPACE
@@ -99,6 +104,11 @@ class UpdateRAGSpaceRequest(BaseModel):
     embedding_provider: Optional[str] = None
     embedding_model:    Optional[str] = None
 
+    # ── Embedding source (Batch 6) ──
+    embedding_provider_id: Optional[str] = None   # company provider (api_providers.id)
+    embedding_api_key:     Optional[str] = None   # IT's own key, plaintext in — encrypted at rest
+    embedding_base_url:    Optional[str] = None
+
     llm_provider:       Optional[str] = None
     llm_model:          Optional[str] = None
     llm_temperature:    Optional[float] = None
@@ -116,6 +126,13 @@ class UpdateRAGSpaceRequest(BaseModel):
 
     system_prompt:      Optional[str] = None
 
+    # ── Access control (Batch 1) ──
+    # Sync semantics on update:
+    #   None        → leave the current access list untouched
+    #   []          → clear all restrictions (every department user can query)
+    #   [ids...]    → restrict to exactly these users
+    allowed_user_ids:   Optional[list[str]] = None
+
 
 # ══════════════════════════════════════════════════════
 # QUERY
@@ -123,6 +140,18 @@ class UpdateRAGSpaceRequest(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str
+
+
+# ══════════════════════════════════════════════════════
+# DEPARTMENT USERS (for the "who can use this space" picker)
+# ══════════════════════════════════════════════════════
+
+class DepartmentUser(BaseModel):
+    id:     str
+    name:   Optional[str] = None
+    email:  str
+    role:   str
+    status: str
 
 
 class SourceChunk(BaseModel):

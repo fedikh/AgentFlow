@@ -1,9 +1,16 @@
 """
 Docling → ParsedDocument converter.
-Shared by PDF and DOCX parsers.
-Now extracts images: saves to disk + stores caption/OCR text.
+Shared by PDF, DOCX and PPTX parsers.
+Extracts images (saves to disk + stores caption/OCR text) and builds sections.
+
+Format-aware structuring:
+  * PDF  → Docling labels headings from layout.
+  * DOCX → headings inferred from text (Word files often use plain bold
+           paragraphs instead of real Heading styles).
+  * PPTX → one section per slide (split when the page/slide number changes).
 """
 import os
+import re
 import logging
 from app.services.providers.parsers.parsed_document import ParsedDocument, Section, Table, Image
 
@@ -11,6 +18,25 @@ logger = logging.getLogger(__name__)
 
 HEADING_LABELS = {"title", "section_header", "page_header"}
 TEXT_LABELS = {"text", "paragraph", "list_item", "caption", "footnote"}
+
+
+def _looks_like_heading(text: str) -> bool:
+    """
+    Heuristic heading detection for formats where Docling can't label headings
+    (e.g. DOCX written with plain bold paragraphs instead of Heading styles).
+    Approximates PDF-like sectioning. Kept conservative to avoid over-splitting.
+    """
+    t = (text or "").strip()
+    if not t or len(t) > 90:
+        return False
+    # Numbered headings: "1. Title", "2) Title", "3.1 Title"
+    if re.match(r"^\d+(?:\.\d+)*[.)]?\s+\S", t):
+        return True
+    # Short, title-like line that isn't a full sentence
+    words = t.split()
+    if len(words) <= 8 and not t.endswith((".", ":", ";", ",", "!", "?")):
+        return True
+    return False
 
 
 def docling_to_parsed_document(result, file_type="PDF", category="document", metadata=None):
@@ -32,6 +58,11 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
         file_path = (metadata or {}).get("source", "")
     images_dir = _get_images_dir(file_path)
 
+    # Format-aware structuring (PDF already gets headings from layout):
+    #   DOCX → infer headings from text (plain-paragraph docs)
+    #   PPTX → one section per slide (split when the page/slide changes)
+    detect_headings = str(file_type).upper() in ("WORD", "DOCX")
+    split_on_page   = str(file_type).upper() == "PPTX"
 
     for item, level in doc.iterate_items():
         class_name = type(item).__name__
@@ -105,10 +136,14 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
                     bbox=bbox,
                 ))
             else:
-                # Image with no text — save path only for frontend display
+                # Image with no text — save path only for frontend display.
+                # NOTE (Batch 2): the caption no longer embeds a page number.
+                # It was a placeholder that could disagree with the real `page`
+                # field (esp. for DOCX/PPTX). The real description comes from
+                # Gemini's text_for_embedding at summarization time.
                 if image_path:
                     images.append(Image(
-                        caption=f"Image on page {page}",
+                        caption="Image",
                         ocr_text="",
                         image_path=image_path,
                         page=page,
@@ -159,6 +194,24 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
         if label in TEXT_LABELS or class_name == "TextItem":
             text = str(item.text).strip() if hasattr(item, 'text') and item.text else ""
             if text:
+                # DOCX: treat heading-like lines as section headers so the
+                # output is structured like a PDF (Docling can't label them).
+                if detect_headings and _looks_like_heading(text):
+                    _flush(sections, current_heading, current_lines, current_level, current_page)
+                    current_lines = []
+                    current_heading = text
+                    current_level = 1
+                    current_page = page
+                    if not title:
+                        title = text
+                    continue
+
+                # PPTX: start a new section whenever the slide (page) changes.
+                if split_on_page and current_lines and page != current_page:
+                    _flush(sections, current_heading, current_lines, current_level, current_page)
+                    current_lines = []
+                    current_heading = ""
+
                 current_lines.append(text)
                 if not current_heading:
                     current_page = page

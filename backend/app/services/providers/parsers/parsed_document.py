@@ -152,14 +152,19 @@ class ParsedDocument:
         for table in self.tables:
             blocks.append({"type": "table", "content": table.content, "page": table.page})
 
-        # Images: embed their text description so LLM can find them
+        # Images: embed their text description so the LLM can find them.
+        # image_path is carried as a field (not inside content) so the chunker
+        # can persist it on the chunk for inline display in the chat (Batch 5).
         for image in self.images:
             text = image.text_for_embedding
             if text:
                 content = f"[Image: {text}]"
-                if image.image_path:
-                    content += f"\n[image_path: {image.image_path}]"
-                blocks.append({"type": "image", "content": content, "page": image.page})
+                blocks.append({
+                    "type": "image",
+                    "content": content,
+                    "page": image.page,
+                    "image_path": image.image_path or "",
+                })
 
         blocks.sort(key=lambda b: b["page"])
         return blocks

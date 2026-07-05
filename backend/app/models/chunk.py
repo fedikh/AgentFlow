@@ -15,6 +15,11 @@ class Chunk(Base):
     embedding    = Column(Vector(EMBEDDING_DIM), nullable=True)
     page         = Column(Integer, default=0)
     chunk_index  = Column(Integer, default=0)
+    # Batch 5: mark image chunks so the chat can render them inline.
+    #   chunk_type: "text" | "table" | "image_summary"
+    #   image_path: absolute path of the saved image (only for image_summary)
+    chunk_type   = Column(String, default="text")
+    image_path   = Column(String, nullable=True)
     document_id  = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     rag_space_id = Column(String, ForeignKey("rag_spaces.id", ondelete="CASCADE"), nullable=False)
     created_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
