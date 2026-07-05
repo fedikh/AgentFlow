@@ -13,6 +13,10 @@ const SpacesGrid = ({
   newDesc,
   setNewDesc,
   handleCreate,
+  createDeptUsers = [],
+  loadingCreateUsers = false,
+  createUserIds = [],
+  setCreateUserIds = () => {},
 }) => (
   <div className="rag-main">
     <div className="rag-header">
@@ -56,6 +60,68 @@ const SpacesGrid = ({
           value={newDesc}
           onChange={(e) => setNewDesc(e.target.value)}
         />
+
+        {/* Access control (Batch 1) — who can use this space */}
+        {createDept && (
+          <>
+            <div className="rag-create-label">Who can use this space</div>
+            <div
+              style={{
+                border: "1px solid var(--rag-border, #e2e8f0)",
+                borderRadius: 8,
+                padding: 8,
+                maxHeight: 160,
+                overflowY: "auto",
+                marginBottom: 8,
+              }}
+            >
+              {loadingCreateUsers && (
+                <div className="rag-create-label">Loading…</div>
+              )}
+              {!loadingCreateUsers && createDeptUsers.length === 0 && (
+                <div className="rag-create-label">
+                  No end-users in this department — leave empty and everyone in
+                  the department will have access.
+                </div>
+              )}
+              {!loadingCreateUsers &&
+                createDeptUsers.map((u) => (
+                  <label
+                    key={u.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "4px 2px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={createUserIds.includes(u.id)}
+                      onChange={() =>
+                        setCreateUserIds(
+                          createUserIds.includes(u.id)
+                            ? createUserIds.filter((x) => x !== u.id)
+                            : [...createUserIds, u.id],
+                        )
+                      }
+                    />
+                    <span>{u.name || u.email}</span>
+                  </label>
+                ))}
+            </div>
+            <div
+              className="rag-create-label"
+              style={{ marginTop: -4, marginBottom: 8, opacity: 0.7 }}
+            >
+              {createUserIds.length === 0
+                ? "Empty = all department users can access (default)."
+                : `${createUserIds.length} user(s) selected.`}
+            </div>
+          </>
+        )}
+
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <button className="rag-btn rag-btn-blue" onClick={handleCreate}>
             Create

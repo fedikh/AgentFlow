@@ -26,6 +26,7 @@ import {
   getEmbeddingModels,
   getLLMModels,
   setDocumentStrategy,
+  listDepartmentUsers,
 } from "../../services/ragApi";
 import { openGooglePicker } from "../../services/useGooglePicker";
 import { useParams, useNavigate } from "react-router-dom";
@@ -34,6 +35,7 @@ import RightSidebar from "../../components/it/rag/RightSidebar";
 import FlowPanel from "../../components/it/rag/FlowPanel";
 import UploadsPanel from "../../components/it/rag/UploadsPanel";
 import ConfigPanel from "../../components/it/rag/ConfigPanel";
+import EvaluationPanel from "../../components/it/rag/EvaluationPanel";
 import DocModal from "../../components/it/rag/DocModal";
 
 const RAGSpacesPage = () => {
@@ -73,6 +75,14 @@ const RAGSpacesPage = () => {
   const [llmModels, setLlmModels] = useState([]);
   const [llmState, setLlmState] = useState({ available: true, error: "" });
   const [loadingLlm, setLoadingLlm] = useState(false);
+
+  // ── Access control (Batch 1) ──
+  const [deptUsers, setDeptUsers] = useState([]);
+  const [loadingDeptUsers, setLoadingDeptUsers] = useState(false);
+  // create-modal access picker
+  const [createDeptUsers, setCreateDeptUsers] = useState([]);
+  const [loadingCreateUsers, setLoadingCreateUsers] = useState(false);
+  const [createUserIds, setCreateUserIds] = useState([]);
 
   const { spaceId } = useParams();
   const navigate = useNavigate();
@@ -116,6 +126,35 @@ const RAGSpacesPage = () => {
       })
       .finally(() => setLoadingLlm(false));
   }, [cfg?.llm_provider]);
+
+  // Load the department's USER-role members for the Access panel
+  useEffect(() => {
+    const deptId = activeSpace?.department_id;
+    if (!deptId) {
+      setDeptUsers([]);
+      return;
+    }
+    setLoadingDeptUsers(true);
+    listDepartmentUsers(deptId)
+      .then((u) => setDeptUsers(u || []))
+      .catch(() => setDeptUsers([]))
+      .finally(() => setLoadingDeptUsers(false));
+  }, [activeSpace?.department_id]);
+
+  // Load the department's users for the CREATE modal access picker
+  useEffect(() => {
+    if (!createDept) {
+      setCreateDeptUsers([]);
+      setCreateUserIds([]);
+      return;
+    }
+    setLoadingCreateUsers(true);
+    setCreateUserIds([]);
+    listDepartmentUsers(createDept)
+      .then((u) => setCreateDeptUsers(u || []))
+      .catch(() => setCreateDeptUsers([]))
+      .finally(() => setLoadingCreateUsers(false));
+  }, [createDept]);
 
   const loadData = async () => {
     try {
@@ -182,9 +221,12 @@ const RAGSpacesPage = () => {
         name: newName,
         description: newDesc,
         department_id: createDept,
+        // Batch 1: empty = everyone in the department can access (default)
+        allowed_user_ids: createUserIds,
       });
       setNewName("");
       setNewDesc("");
+      setCreateUserIds([]);
       setShowCreate(false);
       await loadData();
       setSuccess("Space created");
@@ -204,6 +246,9 @@ const RAGSpacesPage = () => {
         chunk_overlap: parseInt(cfg.chunk_overlap),
         embedding_provider: cfg.embedding_provider,
         embedding_model: cfg.embedding_model,
+        // ── Embedding source (Batch 6) ──
+        embedding_provider_id: cfg.embedding_provider_id || null,
+        embedding_base_url: cfg.embedding_base_url || null,
         llm_provider: cfg.llm_provider,
         llm_model: cfg.llm_model,
         llm_temperature: parseFloat(cfg.llm_temperature),
@@ -214,21 +259,24 @@ const RAGSpacesPage = () => {
         // ── LLM source (new) ──
         llm_provider_id: cfg.llm_provider_id || null,
         llm_base_url: cfg.llm_base_url || null,
+        // ── Access control (Batch 1) ──
+        allowed_user_ids: cfg.allowed_user_ids || [],
       };
-      // Only send the key if the IT typed a new one (it's write-only)
+      // Only send keys if the IT typed a new one (they're write-only)
       if (cfg.llm_api_key) payload.llm_api_key = cfg.llm_api_key;
+      if (cfg.embedding_api_key) payload.embedding_api_key = cfg.embedding_api_key;
 
       await updateSpace(activeSpace.id, payload);
       setSuccess("Configuration saved");
 
-      // clear the typed key from local state after saving
-      setCfg((c) => ({ ...c, llm_api_key: "" }));
+      // clear the typed keys from local state after saving
+      setCfg((c) => ({ ...c, llm_api_key: "", embedding_api_key: "" }));
 
       const u = await listSpaces();
       const s = u.find((x) => x.id === activeSpace.id);
       if (s) {
         setActiveSpace(s);
-        setCfg((c) => ({ ...s, llm_api_key: "" }));
+        setCfg((c) => ({ ...s, llm_api_key: "", embedding_api_key: "" }));
       }
     } catch (e) {
       setError(e.message);
@@ -428,10 +476,6 @@ const RAGSpacesPage = () => {
       setModalLoading(false);
     }
   };
-  const openChat = () => {
-    setModal("chat");
-    setModalData(null);
-  };
   const closeModal = () => {
     setModal(null);
     setModalData(null);
@@ -537,6 +581,10 @@ const RAGSpacesPage = () => {
           newDesc={newDesc}
           setNewDesc={setNewDesc}
           handleCreate={handleCreate}
+          createDeptUsers={createDeptUsers}
+          loadingCreateUsers={loadingCreateUsers}
+          createUserIds={createUserIds}
+          setCreateUserIds={setCreateUserIds}
         />
       </div>
     );
@@ -571,10 +619,10 @@ const RAGSpacesPage = () => {
                 {activeSpace.num_chunks} chunks
               </span>
               <button
-                className="rag-btn rag-btn-blue rag-btn-sm"
-                onClick={openChat}
+                className={`rag-btn rag-btn-sm ${panel === "access" ? "rag-btn-dark" : ""}`}
+                onClick={() => setPanel("access")}
               >
-                💬 Chat
+                🔒 Access
               </button>
               <button
                 className="rag-btn rag-btn-sm rag-btn-red"
@@ -614,7 +662,18 @@ const RAGSpacesPage = () => {
 
           {panel === "flow" && <FlowPanel space={activeSpace} />}
 
-          {panel !== "uploads" && panel !== "flow" && (
+          {panel === "eval" && (
+            <EvaluationPanel
+              chatHistory={chatHistory}
+              chatEndRef={chatEndRef}
+              question={question}
+              setQuestion={setQuestion}
+              querying={querying}
+              handleQuery={handleQuery}
+            />
+          )}
+
+          {panel !== "uploads" && panel !== "flow" && panel !== "eval" && (
             <ConfigPanel
               panel={panel}
               cfg={cfg}
@@ -625,6 +684,14 @@ const RAGSpacesPage = () => {
               llmModels={llmModels}
               llmState={llmState}
               loadingLlm={loadingLlm}
+              deptUsers={deptUsers}
+              loadingDeptUsers={loadingDeptUsers}
+              docs={docs}
+              handleSetDocStrategy={handleSetDocStrategy}
+              handleProcess={handleProcess}
+              handleProcessAll={handleProcessAll}
+              processing={processing}
+              openModal={openModal}
             />
           )}
         </div>
@@ -649,12 +716,6 @@ const RAGSpacesPage = () => {
         editField={editField}
         removeBlock={removeBlock}
         addSection={addSection}
-        chatHistory={chatHistory}
-        chatEndRef={chatEndRef}
-        question={question}
-        setQuestion={setQuestion}
-        querying={querying}
-        handleQuery={handleQuery}
         spaceId={activeSpace?.id}
       />
     </div>

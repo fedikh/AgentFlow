@@ -108,7 +108,7 @@ const UploadsPanel = ({
         </div>
       </div>
 
-      {(uploadingCount > 0 || loadedCount > 0 || extractedCount > 0) && (
+      {(uploadingCount > 0 || loadedCount > 0) && (
         <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
           {uploadingCount > 0 && (
             <button
@@ -128,15 +128,13 @@ const UploadsPanel = ({
               {parsing ? "…" : `Parse All (${loadedCount})`}
             </button>
           )}
-          {extractedCount > 0 && (
-            <button
-              className="rag-btn rag-btn-dark rag-btn-sm"
-              onClick={handleProcessAll}
-              disabled={processing}
-            >
-              {processing ? "…" : `Process All (${extractedCount})`}
-            </button>
-          )}
+        </div>
+      )}
+
+      {extractedCount > 0 && (
+        <div className="rag-cfg-hint" style={{ marginBottom: 12 }}>
+          {extractedCount} document(s) parsed and ready. Choose a chunking
+          strategy and index them in the <strong>Chunking</strong> section.
         </div>
       )}
 
@@ -163,29 +161,7 @@ const UploadsPanel = ({
                 {d.source_type === "google_drive" && " · Google Drive"}
               </div>
 
-              {/* PER_DOCUMENT : choose strategy for this file */}
-              {chunkMode === "PER_DOCUMENT" && (
-                <div className="rag-doc-strategy">
-                  <span className="rag-doc-strategy-label">Strategy</span>
-                  <select
-                    className="rag-doc-strategy-select"
-                    value={d.chunk_strategy || ""}
-                    onChange={(e) => handleSetDocStrategy(d.id, e.target.value)}
-                  >
-                    <option value="">Default</option>
-                    <option value="FIXED">Fixed</option>
-                    <option value="SEMANTIC">Semantic</option>
-                    <option value="HIERARCHICAL">Hierarchical</option>
-                  </select>
-                </div>
-              )}
-
-              {/* ADAPTIVE : show the winning strategy after processing */}
-              {chunkMode === "ADAPTIVE" && d.chosen_strategy && (
-                <div className="rag-doc-chosen">
-                  Best: <strong>{d.chosen_strategy}</strong>
-                </div>
-              )}
+              {/* Chunking strategy & indexing now live in the Chunking section. */}
 
               <div className="rag-doc-btns">
                 {d.status === "UPLOADING" && (
@@ -220,23 +196,6 @@ const UploadsPanel = ({
                     onClick={() => openModal("parsed", d)}
                   >
                     View parsed
-                  </button>
-                )}
-                {d.status === "EXTRACTED" && (
-                  <button
-                    className="rag-btn rag-btn-xs rag-btn-dark"
-                    onClick={() => handleProcess(d.id)}
-                    disabled={processing}
-                  >
-                    Process
-                  </button>
-                )}
-                {d.status === "INDEXED" && (
-                  <button
-                    className="rag-btn rag-btn-xs"
-                    onClick={() => openModal("chunks", d)}
-                  >
-                    View chunks
                   </button>
                 )}
               </div>

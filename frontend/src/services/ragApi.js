@@ -17,6 +17,10 @@ async function req(method, path, body = null) {
 // ── Departments ──
 export const listDepartments = () => req("GET", "/users/departments");
 
+// ── Access control (Batch 1): USER-role members of a department ──
+export const listDepartmentUsers = (deptId) =>
+  req("GET", `/rag/departments/${deptId}/users`);
+
 // ── Spaces ──
 export const createSpace = (d) => req("POST", "/rag/spaces", d);
 export const listSpaces = () => req("GET", "/rag/spaces");

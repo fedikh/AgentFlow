@@ -1,10 +1,5 @@
 import React from "react";
 
-const fmt = (t) =>
-  t
-    ? t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")
-    : "";
-
 const DocModal = ({
   modal,
   modalData,
@@ -22,12 +17,6 @@ const DocModal = ({
   editField,
   removeBlock,
   addSection,
-  chatHistory,
-  chatEndRef,
-  question,
-  setQuestion,
-  querying,
-  handleQuery,
   spaceId,
 }) => {
   if (!modal) return null;
@@ -46,7 +35,6 @@ const DocModal = ({
             {modal === "parsed" &&
               (editMode ? "Edit Parsed Document" : "Parsed Document")}
             {modal === "chunks" && "Chunks"}
-            {modal === "chat" && "Chat with documents"}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             {modal === "parsed" && !editMode && (
@@ -447,66 +435,6 @@ const DocModal = ({
             </>
           )}
 
-          {modal === "chat" && (
-            <div className="rag-chat-body">
-              <div className="rag-chat-messages">
-                {chatHistory.length === 0 && (
-                  <div className="rag-empty-state">
-                    Ask a question about your documents
-                  </div>
-                )}
-                {chatHistory.map((m, i) => (
-                  <div
-                    key={i}
-                    className={`rag-chat-msg ${m.role === "user" ? "rag-chat-msg-user" : "rag-chat-msg-ai"}`}
-                  >
-                    <div
-                      className={`rag-chat-bubble ${m.role === "user" ? "rag-chat-bubble-user" : "rag-chat-bubble-ai"}`}
-                    >
-                      {m.role === "user" ? (
-                        m.content
-                      ) : (
-                        <div
-                          dangerouslySetInnerHTML={{ __html: fmt(m.content) }}
-                        />
-                      )}
-                      {m.sources?.length > 0 && (
-                        <div className="rag-chat-sources">
-                          {m.sources.map((s, j) => (
-                            <div key={j}>
-                              📄 {s.document} (p.{s.page}, {s.score})
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {querying && (
-                  <div className="rag-chat-msg rag-chat-msg-ai">
-                    <div className="rag-chat-typing">Thinking…</div>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-              <div className="rag-chat-input-bar">
-                <input
-                  className="rag-chat-input"
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleQuery()}
-                  placeholder="Ask a question…"
-                />
-                <button
-                  className="rag-chat-send"
-                  onClick={handleQuery}
-                  disabled={querying || !question.trim()}
-                >
-                  Send
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

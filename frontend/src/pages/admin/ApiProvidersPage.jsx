@@ -8,8 +8,11 @@ import {
 import ProviderLogo from "../../components/ProviderLogo";
 import "../../styles/admin/apiProviders.css";
 
-// Only these 4 paid providers (live model listing) + local options
-const FAMILIES = ["OPENAI", "ANTHROPIC", "GOOGLE", "GROQ", "OLLAMA", "CUSTOM"];
+// Batch 7: the provider family list depends on the provider kind.
+const FAMILIES_BY_KIND = {
+  LLM: ["OPENAI", "ANTHROPIC", "GOOGLE", "GROQ", "CUSTOM"],
+  EMBEDDING: ["OPENAI", "VOYAGE"],
+};
 const KINDS = ["LLM", "EMBEDDING"];
 
 const emptyForm = {
@@ -225,7 +228,14 @@ const ApiProvidersPage = () => {
                   <select
                     className="ap-select"
                     value={form.kind}
-                    onChange={(e) => setField("kind", e.target.value)}
+                    onChange={(e) => {
+                      const kind = e.target.value;
+                      const fams = FAMILIES_BY_KIND[kind] || [];
+                      const family = fams.includes(form.family)
+                        ? form.family
+                        : fams[0];
+                      setForm((f) => ({ ...f, kind, family }));
+                    }}
                   >
                     {KINDS.map((k) => (
                       <option key={k} value={k}>
@@ -241,7 +251,7 @@ const ApiProvidersPage = () => {
                     value={form.family}
                     onChange={(e) => setField("family", e.target.value)}
                   >
-                    {FAMILIES.map((f) => (
+                    {(FAMILIES_BY_KIND[form.kind] || []).map((f) => (
                       <option key={f} value={f}>
                         {f}
                       </option>

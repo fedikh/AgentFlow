@@ -1,11 +1,13 @@
 import React from "react";
 import LLMSourceSelector from "./LLMSourceSelector";
+import EmbeddingSourceSelector from "./EmbeddingSourceSelector";
 
 const LABELS = {
   chunk: "Chunking",
   embed: "Embeddings",
   llm: "LLM Configuration",
   retrieval: "Retrieval",
+  access: "Access",
   eval: "Evaluation",
 };
 
@@ -19,12 +21,34 @@ const ConfigPanel = ({
   llmModels,
   llmState,
   loadingLlm,
+  deptUsers = [],
+  loadingDeptUsers = false,
+  docs = [],
+  handleSetDocStrategy = () => {},
+  handleProcess = () => {},
+  handleProcessAll = () => {},
+  processing = false,
+  openModal = () => {},
 }) => {
   if (!cfg) return null;
+
+  // ── Batch 3: per-document chunking strategy + indexing (moved from Uploads) ──
+  const parsedDocs = docs.filter((d) => d.has_extracted_content);
+  const extractedCount = docs.filter((d) => d.status === "EXTRACTED").length;
 
   // Apply a patch object coming from LLMSourceSelector via setC
   const applyLlmPatch = (patch) =>
     Object.entries(patch).forEach(([k, v]) => setC(k, v));
+
+  // ── Access control (Batch 1) ──
+  const allowed = cfg.allowed_user_ids || [];
+  const toggleUser = (id) => {
+    const next = new Set(allowed);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setC("allowed_user_ids", Array.from(next));
+  };
+  const selectAll = () => setC("allowed_user_ids", deptUsers.map((u) => u.id));
+  const clearAll = () => setC("allowed_user_ids", []);
 
   return (
     <div className="rag-cfg-panel">
@@ -129,44 +153,155 @@ const ConfigPanel = ({
             onChange={(e) => setC("chunk_overlap", e.target.value)}
             className="rag-cfg-range"
           />
+
+          {/* ── Batch 3: per-document strategy + indexing (moved from Uploads) ── */}
+          <div
+            style={{
+              borderTop: "1px solid var(--rag-border, #e2e8f0)",
+              margin: "18px 0 12px",
+            }}
+          />
+          <div className="rag-cfg-head" style={{ marginBottom: 6 }}>
+            <label className="rag-cfg-label" style={{ margin: 0 }}>
+              Documents · strategy &amp; indexing
+            </label>
+            {extractedCount > 0 && (
+              <button
+                className="rag-btn rag-btn-sm rag-btn-dark"
+                onClick={handleProcessAll}
+                disabled={processing}
+              >
+                {processing ? "…" : `Process all (${extractedCount})`}
+              </button>
+            )}
+          </div>
+          <div className="rag-cfg-hint">
+            Pick a chunking strategy per document (or leave Default to use the
+            space strategy above), then Process to chunk &amp; index it.
+          </div>
+
+          {parsedDocs.length === 0 && (
+            <div className="rag-cfg-hint">
+              No parsed documents yet. Upload files and run Load + Parse in the
+              Uploads section first.
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+            {parsedDocs.map((d) => (
+              <div
+                key={d.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: 8,
+                  border: "1px solid var(--rag-border, #e2e8f0)",
+                  borderRadius: 8,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    className="rag-cfg-model-n"
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {d.file_name}
+                  </div>
+                  <div className="rag-cfg-model-note">
+                    {d.status === "INDEXED"
+                      ? `Indexed · ${d.num_chunks || 0} chunks`
+                      : d.status === "PROCESSING"
+                        ? "Processing…"
+                        : "Parsed — not indexed"}
+                  </div>
+                </div>
+
+                <select
+                  className="rag-doc-strategy-select"
+                  value={d.chunk_strategy || ""}
+                  onChange={(e) => handleSetDocStrategy(d.id, e.target.value)}
+                >
+                  <option value="">Default</option>
+                  <option value="FIXED">Fixed</option>
+                  <option value="SEMANTIC">Semantic</option>
+                  <option value="HIERARCHICAL">Hierarchical</option>
+                </select>
+
+                <button
+                  className="rag-btn rag-btn-xs rag-btn-dark"
+                  onClick={() => handleProcess(d.id)}
+                  disabled={processing}
+                >
+                  {d.status === "INDEXED" ? "Re-index" : "Process"}
+                </button>
+
+                {d.status === "INDEXED" && (
+                  <button
+                    className="rag-btn rag-btn-xs"
+                    onClick={() => openModal("chunks", d)}
+                  >
+                    View chunks
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </>
       )}
 
       {/* EMBEDDING */}
       {panel === "embed" && (
         <>
-          <label className="rag-cfg-label">Embedding model</label>
-          <div className="rag-cfg-models">
-            {embedModels.map((m) => (
-              <label
-                key={m.id}
-                className={`rag-cfg-model ${cfg.embedding_model === m.id ? "active" : ""} ${!m.available ? "disabled" : ""}`}
-              >
-                <input
-                  type="radio"
-                  name="embed"
-                  checked={cfg.embedding_model === m.id}
-                  disabled={!m.available}
-                  onChange={() => {
-                    setC("embedding_model", m.id);
-                    setC("embedding_provider", m.provider);
-                  }}
-                />
-                <div>
-                  <div className="rag-cfg-model-n">
-                    {m.label} · {m.dim}d
-                  </div>
-                  <div className="rag-cfg-model-note">{m.note}</div>
-                </div>
+          <EmbeddingSourceSelector
+            value={cfg}
+            onChange={applyLlmPatch}
+            hasOwnKey={cfg.embedding_has_own_key}
+          />
+
+          {(cfg.embedding_provider || "LOCAL") === "LOCAL" && (
+            <>
+              <label className="rag-cfg-label" style={{ marginTop: 18 }}>
+                Local embedding model
               </label>
-            ))}
-            {embedModels.length === 0 && (
-              <div className="rag-cfg-hint">Loading…</div>
-            )}
-          </div>
-          <div className="rag-cfg-warn">
-            Changing the dimension re-embeds all chunks
-          </div>
+              <div className="rag-cfg-models">
+                {embedModels
+                  .filter((m) => m.provider === "LOCAL")
+                  .map((m) => (
+                    <label
+                      key={m.id}
+                      className={`rag-cfg-model ${cfg.embedding_model === m.id ? "active" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="embed"
+                        checked={cfg.embedding_model === m.id}
+                        onChange={() => {
+                          setC("embedding_model", m.id);
+                          setC("embedding_provider", "LOCAL");
+                        }}
+                      />
+                      <div>
+                        <div className="rag-cfg-model-n">
+                          {m.label} · {m.dim}d
+                        </div>
+                        <div className="rag-cfg-model-note">{m.note}</div>
+                      </div>
+                    </label>
+                  ))}
+                {embedModels.length === 0 && (
+                  <div className="rag-cfg-hint">Loading…</div>
+                )}
+              </div>
+              <div className="rag-cfg-hint">
+                BGE-M3 (1024d) is the recommended local default — it matches the
+                pgvector column, so no re-indexing is needed.
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -237,6 +372,78 @@ const ConfigPanel = ({
             />
             Reranking (LLM re-ranking)
           </label>
+        </>
+      )}
+
+      {/* ACCESS (Batch 1) */}
+      {panel === "access" && (
+        <>
+          <label className="rag-cfg-label">Who can use this space</label>
+          <div className="rag-cfg-hint">
+            Pick the department members allowed to query this space. If none are
+            selected, <strong>every user of the department</strong> can use it
+            (default). ADMIN and IT always have access.
+          </div>
+
+          {deptUsers.length > 0 && (
+            <div style={{ display: "flex", gap: 8, margin: "10px 0" }}>
+              <button
+                type="button"
+                className="rag-btn rag-btn-sm"
+                onClick={selectAll}
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                className="rag-btn rag-btn-sm"
+                onClick={clearAll}
+              >
+                Clear (everyone)
+              </button>
+              <span className="rag-cfg-model-note" style={{ alignSelf: "center" }}>
+                {allowed.length === 0
+                  ? "No restriction — all department users"
+                  : `${allowed.length} user(s) selected`}
+              </span>
+            </div>
+          )}
+
+          <div className="rag-cfg-models">
+            {loadingDeptUsers && <div className="rag-cfg-hint">Loading…</div>}
+
+            {!loadingDeptUsers && deptUsers.length === 0 && (
+              <div className="rag-cfg-hint">
+                No end-users in this department yet. Invite users (role USER) to
+                this department first.
+              </div>
+            )}
+
+            {!loadingDeptUsers &&
+              deptUsers.map((u) => (
+                <label
+                  key={u.id}
+                  className={`rag-cfg-model ${allowed.includes(u.id) ? "active" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={allowed.includes(u.id)}
+                    onChange={() => toggleUser(u.id)}
+                  />
+                  <div>
+                    <div className="rag-cfg-model-n">
+                      {u.name || u.email}
+                    </div>
+                    <div className="rag-cfg-model-note">
+                      {u.email}
+                      {u.status && u.status !== "ACTIVE"
+                        ? ` · ${u.status}`
+                        : ""}
+                    </div>
+                  </div>
+                </label>
+              ))}
+          </div>
         </>
       )}
 
