@@ -91,15 +91,17 @@ export const uploadFromDrive = (spaceId, fileId, accessToken) =>
     file_id: fileId,
     access_token: accessToken,
   });
+// NOTE: BASE already ends in "/api", and the models router is mounted at
+// "/api/models", so these paths must NOT repeat "/api" (else → /api/api/... 404).
 // Vue d'ensemble : tous les providers LLM + embeddings en un appel
-export const getAllModels = () => req("GET", "/api/models/all");
+export const getAllModels = () => req("GET", "/models/all");
 
 // Liste curatée des modèles d'embedding (avec dimensions)
-export const getEmbeddingModels = () => req("GET", "/api/models/embeddings");
+export const getEmbeddingModels = () => req("GET", "/models/embeddings");
 
 // Modèles d'un provider LLM (GROQ / OLLAMA / OPENAI), récupérés en direct
 export const getLLMModels = (provider) =>
-  req("GET", `/api/models/llm/${provider}`);
+  req("GET", `/models/llm/${provider}`);
 // Définir la stratégie de chunking d'un document (mode PER_DOCUMENT)
 export const setDocumentStrategy = (spaceId, docId, strategy) =>
-  req("PUT", `/spaces/${spaceId}/documents/${docId}/strategy`, { strategy });
+  req("PUT", `/rag/spaces/${spaceId}/documents/${docId}/strategy`, { strategy });

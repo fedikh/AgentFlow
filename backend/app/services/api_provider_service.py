@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from app.models.api_provider import ApiProvider, ProviderKind, ProviderFamily, FAMILIES_BY_KIND
 from app.models.user import User, RoleType
 from app.services.providers_crypto import encrypt_key, decrypt_key, mask_key
-from app.services.provider_models import models_for_family
+from app.services.provider_models import models_for_family, capabilities_for_family
 
 
 def _provider_dict(p: ApiProvider) -> dict:
@@ -34,6 +34,9 @@ def _provider_dict(p: ApiProvider) -> dict:
         "api_key_masked": masked,
         "has_key": has_key,
         "models": models_for_family(fam, kind),
+        # Which kinds this family can serve. OPENAI is dual-capable, so a single
+        # OpenAI provider shows up in BOTH the LLM and Embedding pickers.
+        "capabilities": capabilities_for_family(fam),
         "created_at": str(p.created_at),
     }
 
@@ -136,8 +139,15 @@ def delete_provider(db: Session, org_id: str, provider_id: str, admin_user: User
     return {"message": f"Provider '{name}' deleted"}
 
 
-def get_provider_models(db: Session, org_id: str, provider_id: str) -> dict:
-    """Return the recommended models for a provider's family (fixed catalog)."""
+def get_provider_models(db: Session, org_id: str, provider_id: str, kind: str = None) -> dict:
+    """
+    Return the recommended models for a provider's family.
+
+    `kind` lets the caller ask for a specific catalog regardless of how the
+    provider was registered — so an OpenAI provider added as LLM can still
+    return its EMBEDDING models when the embedding picker asks for them.
+    Defaults to the provider's stored kind.
+    """
     p = db.query(ApiProvider).filter(
         ApiProvider.id == provider_id,
         ApiProvider.organization_id == org_id,
@@ -145,5 +155,12 @@ def get_provider_models(db: Session, org_id: str, provider_id: str) -> dict:
     if not p:
         raise HTTPException(404, "Provider not found")
     fam = p.family.value if hasattr(p.family, "value") else str(p.family)
-    kind = p.kind.value if hasattr(p.kind, "value") else str(p.kind)
-    return {"provider_id": p.id, "family": fam, "models": models_for_family(fam, kind)}
+    stored_kind = p.kind.value if hasattr(p.kind, "value") else str(p.kind)
+    use_kind = (kind or stored_kind or "LLM").upper()
+    return {
+        "provider_id": p.id,
+        "family": fam,
+        "kind": use_kind,
+        "capabilities": capabilities_for_family(fam),
+        "models": models_for_family(fam, use_kind),
+    }

@@ -17,8 +17,11 @@ class Settings(BaseSettings):
     MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_PORT: int = 587
 
-    # Groq (free LLM)
+    # Groq (LLM provider — key comes from an admin/own-key provider now)
     GROQ_API_KEY: str = ""
+
+    # Ollama (Batch 8: the "Local" LLM source — local models, no key)
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
 
     # Encryption key for stored API keys (Fernet). Generate once with:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

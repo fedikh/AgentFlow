@@ -4,12 +4,13 @@ import anthropicLogo from "../assets/providers/anthropic.png";
 import geminiLogo from "../assets/providers/gemini.png";
 import groqLogo from "../assets/providers/groq.png";
 import ollamaLogo from "../assets/providers/ollama.png";
+import voyageLogo from "../assets/providers/voyage.png";
 
 /**
  * ProviderLogo — real official brand logos as PNG images.
  *
- * Put the 5 PNG files in:  src/assets/providers/
- *   openai.png  anthropic.png  gemini.png  groq.png  ollama.png
+ * Put the PNG files in:  src/assets/providers/
+ *   openai.png  anthropic.png  gemini.png  groq.png  ollama.png  voyage.png
  *
  * Usage:  <ProviderLogo family="OPENAI" size={20} />
  */
@@ -20,6 +21,7 @@ const LOGOS = {
   GEMINI: geminiLogo,
   GROQ: groqLogo,
   OLLAMA: ollamaLogo,
+  VOYAGE: voyageLogo,
 };
 
 const ProviderLogo = ({ family, size = 20 }) => {

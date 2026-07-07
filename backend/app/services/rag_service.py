@@ -273,8 +273,17 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
     if "allowed_user_ids" in payload:
         _set_space_access(db, space, org_id, payload.pop("allowed_user_ids"))
 
+    # Fields that may be explicitly set to NULL to CLEAR them (e.g. switching a
+    # source from Company back to Local must null out the provider_id). Because
+    # payload already excludes unset fields, a None here is an intentional clear.
+    NULLABLE_FIELDS = {
+        "llm_provider_id", "embedding_provider_id",
+        "llm_base_url", "embedding_base_url",
+        "system_prompt", "department_id",
+    }
+
     for field, value in payload.items():
-        if value is not None:
+        if value is not None or field in NULLABLE_FIELDS:
             setattr(space, field, value)
 
     db.commit()
@@ -330,10 +339,15 @@ def set_document_strategy(db: Session, space_id: str, doc_id: str, strategy: str
     if not doc:
         raise HTTPException(404, "Document not found")
 
-    if strategy not in ("FIXED", "SEMANTIC", "HIERARCHICAL"):
+    strategy = (strategy or "").upper()
+    if strategy in ("", "DEFAULT", "NONE"):
+        # "Default" → clear the per-document override, fall back to the space strategy
+        doc.chunk_strategy = None
+    elif strategy in ("FIXED", "SEMANTIC", "HIERARCHICAL"):
+        doc.chunk_strategy = strategy
+    else:
         raise HTTPException(400, "Invalid strategy")
 
-    doc.chunk_strategy = strategy
     db.commit()
     db.refresh(doc)
     return _doc_dict(doc)

@@ -144,14 +144,58 @@
 .rag-cfg-textarea { resize: vertical; }
 .rag-cfg-hint { font-size: 13px; color: var(--rp-ink-3); line-height: 1.6; margin: 6px 0; }
 .rag-cfg-warn { font-size: 12px; color: #92400E; margin-top: 12px; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 9px 11px; }
-.rag-cfg-cards { display: flex; gap: 8px; }
-.rag-cfg-card { flex: 1; padding: 14px 12px; border-radius: 10px; border: 1px solid var(--rp-line); background: #fff; cursor: pointer; text-align: left; transition: all 0.12s; }
-.rag-cfg-card:hover { border-color: var(--rp-ink); }
-.rag-cfg-card.active { border-color: var(--rp-ink); background: var(--rp-ink); }
-.rag-cfg-card.active .rag-cfg-card-n { color: #fff; }
-.rag-cfg-card.active .rag-cfg-card-d { color: #A1A1AA; }
-.rag-cfg-card-n { font: 500 13px system-ui, sans-serif; color: var(--rp-ink); }
-.rag-cfg-card-d { font-size: 10px; color: var(--rp-ink-3); margin-top: 4px; line-height: 1.3; }
+/* ─── Segmented option cards (mode / strategy / source) — pro radio-select ─── */
+.rag-cfg-cards { display: flex; gap: 10px; }
+.rag-cfg-card {
+  position: relative;
+  flex: 1;
+  padding: 15px 38px 14px 15px;   /* room on the right for the indicator */
+  border-radius: 12px;
+  border: 1px solid var(--rp-line);
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.rag-cfg-card:hover {
+  border-color: #C7CDD4;
+  box-shadow: 0 4px 14px rgba(15, 27, 45, 0.05);
+}
+.rag-cfg-card.active {
+  border-color: var(--rp-ink);
+  box-shadow: 0 0 0 1px var(--rp-ink), 0 8px 20px rgba(15, 27, 45, 0.08);
+}
+/* radio indicator, top-right */
+.rag-cfg-card::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid #CDD3DA;
+  background: #fff;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rag-cfg-card:hover::after { border-color: #9AA3AD; }
+.rag-cfg-card.active::after {
+  border-color: var(--rp-ink);
+  background: radial-gradient(circle at center, var(--rp-ink) 0 4.5px, #fff 5px);
+}
+.rag-cfg-card-n {
+  font: 600 13px system-ui, sans-serif;
+  color: var(--rp-ink);
+  letter-spacing: -0.1px;
+}
+.rag-cfg-card.active .rag-cfg-card-n { color: var(--rp-ink); }
+.rag-cfg-card-d {
+  font-size: 11px;
+  color: var(--rp-ink-3);
+  margin-top: 4px;
+  line-height: 1.35;
+}
+.rag-cfg-card.active .rag-cfg-card-d { color: var(--rp-ink-2); }
 .rag-cfg-models { display: flex; flex-direction: column; gap: 7px; }
 .rag-cfg-model { display: flex; align-items: flex-start; gap: 11px; padding: 13px; border: 1px solid var(--rp-line); border-radius: 10px; cursor: pointer; transition: all 0.12s; }
 .rag-cfg-model:hover { border-color: #B0B0B0; }
@@ -213,3 +257,47 @@
   padding: 3px 9px;
 }
 .rag-doc-chosen strong { font-weight: 600; }
+
+/* two-up field grid (chunk size / overlap, etc.) */
+.rag-cfg-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* read-only strategy pill shown in Single / Adaptive modes */
+.rag-doc-strategy-fixed {
+  font: 500 11px system-ui, sans-serif;
+  color: var(--rp-ink-2);
+  background: var(--rp-bg);
+  border: 1px solid var(--rp-line);
+  border-radius: 7px;
+  padding: 6px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ─── Clean single scroll for the space interior ───
+   The space page fills its container EXACTLY (not 100vh — the parent
+   .layout-main already has padding, so 100vh overflowed by that amount and
+   caused the "little bit" of page scroll). Only the content column scrolls;
+   the right sidebar stays put. */
+.rag-page:has(.rag-space-layout) {
+  height: 100%;
+  min-height: 0;
+}
+.rag-space-layout {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.rag-space-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.rag-side {
+  overflow-y: auto;
+  /* One unified background: inherit the app surface instead of an off-white
+     strip, so the interior is a single colour. */
+  background: transparent;
+}

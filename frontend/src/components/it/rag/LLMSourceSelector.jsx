@@ -1,132 +1,57 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   listProviders,
   getProviderModels,
 } from "../../../services/providersApi";
+import { getLLMModels } from "../../../services/ragApi";
+import CustomDropdown from "./CustomDropdown";
 import ProviderLogo from "../../ProviderLogo";
 
 /**
- * LLMSourceSelector — Local / Company / Own key.
- * Provider dropdown shows logos; Model dropdown uses the same custom design
- * without logos. Native <select> can't render logos inside <option>, so both
- * use a custom dropdown for a consistent look.
+ * LLMSourceSelector — Batch 8. Three finalized sources:
+ *   Local   → Ollama, models listed LIVE from the local daemon (no key).
+ *   Company → an LLM provider the admin deployed.
+ *   Own key → the IT's own key for OPENAI / ANTHROPIC / GOOGLE / GROQ / CUSTOM
+ *             (CUSTOM = any OpenAI-compatible base_url, e.g. OpenRouter).
  */
-const FAMILIES = ["GROQ", "OPENAI", "ANTHROPIC", "GOOGLE", "OLLAMA", "CUSTOM"];
+const FAMILIES = ["OPENAI", "ANTHROPIC", "GOOGLE", "GROQ", "CUSTOM"];
 
-/* ── Custom dropdown. If an option has `family`, its logo is shown. ── */
-function CustomDropdown({ options, value, onChange, placeholder, showLogo }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const onDoc = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-
-  const selected = options.find((o) => o.value === value);
-
-  const rowBase = {
-    width: "100%",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "10px 12px",
-    fontSize: 13,
-    color: "#0d1f35",
-    textAlign: "left",
-    cursor: "pointer",
-  };
-
-  return (
-    <div
-      ref={ref}
-      style={{ position: "relative", width: "100%", marginBottom: 12 }}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          ...rowBase,
-          borderRadius: 8,
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-        }}
-      >
-        {selected ? (
-          <>
-            {showLogo && <ProviderLogo family={selected.family} size={18} />}
-            <span style={{ flex: 1 }}>{selected.label}</span>
-          </>
-        ) : (
-          <span style={{ flex: 1, color: "#94a3b8" }}>{placeholder}</span>
-        )}
-        <span style={{ color: "#94a3b8", fontSize: 10 }}>▼</span>
-      </button>
-
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: 0,
-            right: 0,
-            background: "#fff",
-            border: "1px solid #e2e8f0",
-            borderRadius: 8,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-            zIndex: 50,
-            overflow: "hidden",
-            maxHeight: 260,
-            overflowY: "auto",
-          }}
-        >
-          {options.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              onClick={() => {
-                onChange(o.value);
-                setOpen(false);
-              }}
-              style={{
-                ...rowBase,
-                border: "none",
-                background: o.value === value ? "#eff6ff" : "#fff",
-              }}
-              onMouseEnter={(e) => {
-                if (o.value !== value)
-                  e.currentTarget.style.background = "#f8fafc";
-              }}
-              onMouseLeave={(e) => {
-                if (o.value !== value)
-                  e.currentTarget.style.background = "#fff";
-              }}
-            >
-              {showLogo && <ProviderLogo family={o.family} size={18} />}
-              <span>{o.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+const MODEL_PLACEHOLDER = {
+  OPENAI: "gpt-4o-mini",
+  ANTHROPIC: "claude-haiku-4-5",
+  GOOGLE: "gemini-2.5-flash",
+  GROQ: "llama-3.3-70b-versatile",
+  CUSTOM: "e.g. anthropic/claude-3.5-sonnet",
+};
 
 const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
   const [providers, setProviders] = useState([]);
   const [companyModels, setCompanyModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState("");
+
+  // Local Ollama models (live from the daemon)
+  const [ollamaModels, setOllamaModels] = useState([]);
+  const [loadingOllama, setLoadingOllama] = useState(false);
+  const [ollamaError, setOllamaError] = useState("");
+
   const [mode, setMode] = useState(
     value.llm_provider_id ? "company" : hasOwnKey ? "own" : "local",
   );
 
   useEffect(() => {
     listProviders()
-      .then((all) => setProviders(all.filter((p) => p.kind === "LLM")))
+      // A provider shows up here if its family can serve LLM — so a dual-capable
+      // OpenAI key added as EMBEDDING still appears for LLM, and vice versa.
+      .then((all) =>
+        setProviders(
+          all.filter((p) =>
+            p.capabilities
+              ? p.capabilities.includes("LLM")
+              : p.kind === "LLM",
+          ),
+        ),
+      )
       .catch(() => setProviders([]));
   }, []);
 
@@ -138,7 +63,7 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
     }
     setLoadingModels(true);
     setModelError("");
-    getProviderModels(value.llm_provider_id)
+    getProviderModels(value.llm_provider_id, "LLM")
       .then((r) => setCompanyModels(r.models || []))
       .catch((e) => {
         setCompanyModels([]);
@@ -147,27 +72,66 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
       .finally(() => setLoadingModels(false));
   }, [mode, value.llm_provider_id]);
 
+  // Live Ollama model list for the Local source. Extracted so a Retry button
+  // can re-run it without reloading the page (the daemon may come up later).
+  const loadOllama = useCallback(() => {
+    setLoadingOllama(true);
+    setOllamaError("");
+    getLLMModels("OLLAMA")
+      .then((r) => {
+        setOllamaModels(r.models || []);
+        // available=false → the backend reached us but Ollama itself is down.
+        if (!r.available)
+          setOllamaError(
+            r.error || "Ollama is not running. Start it (`ollama serve`).",
+          );
+      })
+      .catch(() => {
+        // The request never reached the backend (server down / wrong URL).
+        setOllamaModels([]);
+        setOllamaError(
+          "Couldn't reach the AgentFlow server to list local models. Is the backend running?",
+        );
+      })
+      .finally(() => setLoadingOllama(false));
+  }, []);
+
+  useEffect(() => {
+    if (mode === "local") loadOllama();
+  }, [mode, loadOllama]);
+
   const pick = (next) => {
     setMode(next);
+    // Always clear the model on a source switch so a model from the previous
+    // source (e.g. an Ollama model left over when moving to a Company OpenAI
+    // provider) can never mismatch the new source.
     if (next === "local") {
       onChange({
-        llm_provider: "GROQ",
+        llm_provider: "OLLAMA",
         llm_provider_id: null,
         llm_api_key: "",
+        llm_model: "",
       });
     } else if (next === "company") {
-      onChange({ llm_provider_id: providers[0]?.id || null });
+      onChange({ llm_provider_id: providers[0]?.id || null, llm_model: "" });
     } else if (next === "own") {
-      onChange({ llm_provider_id: null });
+      const fam = FAMILIES.includes(value.llm_provider)
+        ? value.llm_provider
+        : "OPENAI";
+      onChange({ llm_provider_id: null, llm_provider: fam, llm_model: "" });
     }
   };
+
+  const ownFamily = FAMILIES.includes(value.llm_provider)
+    ? value.llm_provider
+    : "OPENAI";
 
   return (
     <>
       <label className="rag-cfg-label">LLM source</label>
       <div className="rag-cfg-cards">
         {[
-          { k: "local", n: "Local", d: "Groq, free" },
+          { k: "local", n: "Local", d: "Ollama, free" },
           { k: "company", n: "Company", d: "Admin provider" },
           { k: "own", n: "My key", d: "Your own API key" },
         ].map((m) => (
@@ -182,12 +146,47 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
         ))}
       </div>
 
-      {/* LOCAL */}
+      {/* LOCAL — Ollama live models */}
       {mode === "local" && (
-        <div className="rag-cfg-hint">
-          Uses the free local model (Groq Llama). No key needed — a good
-          baseline to compare paid providers against.
-        </div>
+        <>
+          <label
+            className="rag-cfg-label"
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <ProviderLogo family="OLLAMA" size={16} /> Ollama model
+          </label>
+          {loadingOllama ? (
+            <div className="rag-cfg-hint">Loading installed models…</div>
+          ) : ollamaModels.length > 0 ? (
+            <CustomDropdown
+              options={ollamaModels.map((m) => ({
+                value: m.id,
+                label: m.label || m.id,
+              }))}
+              value={value.llm_model || ""}
+              onChange={(id) => onChange({ llm_model: id })}
+              placeholder={`Select a model… (${ollamaModels.length})`}
+            />
+          ) : (
+            <div className="rag-cfg-warn">
+              {ollamaError ||
+                "No local models found. Pull one with `ollama pull llama3.1:8b`."}
+              <button
+                type="button"
+                className="rag-btn rag-btn-sm"
+                style={{ marginLeft: 8 }}
+                onClick={loadOllama}
+                disabled={loadingOllama}
+              >
+                {loadingOllama ? "Checking…" : "Retry"}
+              </button>
+            </div>
+          )}
+          <div className="rag-cfg-hint">
+            Runs fully locally via Ollama — no key, no data leaves the machine.
+            Models are listed live from <code>localhost:11434</code>.
+          </div>
+        </>
       )}
 
       {/* COMPANY */}
@@ -248,10 +247,10 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
             showLogo
             options={FAMILIES.map((f) => ({
               value: f,
-              label: f,
+              label: f === "CUSTOM" ? "CUSTOM (OpenAI-compatible)" : f,
               family: f,
             }))}
-            value={value.llm_provider || "OPENAI"}
+            value={ownFamily}
             onChange={(f) => onChange({ llm_provider: f, llm_model: "" })}
             placeholder="Select a provider…"
           />
@@ -261,10 +260,12 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
             className="rag-cfg-select"
             value={value.llm_model || ""}
             onChange={(e) => onChange({ llm_model: e.target.value })}
-            placeholder="gpt-4o-mini"
+            placeholder={MODEL_PLACEHOLDER[ownFamily] || "model name"}
           />
 
-          <label className="rag-cfg-label">API key</label>
+          <label className="rag-cfg-label">
+            API key{ownFamily === "CUSTOM" ? " (optional)" : ""}
+          </label>
           <input
             className="rag-cfg-select"
             type="password"
@@ -275,13 +276,26 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
             Stored encrypted. Never shown again.
           </div>
 
-          <label className="rag-cfg-label">Base URL (optional)</label>
+          <label className="rag-cfg-label">
+            Base URL{ownFamily === "CUSTOM" ? " (required)" : " (optional)"}
+          </label>
           <input
             className="rag-cfg-select"
             value={value.llm_base_url || ""}
             onChange={(e) => onChange({ llm_base_url: e.target.value })}
-            placeholder="For custom endpoints"
+            placeholder={
+              ownFamily === "CUSTOM"
+                ? "https://openrouter.ai/api/v1"
+                : "For custom endpoints"
+            }
           />
+          {ownFamily === "CUSTOM" && (
+            <div className="rag-cfg-hint">
+              CUSTOM routes to any OpenAI-compatible endpoint (e.g. OpenRouter,
+              vLLM, LM Studio). Set the base URL and, if the endpoint needs one,
+              a key.
+            </div>
+          )}
         </>
       )}
     </>

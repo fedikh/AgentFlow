@@ -251,7 +251,10 @@ const RAGSpacesPage = () => {
         embedding_base_url: cfg.embedding_base_url || null,
         llm_provider: cfg.llm_provider,
         llm_model: cfg.llm_model,
-        llm_temperature: parseFloat(cfg.llm_temperature),
+        llm_temperature: Number.isFinite(parseFloat(cfg.llm_temperature))
+          ? parseFloat(cfg.llm_temperature)
+          : 0.2,
+        llm_max_tokens: parseInt(cfg.llm_max_tokens) || 1024,
         top_k: parseInt(cfg.top_k),
         semantic_weight: parseFloat(cfg.semantic_weight),
         reranking_enabled: !!cfg.reranking_enabled,
@@ -677,6 +680,7 @@ const RAGSpacesPage = () => {
             <ConfigPanel
               panel={panel}
               cfg={cfg}
+              space={activeSpace}
               setC={setC}
               saveCfg={saveCfg}
               savingCfg={savingCfg}

@@ -15,6 +15,20 @@ const FAMILIES_BY_KIND = {
 };
 const KINDS = ["LLM", "EMBEDDING"];
 
+// Families that can serve BOTH chat and embeddings from a single key. The
+// backend confirms this per-provider via `capabilities`; this drives the hint
+// shown while adding a provider (before the row exists).
+const DUAL_CAPABLE = ["OPENAI"];
+
+// Human label for what a provider (row) can be used for.
+const capabilitiesLabel = (p) => {
+  const caps = p.capabilities || [p.kind];
+  if (caps.includes("LLM") && caps.includes("EMBEDDING"))
+    return "LLM + Embedding";
+  if (caps.includes("EMBEDDING")) return "Embedding";
+  return "LLM";
+};
+
 const emptyForm = {
   name: "",
   kind: "LLM",
@@ -170,10 +184,8 @@ const ApiProvidersPage = () => {
                   </span>
                 </div>
                 <div className="ap-row">
-                  <span className="ap-row-label">Models</span>
-                  <span className="ap-row-value" style={{ color: "#94a3b8" }}>
-                    fetched live
-                  </span>
+                  <span className="ap-row-label">Usable for</span>
+                  <span className="ap-row-value">{capabilitiesLabel(p)}</span>
                 </div>
               </div>
               <div className="ap-card-actions">
@@ -259,6 +271,14 @@ const ApiProvidersPage = () => {
                   </select>
                 </div>
               </div>
+
+              {DUAL_CAPABLE.includes(form.family) && (
+                <div className="ap-hint" style={{ marginTop: -4 }}>
+                  ✨ One {form.family} key works for <strong>both</strong> LLM and
+                  Embedding models — add it once and IT teams can pick it in
+                  either config.
+                </div>
+              )}
 
               <div className="ap-field">
                 <label className="ap-label">API key</label>

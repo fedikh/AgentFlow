@@ -12,10 +12,12 @@ gpt-4o-mini) to a different provider (e.g. GROQ), causing a 404. Now:
   - When the space uses its OWN key, family = space.llm_provider, and we
     likewise keep model consistent.
 
-  - Local fallback = GROQ with a valid Groq model, ALWAYS a matching pair.
+  - Local source = OLLAMA (Batch 8). Models are listed live from the local
+    Ollama daemon, so we trust the stored model as-is (no static catalog).
 
-Resolution order: own key → company provider → local.
-Option C: missing/keyless company provider → explicit HTTP 400.
+Resolution order: own key → company provider → local (Ollama).
+Option C: missing/keyless company provider → explicit HTTP 400 (no silent
+fallback to local).
 """
 import logging
 from sqlalchemy.orm import Session
@@ -119,18 +121,19 @@ def resolve_llm_config(db: Session, space) -> dict:
             "max_tokens": max_tokens,
         }
 
-    # ── 3. Local free fallback (always a matching GROQ pair) ──
+    # ── 3. Local source = Ollama (live-listed models, no key) ──
+    # Ollama models are listed live from the daemon, so trust the stored model
+    # as-is rather than forcing it against a static catalog (which would rewrite
+    # e.g. "llama3.1:8b" to a model that isn't actually installed).
     from app.config import settings
-    fam = family if family in ("GROQ", "OLLAMA", "LOCAL") else "GROQ"
-    safe_model = _valid_model_for_family(fam, model)
-    if not safe_model:
-        safe_model = "llama-3.3-70b-versatile"
-    logger.info(f"[RESOLVER] local · {fam} · {safe_model}")
+    safe_model = model or "llama3.1:8b"
+    base_url = getattr(space, "llm_base_url", "") or settings.OLLAMA_BASE_URL or ""
+    logger.info(f"[RESOLVER] local ollama · {safe_model}")
     return {
-        "family": fam,
+        "family": "OLLAMA",
         "model": safe_model,
-        "api_key": settings.GROQ_API_KEY,
-        "base_url": "",
+        "api_key": "",
+        "base_url": base_url,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }

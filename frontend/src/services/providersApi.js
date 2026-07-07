@@ -17,4 +17,8 @@ export const createProvider = (payload) => req("POST", "/providers", payload);
 export const updateProvider = (id, payload) =>
   req("PUT", `/providers/${id}`, payload);
 export const deleteProvider = (id) => req("DELETE", `/providers/${id}`);
-export const getProviderModels = (id) => req("GET", `/providers/${id}/models`);
+// `kind` ("LLM" | "EMBEDDING") lets a dual-capable provider (e.g. OpenAI)
+// return the right model catalog for the picker asking, regardless of how it
+// was registered.
+export const getProviderModels = (id, kind) =>
+  req("GET", `/providers/${id}/models${kind ? `?kind=${kind}` : ""}`);

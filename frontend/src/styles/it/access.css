@@ -1,0 +1,315 @@
+/* ════════════════════════════════════════════
+   AccessSelector — "who can use this space"
+   ════════════════════════════════════════════ */
+
+.acx {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* status banner */
+.acx-banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid;
+}
+.acx-open {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+.acx-restricted {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.acx-banner-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.acx-open .acx-banner-dot {
+  background: #10b981;
+}
+.acx-restricted .acx-banner-dot {
+  background: #2563eb;
+}
+.acx-banner-title {
+  font: 600 13px system-ui, sans-serif;
+  color: #0f1b2d;
+}
+.acx-banner-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+/* toolbar : search + bulk actions */
+.acx-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.acx-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e7ecf2;
+  border-radius: 9px;
+  padding: 0 11px;
+  background: #fff;
+  transition: border-color 0.12s;
+}
+.acx-search:focus-within {
+  border-color: #0f1b2d;
+}
+.acx-search-ic {
+  color: #94a3b8;
+  display: inline-flex;
+}
+.acx-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  padding: 9px 0;
+  font: 400 13px system-ui, sans-serif;
+  background: transparent;
+  color: #0f1b2d;
+}
+.acx-mini {
+  padding: 8px 13px;
+  border-radius: 9px;
+  border: 1px solid #e7ecf2;
+  background: #fff;
+  font: 500 12px system-ui, sans-serif;
+  color: #475569;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.acx-mini:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+/* inline notice (e.g. can't exclude the last member) */
+.acx-notice {
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 9px;
+  padding: 9px 11px;
+  line-height: 1.45;
+}
+
+/* member list */
+.acx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.acx-compact .acx-list {
+  max-height: 224px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.acx-empty {
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 16px 14px;
+  text-align: center;
+  border: 1px dashed #e2e8f0;
+  border-radius: 11px;
+  line-height: 1.5;
+}
+.acx-user {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid #e7ecf2;
+  border-radius: 11px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, opacity 0.12s;
+}
+.acx-user:hover {
+  border-color: #cbd5e1;
+}
+/* excluded (deactivated) member */
+.acx-user.off {
+  background: #fafbfc;
+}
+.acx-user.off .acx-avatar {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.acx-user.off .acx-user-name {
+  color: #94a3b8;
+}
+.acx-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font: 600 12px system-ui, sans-serif;
+  transition: filter 0.12s, opacity 0.12s;
+}
+.acx-user-txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.acx-user-name {
+  font: 600 13px system-ui, sans-serif;
+  color: #0f1b2d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acx-user-mail {
+  font-size: 11.5px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Active / Excluded text label */
+.acx-user-state {
+  flex-shrink: 0;
+  font: 600 10px system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #059669;
+}
+.acx-user.off .acx-user-state {
+  color: #94a3b8;
+}
+/* iOS-style toggle switch */
+.acx-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: #10b981;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.acx-user.off .acx-switch {
+  background: #cbd5e1;
+}
+.acx-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 18px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: left 0.15s;
+}
+.acx-user.off .acx-switch::after {
+  left: 2px;
+}
+
+/* ─── Create-space modal ─── */
+.rag-create-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.rag-create-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+.rag-create-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 17px 22px;
+  border-bottom: 1px solid #eef2f7;
+}
+.rag-create-modal-head .rag-create-title {
+  font: 650 16px system-ui, sans-serif;
+  color: #0f1b2d;
+}
+.rag-create-x {
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+.rag-create-x:hover {
+  color: #0f1b2d;
+}
+.rag-create-body {
+  padding: 18px 22px;
+  overflow-y: auto;
+}
+.rag-create-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid #eef2f7;
+}
+
+/* ─── Create-space access row (open by default + Personalize) ─── */
+.rag-create-access {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 11px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  margin-top: 16px;
+}
+.rag-create-access-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #10b981;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.rag-create-access-title {
+  font: 600 13px system-ui, sans-serif;
+  color: #0f1b2d;
+}
+.rag-create-access-sub {
+  font-size: 12px;
+  color: #4b5f52;
+  margin-top: 2px;
+  line-height: 1.45;
+}

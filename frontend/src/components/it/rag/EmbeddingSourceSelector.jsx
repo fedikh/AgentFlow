@@ -3,13 +3,17 @@ import {
   listProviders,
   getProviderModels,
 } from "../../../services/providersApi";
+import CustomDropdown from "./CustomDropdown";
 
 /**
  * EmbeddingSourceSelector — Batch 6. Mirror of LLMSourceSelector, for
- * embeddings. Three sources:
+ * embeddings, now with the same logo dropdowns. Three sources:
  *   Local   → BGE-M3 (free, 1024 dims, the default)
- *   Company → an EMBEDDING provider the admin deployed (OpenAI / Voyage)
+ *   Company → an embedding-capable provider the admin deployed (OpenAI / Voyage)
  *   Own key → the IT supplies a key for OPENAI or VOYAGE
+ *
+ * A single OpenAI admin key is dual-capable: it appears here for embeddings
+ * AND in the LLM picker, so admins add OpenAI once.
  *
  * pgvector is fixed at 1024 dims. Every model offered here outputs 1024, so
  * switching source is safe — but re-indexing is still required for embeddings
@@ -17,7 +21,7 @@ import {
  */
 const OWN_FAMILIES = ["OPENAI", "VOYAGE"];
 
-const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey }) => {
+const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] }) => {
   const [providers, setProviders] = useState([]);
   const [companyModels, setCompanyModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
@@ -32,7 +36,17 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey }) => {
 
   useEffect(() => {
     listProviders()
-      .then((all) => setProviders(all.filter((p) => p.kind === "EMBEDDING")))
+      // Show any provider whose family can serve EMBEDDING — this includes a
+      // dual-capable OpenAI key even if it was registered as an LLM provider.
+      .then((all) =>
+        setProviders(
+          all.filter((p) =>
+            p.capabilities
+              ? p.capabilities.includes("EMBEDDING")
+              : p.kind === "EMBEDDING",
+          ),
+        ),
+      )
       .catch(() => setProviders([]));
   }, []);
 
@@ -44,7 +58,7 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey }) => {
     }
     setLoadingModels(true);
     setModelError("");
-    getProviderModels(value.embedding_provider_id)
+    getProviderModels(value.embedding_provider_id, "EMBEDDING")
       .then((r) => setCompanyModels(r.models || []))
       .catch((e) => {
         setCompanyModels([]);
@@ -63,9 +77,13 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey }) => {
         embedding_api_key: "",
       });
     } else if (next === "company") {
-      onChange({ embedding_provider_id: providers[0]?.id || null });
+      onChange({ embedding_provider_id: providers[0]?.id || null, embedding_model: "" });
     } else if (next === "own") {
-      onChange({ embedding_provider_id: null, embedding_provider: "OPENAI" });
+      onChange({
+        embedding_provider_id: null,
+        embedding_provider: "OPENAI",
+        embedding_model: "",
+      });
     }
   };
 
@@ -91,10 +109,47 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey }) => {
 
       {/* LOCAL */}
       {mode === "local" && (
-        <div className="rag-cfg-hint">
-          Uses the free local BGE-M3 model (1024 dims). No key needed — a good
-          baseline to compare paid providers against.
-        </div>
+        <>
+          <label className="rag-cfg-label">Local embedding model</label>
+          <div className="rag-cfg-models">
+            {embedModels
+              .filter((m) => m.provider === "LOCAL")
+              .map((m) => (
+                <label
+                  key={m.id}
+                  className={`rag-cfg-model ${value.embedding_model === m.id ? "active" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="embed"
+                    checked={value.embedding_model === m.id}
+                    onChange={() =>
+                      onChange({
+                        embedding_model: m.id,
+                        embedding_provider: "LOCAL",
+                        embedding_provider_id: null,
+                        embedding_api_key: "",
+                      })
+                    }
+                  />
+                  <div>
+                    <div className="rag-cfg-model-n">
+                      {m.label} · {m.dim}d
+                    </div>
+                    <div className="rag-cfg-model-note">{m.note}</div>
+                  </div>
+                </label>
+              ))}
+            {embedModels.length === 0 && (
+              <div className="rag-cfg-hint">Loading…</div>
+            )}
+          </div>
+          <div className="rag-cfg-hint">
+            BGE-M3 (1024d) is the recommended local default — it matches the
+            pgvector column, so no re-indexing is needed. No key, no data leaves
+            the machine.
+          </div>
+        </>
       )}
 
       {/* COMPANY */}
@@ -103,29 +158,24 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey }) => {
           {providers.length === 0 ? (
             <div className="rag-cfg-hint">
               No company embedding providers yet. Ask your admin to add an
-              OpenAI or Voyage provider (type EMBEDDING) in “API Providers”, or
-              use your own key.
+              OpenAI or Voyage provider in “API Providers”, or use your own key.
             </div>
           ) : (
             <>
               <label className="rag-cfg-label">Provider</label>
-              <select
-                className="rag-cfg-select"
+              <CustomDropdown
+                showLogo
+                options={providers.map((p) => ({
+                  value: p.id,
+                  label: `${p.name} (${p.family})`,
+                  family: p.family,
+                }))}
                 value={value.embedding_provider_id || ""}
-                onChange={(e) =>
-                  onChange({
-                    embedding_provider_id: e.target.value,
-                    embedding_model: "",
-                  })
+                onChange={(id) =>
+                  onChange({ embedding_provider_id: id, embedding_model: "" })
                 }
-              >
-                <option value="">Select a provider…</option>
-                {providers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.family})
-                  </option>
-                ))}
-              </select>
+                placeholder="Select a provider…"
+              />
 
               <label className="rag-cfg-label">Model</label>
               {loadingModels ? (
@@ -137,18 +187,15 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey }) => {
                   Select a provider to load its models.
                 </div>
               ) : (
-                <select
-                  className="rag-cfg-select"
+                <CustomDropdown
+                  options={companyModels.map((m) => ({
+                    value: m.id,
+                    label: m.label,
+                  }))}
                   value={value.embedding_model || ""}
-                  onChange={(e) => onChange({ embedding_model: e.target.value })}
-                >
-                  <option value="">Select a model…</option>
-                  {companyModels.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => onChange({ embedding_model: id })}
+                  placeholder={`Select a model… (${companyModels.length})`}
+                />
               )}
             </>
           )}
@@ -159,19 +206,19 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey }) => {
       {mode === "own" && (
         <>
           <label className="rag-cfg-label">Provider</label>
-          <select
-            className="rag-cfg-select"
+          <CustomDropdown
+            showLogo
+            options={OWN_FAMILIES.map((f) => ({
+              value: f,
+              label: f,
+              family: f,
+            }))}
             value={value.embedding_provider || "OPENAI"}
-            onChange={(e) =>
-              onChange({ embedding_provider: e.target.value, embedding_model: "" })
+            onChange={(f) =>
+              onChange({ embedding_provider: f, embedding_model: "" })
             }
-          >
-            {OWN_FAMILIES.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
+            placeholder="Select a provider…"
+          />
 
           <label className="rag-cfg-label">Model</label>
           <input

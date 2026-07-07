@@ -55,6 +55,6 @@ def delete_provider(provider_id: str, request: Request, db: Session = Depends(ge
 
 
 @router.get("/{provider_id}/models")
-def provider_models(provider_id: str, request: Request, db: Session = Depends(get_db)):
+def provider_models(provider_id: str, request: Request, kind: str = None, db: Session = Depends(get_db)):
     user = _current_user(request, db)
-    return api_provider_service.get_provider_models(db, user.organization_id, provider_id)
+    return api_provider_service.get_provider_models(db, user.organization_id, provider_id, kind)

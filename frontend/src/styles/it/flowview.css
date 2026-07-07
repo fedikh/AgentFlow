@@ -1,0 +1,303 @@
+/* ════════════════════════════════════════════
+   FlowPanel — pipeline rail + saved-config cards
+   Restrained, professional. Numbered steps, hairline
+   dividers, one accent per stage used sparingly.
+   ════════════════════════════════════════════ */
+
+.pf {
+  --ink: #0f1b2d;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --line: #e7ecf2;
+  --surface: #ffffff;
+  padding: 2px 2px 30px;
+  color: var(--ink);
+}
+
+.pf-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.pf-title {
+  font: 650 20px/1.1 system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+.pf-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 5px;
+  line-height: 1.5;
+  max-width: 640px;
+}
+.pf-status {
+  flex-shrink: 0;
+  font: 600 10.5px/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: #fff;
+}
+.pf-status-active {
+  color: #047857;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+.pf-status-error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+/* ── Flow rail ── */
+.pf-rail-wrap {
+  overflow-x: auto;
+  padding: 6px 2px 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.pf-rail {
+  display: flex;
+  align-items: center;
+  min-width: max-content;
+}
+
+.pf-step {
+  position: relative;
+  width: 150px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 14px 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.pf-step:hover {
+  transform: translateY(-1px);
+  border-color: #d4dce6;
+  box-shadow: 0 6px 18px rgba(15, 27, 45, 0.06);
+}
+.pf-step.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.pf-step-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 6px;
+}
+.pf-step-num {
+  font: 600 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--faint);
+  letter-spacing: 0.04em;
+}
+.pf-step-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.pf-step-tag {
+  font: 600 9.5px/1 system-ui, sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.pf-step-title {
+  font: 620 14px/1.2 system-ui, sans-serif;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.pf-step-sum {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 3px;
+}
+.pf-step-sum-t {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-rail-line {
+  width: 26px;
+  height: 1px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+
+/* ── Detail cards ── */
+.pf-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: 16px;
+}
+.pf-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pf-card::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  top: 0;
+  width: 26px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--accent);
+}
+.pf-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 10px 28px rgba(15, 27, 45, 0.07);
+}
+.pf-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pf-card-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.pf-card-num {
+  font: 600 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.pf-card-tag {
+  font: 600 9.5px/1 system-ui, sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.pf-card-logo {
+  display: inline-flex;
+}
+.pf-card-title {
+  font: 640 16px/1.2 system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+.pf-card-how {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 14px;
+}
+.pf-rows {
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+.pf-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.pf-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.pf-row-k {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.pf-row-v {
+  margin: 0;
+  font: 600 12.5px/1.3 system-ui, sans-serif;
+  color: var(--ink);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Compact saved-config bar (per config page) ── */
+.scfg {
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --line: #e7ecf2;
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 15px;
+  margin-bottom: 20px;
+  background: #fff;
+}
+.scfg::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 13px;
+  bottom: 13px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.scfg-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 11px;
+}
+.scfg-eyebrow {
+  font: 600 9.5px/1 system-ui, sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.scfg-title {
+  font: 640 13px/1 system-ui, sans-serif;
+  color: #0f1b2d;
+}
+.scfg-logo {
+  display: inline-flex;
+  margin-left: auto;
+}
+.scfg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.scfg-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  font-size: 11.5px;
+}
+.scfg-chip-k {
+  color: var(--faint);
+}
+.scfg-chip-v {
+  color: #0f1b2d;
+  font-weight: 600;
+}

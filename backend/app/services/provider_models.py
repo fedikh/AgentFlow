@@ -34,10 +34,14 @@ PROVIDER_MODELS = {
         {"id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B (default)"},
         {"id": "llama-3.1-8b-instant",    "label": "Llama 3.1 8B (fastest)"},
     ],
+    # OLLAMA models are listed LIVE from the local daemon (/api/tags); this
+    # static list is only a documentation/fallback hint.
     "OLLAMA": [
-        {"id": "llama3",  "label": "Llama 3 (local)"},
-        {"id": "mistral", "label": "Mistral (local)"},
-        {"id": "phi3",    "label": "Phi-3 (local)"},
+        {"id": "llama3.1:8b",  "label": "Llama 3.1 8B (local)"},
+        {"id": "llama3.2:3b",  "label": "Llama 3.2 3B (local, fast)"},
+        {"id": "gemma3:4b",    "label": "Gemma 3 4B (local)"},
+        {"id": "mistral",      "label": "Mistral (local)"},
+        {"id": "phi3",         "label": "Phi-3 (local)"},
     ],
     "CUSTOM": [],
 }
@@ -83,3 +87,22 @@ def models_for_family(family: str, kind: str = "LLM") -> list:
 def embedding_models_for_family(family: str) -> list:
     """Recommended EMBEDDING models for a family."""
     return EMBEDDING_PROVIDER_MODELS.get((family or "").upper(), [])
+
+
+def capabilities_for_family(family: str) -> list:
+    """
+    Which provider kinds a family can serve, based on the catalogs above.
+    A family that has BOTH chat and embedding models (e.g. OPENAI) is
+    dual-capable: one admin key works for LLM *and* embeddings.
+
+      OPENAI  → ["LLM", "EMBEDDING"]
+      VOYAGE  → ["EMBEDDING"]
+      GROQ / ANTHROPIC / GOOGLE / CUSTOM → ["LLM"]
+    """
+    fam = (family or "").upper()
+    caps = []
+    if fam in PROVIDER_MODELS:
+        caps.append("LLM")
+    if fam in EMBEDDING_PROVIDER_MODELS:
+        caps.append("EMBEDDING")
+    return caps

@@ -1,6 +1,8 @@
 import React from "react";
 import LLMSourceSelector from "./LLMSourceSelector";
 import EmbeddingSourceSelector from "./EmbeddingSourceSelector";
+import SavedConfigBar from "./SavedConfigBar";
+import AccessSelector from "./AccessSelector";
 
 const LABELS = {
   chunk: "Chunking",
@@ -14,6 +16,7 @@ const LABELS = {
 const ConfigPanel = ({
   panel,
   cfg,
+  space,
   setC,
   saveCfg,
   savingCfg,
@@ -40,15 +43,8 @@ const ConfigPanel = ({
   const applyLlmPatch = (patch) =>
     Object.entries(patch).forEach(([k, v]) => setC(k, v));
 
-  // ── Access control (Batch 1) ──
+  // ── Access control (Batch 1) — allow-list; [] means everyone (open) ──
   const allowed = cfg.allowed_user_ids || [];
-  const toggleUser = (id) => {
-    const next = new Set(allowed);
-    next.has(id) ? next.delete(id) : next.add(id);
-    setC("allowed_user_ids", Array.from(next));
-  };
-  const selectAll = () => setC("allowed_user_ids", deptUsers.map((u) => u.id));
-  const clearAll = () => setC("allowed_user_ids", []);
 
   return (
     <div className="rag-cfg-panel">
@@ -62,6 +58,11 @@ const ConfigPanel = ({
           {savingCfg ? "Saving…" : "Save"}
         </button>
       </div>
+
+      {/* Currently-saved summary for this stage (chunk/embed/llm/retrieval) */}
+      {["chunk", "embed", "llm", "retrieval"].includes(panel) && (
+        <SavedConfigBar space={space} panelKey={panel} />
+      )}
 
       {/* CHUNKING */}
       {panel === "chunk" && (
@@ -112,47 +113,58 @@ const ConfigPanel = ({
             </div>
           )}
 
-          <label className="rag-cfg-label">
-            {(cfg.chunk_mode || "FIXED_ALL") === "FIXED_ALL"
-              ? "Strategy"
-              : "Default strategy"}
-          </label>
-          <div className="rag-cfg-cards">
-            {[
-              { k: "FIXED", n: "Fixed", d: "Every N characters" },
-              { k: "SEMANTIC", n: "Semantic", d: "On topic change" },
-              { k: "HIERARCHICAL", n: "Hierarchical", d: "Parent + child" },
-            ].map((s) => (
-              <button
-                key={s.k}
-                className={`rag-cfg-card ${cfg.chunk_strategy === s.k ? "active" : ""}`}
-                onClick={() => setC("chunk_strategy", s.k)}
-              >
-                <div className="rag-cfg-card-n">{s.n}</div>
-                <div className="rag-cfg-card-d">{s.d}</div>
-              </button>
-            ))}
+          {/* Global strategy — only in Single mode. In Per-document you set the
+              strategy on each file below; in Adaptive it's auto-picked. */}
+          {(cfg.chunk_mode || "FIXED_ALL") === "FIXED_ALL" && (
+            <>
+              <label className="rag-cfg-label">
+                Strategy — applied to every document
+              </label>
+              <div className="rag-cfg-cards">
+                {[
+                  { k: "FIXED", n: "Fixed", d: "Every N characters" },
+                  { k: "SEMANTIC", n: "Semantic", d: "On topic change" },
+                  { k: "HIERARCHICAL", n: "Hierarchical", d: "Parent + child" },
+                ].map((s) => (
+                  <button
+                    key={s.k}
+                    className={`rag-cfg-card ${cfg.chunk_strategy === s.k ? "active" : ""}`}
+                    onClick={() => setC("chunk_strategy", s.k)}
+                  >
+                    <div className="rag-cfg-card-n">{s.n}</div>
+                    <div className="rag-cfg-card-d">{s.d}</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="rag-cfg-grid2">
+            <div>
+              <label className="rag-cfg-label">Chunk size (chars)</label>
+              <input
+                type="number"
+                min="256"
+                max="1024"
+                step="1"
+                value={cfg.chunk_size}
+                onChange={(e) => setC("chunk_size", e.target.value)}
+                className="rag-cfg-select"
+              />
+            </div>
+            <div>
+              <label className="rag-cfg-label">Overlap (chars)</label>
+              <input
+                type="number"
+                min="0"
+                max="200"
+                step="1"
+                value={cfg.chunk_overlap}
+                onChange={(e) => setC("chunk_overlap", e.target.value)}
+                className="rag-cfg-select"
+              />
+            </div>
           </div>
-          <label className="rag-cfg-label">Chunk size · {cfg.chunk_size}</label>
-          <input
-            type="range"
-            min="256"
-            max="1024"
-            step="1"
-            value={cfg.chunk_size}
-            onChange={(e) => setC("chunk_size", e.target.value)}
-            className="rag-cfg-range"
-          />
-          <label className="rag-cfg-label">Overlap · {cfg.chunk_overlap}</label>
-          <input
-            type="range"
-            min="0"
-            max="200"
-            step="1"
-            value={cfg.chunk_overlap}
-            onChange={(e) => setC("chunk_overlap", e.target.value)}
-            className="rag-cfg-range"
-          />
 
           {/* ── Batch 3: per-document strategy + indexing (moved from Uploads) ── */}
           <div
@@ -163,7 +175,9 @@ const ConfigPanel = ({
           />
           <div className="rag-cfg-head" style={{ marginBottom: 6 }}>
             <label className="rag-cfg-label" style={{ margin: 0 }}>
-              Documents · strategy &amp; indexing
+              {(cfg.chunk_mode || "FIXED_ALL") === "PER_DOCUMENT"
+                ? "Per-document strategy & indexing"
+                : "Documents · indexing"}
             </label>
             {extractedCount > 0 && (
               <button
@@ -176,8 +190,11 @@ const ConfigPanel = ({
             )}
           </div>
           <div className="rag-cfg-hint">
-            Pick a chunking strategy per document (or leave Default to use the
-            space strategy above), then Process to chunk &amp; index it.
+            {(cfg.chunk_mode || "FIXED_ALL") === "PER_DOCUMENT"
+              ? "Choose a strategy for each document (or leave Default to use the fallback above), then Process to chunk & index it."
+              : (cfg.chunk_mode || "FIXED_ALL") === "ADAPTIVE"
+                ? "Each document is chunked with the auto-selected best strategy. Process to chunk & index it."
+                : `Every document is chunked with the “${cfg.chunk_strategy || "FIXED"}” strategy above. Process to chunk & index it.`}
           </div>
 
           {parsedDocs.length === 0 && (
@@ -220,16 +237,26 @@ const ConfigPanel = ({
                   </div>
                 </div>
 
-                <select
-                  className="rag-doc-strategy-select"
-                  value={d.chunk_strategy || ""}
-                  onChange={(e) => handleSetDocStrategy(d.id, e.target.value)}
-                >
-                  <option value="">Default</option>
-                  <option value="FIXED">Fixed</option>
-                  <option value="SEMANTIC">Semantic</option>
-                  <option value="HIERARCHICAL">Hierarchical</option>
-                </select>
+                {(cfg.chunk_mode || "FIXED_ALL") === "PER_DOCUMENT" ? (
+                  <select
+                    className="rag-doc-strategy-select"
+                    value={d.chunk_strategy || ""}
+                    onChange={(e) => handleSetDocStrategy(d.id, e.target.value)}
+                  >
+                    <option value="">Default</option>
+                    <option value="FIXED">Fixed</option>
+                    <option value="SEMANTIC">Semantic</option>
+                    <option value="HIERARCHICAL">Hierarchical</option>
+                  </select>
+                ) : (
+                  <span className="rag-doc-strategy-fixed">
+                    {(cfg.chunk_mode || "FIXED_ALL") === "ADAPTIVE"
+                      ? d.chunk_strategy
+                        ? `Auto · ${d.chunk_strategy}`
+                        : "Auto"
+                      : cfg.chunk_strategy || "FIXED"}
+                  </span>
+                )}
 
                 <button
                   className="rag-btn rag-btn-xs rag-btn-dark"
@@ -255,54 +282,12 @@ const ConfigPanel = ({
 
       {/* EMBEDDING */}
       {panel === "embed" && (
-        <>
-          <EmbeddingSourceSelector
-            value={cfg}
-            onChange={applyLlmPatch}
-            hasOwnKey={cfg.embedding_has_own_key}
-          />
-
-          {(cfg.embedding_provider || "LOCAL") === "LOCAL" && (
-            <>
-              <label className="rag-cfg-label" style={{ marginTop: 18 }}>
-                Local embedding model
-              </label>
-              <div className="rag-cfg-models">
-                {embedModels
-                  .filter((m) => m.provider === "LOCAL")
-                  .map((m) => (
-                    <label
-                      key={m.id}
-                      className={`rag-cfg-model ${cfg.embedding_model === m.id ? "active" : ""}`}
-                    >
-                      <input
-                        type="radio"
-                        name="embed"
-                        checked={cfg.embedding_model === m.id}
-                        onChange={() => {
-                          setC("embedding_model", m.id);
-                          setC("embedding_provider", "LOCAL");
-                        }}
-                      />
-                      <div>
-                        <div className="rag-cfg-model-n">
-                          {m.label} · {m.dim}d
-                        </div>
-                        <div className="rag-cfg-model-note">{m.note}</div>
-                      </div>
-                    </label>
-                  ))}
-                {embedModels.length === 0 && (
-                  <div className="rag-cfg-hint">Loading…</div>
-                )}
-              </div>
-              <div className="rag-cfg-hint">
-                BGE-M3 (1024d) is the recommended local default — it matches the
-                pgvector column, so no re-indexing is needed.
-              </div>
-            </>
-          )}
-        </>
+        <EmbeddingSourceSelector
+          value={cfg}
+          onChange={applyLlmPatch}
+          hasOwnKey={cfg.embedding_has_own_key}
+          embedModels={embedModels}
+        />
       )}
 
       {/* LLM */}
@@ -315,17 +300,35 @@ const ConfigPanel = ({
           />
 
           <label className="rag-cfg-label" style={{ marginTop: 18 }}>
-            Temperature · {cfg.llm_temperature}
+            Temperature
           </label>
           <input
-            type="range"
+            type="number"
             min="0"
             max="2"
             step="0.1"
-            value={cfg.llm_temperature}
+            value={cfg.llm_temperature ?? 0.2}
             onChange={(e) => setC("llm_temperature", e.target.value)}
-            className="rag-cfg-range"
+            className="rag-cfg-select"
           />
+          <div className="rag-cfg-hint">
+            0 = deterministic/factual, 2 = most creative. Range 0–2.
+          </div>
+
+          <label className="rag-cfg-label">Max tokens</label>
+          <input
+            type="number"
+            min="256"
+            max="8000"
+            step="1"
+            value={cfg.llm_max_tokens ?? 1024}
+            onChange={(e) => setC("llm_max_tokens", e.target.value)}
+            className="rag-cfg-select"
+          />
+          <div className="rag-cfg-hint">
+            Maximum length of the generated answer. Higher = longer answers but
+            slower and more costly. Range 256–8000; 1024 suits most Q&amp;A.
+          </div>
 
           <label className="rag-cfg-label">System prompt</label>
           <textarea
@@ -379,70 +382,16 @@ const ConfigPanel = ({
       {panel === "access" && (
         <>
           <label className="rag-cfg-label">Who can use this space</label>
-          <div className="rag-cfg-hint">
-            Pick the department members allowed to query this space. If none are
-            selected, <strong>every user of the department</strong> can use it
-            (default). ADMIN and IT always have access.
-          </div>
-
-          {deptUsers.length > 0 && (
-            <div style={{ display: "flex", gap: 8, margin: "10px 0" }}>
-              <button
-                type="button"
-                className="rag-btn rag-btn-sm"
-                onClick={selectAll}
-              >
-                Select all
-              </button>
-              <button
-                type="button"
-                className="rag-btn rag-btn-sm"
-                onClick={clearAll}
-              >
-                Clear (everyone)
-              </button>
-              <span className="rag-cfg-model-note" style={{ alignSelf: "center" }}>
-                {allowed.length === 0
-                  ? "No restriction — all department users"
-                  : `${allowed.length} user(s) selected`}
-              </span>
-            </div>
-          )}
-
-          <div className="rag-cfg-models">
-            {loadingDeptUsers && <div className="rag-cfg-hint">Loading…</div>}
-
-            {!loadingDeptUsers && deptUsers.length === 0 && (
-              <div className="rag-cfg-hint">
-                No end-users in this department yet. Invite users (role USER) to
-                this department first.
-              </div>
-            )}
-
-            {!loadingDeptUsers &&
-              deptUsers.map((u) => (
-                <label
-                  key={u.id}
-                  className={`rag-cfg-model ${allowed.includes(u.id) ? "active" : ""}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={allowed.includes(u.id)}
-                    onChange={() => toggleUser(u.id)}
-                  />
-                  <div>
-                    <div className="rag-cfg-model-n">
-                      {u.name || u.email}
-                    </div>
-                    <div className="rag-cfg-model-note">
-                      {u.email}
-                      {u.status && u.status !== "ACTIVE"
-                        ? ` · ${u.status}`
-                        : ""}
-                    </div>
-                  </div>
-                </label>
-              ))}
+          <AccessSelector
+            users={deptUsers}
+            allowedIds={allowed}
+            onChange={(next) => setC("allowed_user_ids", next)}
+            loading={loadingDeptUsers}
+          />
+          <div className="rag-cfg-hint" style={{ marginTop: 10 }}>
+            Click a member to deactivate (exclude) them. Changes apply after you
+            press <strong>Save</strong>. Admin & IT always have access, so
+            restrictions only affect end-users.
           </div>
         </>
       )}

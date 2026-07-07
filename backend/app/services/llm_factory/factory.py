@@ -72,12 +72,15 @@ def get_llm(
         )
 
     if fam in ("OLLAMA", "LOCAL"):
-        # Local model via Ollama — no API key needed.
+        # Local model via Ollama — no API key needed. This is the "Local" source.
         from langchain_ollama import ChatOllama
-        kwargs = dict(model=model or "llama3", temperature=temperature)
-        if base_url:
-            kwargs["base_url"] = base_url
-        return ChatOllama(**kwargs)
+        from app.config import settings
+        return ChatOllama(
+            model=model or "llama3.1:8b",
+            temperature=temperature,
+            num_predict=max_tokens,
+            base_url=base_url or settings.OLLAMA_BASE_URL or "http://localhost:11434",
+        )
 
     if fam == "CUSTOM":
         # Custom OpenAI-compatible endpoint (vLLM, LM Studio, etc.)
