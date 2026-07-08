@@ -68,6 +68,23 @@ export const getExtractedContent = (s, d) =>
 export const updateExtractedContent = (s, d, parsedDocument) =>
   req("PUT", `/rag/spaces/${s}/documents/${d}/extracted`, parsedDocument);
 
+// ── Per-document image extraction toggle ──
+export const setDocumentExtractImages = (s, d, enabled) =>
+  req("PUT", `/rag/spaces/${s}/documents/${d}/extract-images`, { enabled });
+
+// ── Upload an image to add in the parsed-content editor ──
+export const uploadDocumentImage = async (spaceId, docId, file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(
+    `${BASE}/rag/spaces/${spaceId}/documents/${docId}/image`,
+    { method: "POST", credentials: "include", body: fd },
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Image upload failed");
+  return data; // { image_path, file_name }
+};
+
 // ── Process (chunk + embed) ──
 export const processDocument = (s, d) =>
   req("POST", `/rag/spaces/${s}/documents/${d}/process`);

@@ -12,6 +12,53 @@ import {
 import { getUser } from "../../services/authApi";
 import "../../styles/admin/users.css";
 
+/* ── Clean line icons (no emoji) ── */
+const I = {
+  team: (p) => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="9" cy="7" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
+  dept: (p) => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M3 21V7l6-3 6 3v14M15 21V11l6 3v7M3 21h18M7 9v0M7 13v0M7 17v0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  eye: (p) => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
+  edit: (p) => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  resend: (p) => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  close: (p) => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  ),
+  back: (p) => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  plus: (p) => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  ),
+};
+
 const UsersPage = () => {
   const [users, setUsers] = useState([]);
   const [depts, setDepts] = useState([]);
@@ -64,7 +111,6 @@ const UsersPage = () => {
 
   // ── Filtered data ──
   const itUsers = users.filter((u) => u.role === "IT");
-  const allNonAdmin = users.filter((u) => u.role !== "ADMIN");
 
   // Department members: IT + Users who have this dept
   const deptMembers = activeDept
@@ -198,81 +244,38 @@ const UsersPage = () => {
     }
   };
 
-  const statusColors = {
-    ACTIVE: { bg: "#ECFDF5", color: "#065F46", border: "#6EE7B7" },
-    PENDING: { bg: "#FFF7ED", color: "#92400E", border: "#FCD34D" },
-  };
-
-  const roleColors = {
-    ADMIN: { bg: "#FEF2F2", color: "#991B1B", border: "#FECACA" },
-    IT: { bg: "#EFF6FF", color: "#1E40AF", border: "#BFDBFE" },
-    USER: { bg: "#F0FDF4", color: "#166534", border: "#BBF7D0" },
-  };
-
   // ── Department checkbox list component ──
   const DeptCheckboxList = ({ selected, setSelected, label }) => (
     <div className="field" style={{ marginTop: 12 }}>
       <label>{label}</label>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          marginTop: 6,
-          padding: "10px 12px",
-          background: "#F9FAFB",
-          borderRadius: 8,
-          border: "1px solid #E5E7EB",
-          maxHeight: 180,
-          overflowY: "auto",
-        }}
-      >
+      <div className="users-checklist">
         {depts.length === 0 && (
-          <span style={{ fontSize: 12, color: "#9CA3AF" }}>
+          <span className="users-checklist-empty">
             No departments yet — create one first
           </span>
         )}
         {depts.map((d) => (
           <label
             key={d.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 13,
-              cursor: "pointer",
-              padding: "4px 0",
-            }}
+            className={`users-checkitem ${selected.includes(d.id) ? "on" : ""}`}
           >
             <input
               type="checkbox"
               checked={selected.includes(d.id)}
               onChange={() => toggleDept(d.id, setSelected)}
-              style={{ accentColor: "#2563EB", width: 16, height: 16 }}
             />
-            <span style={{ color: "#1F2937" }}>{d.name}</span>
+            <span>{d.name}</span>
           </label>
         ))}
       </div>
       {selected.length === 0 && (
-        <span
-          style={{
-            fontSize: 11,
-            color: "#DC2626",
-            marginTop: 4,
-            display: "block",
-          }}
-        >
-          Select at least one department
-        </span>
+        <span className="users-check-warn">Select at least one department</span>
       )}
     </div>
   );
 
   // ── User row component (enhanced) ──
   const UserRow = ({ u, showRole, showEditDepts }) => {
-    const sc = statusColors[u.status] || statusColors.ACTIVE;
-    const rc = roleColors[u.role] || roleColors.USER;
     const isMe = u.id === currentUser?.id;
     const initials = u.name
       ? u.name
@@ -295,27 +298,9 @@ const UsersPage = () => {
               </div>
               <div className="users-email">{u.email}</div>
               {u.department_names && u.department_names.length > 0 && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 4,
-                    flexWrap: "wrap",
-                    marginTop: 3,
-                  }}
-                >
+                <div className="users-deptchips">
                   {u.department_names.map((name, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 500,
-                        padding: "1px 6px",
-                        borderRadius: 4,
-                        background: "#EFF6FF",
-                        color: "#1D4ED8",
-                        border: "1px solid #BFDBFE",
-                      }}
-                    >
+                    <span key={i} className="users-deptchip">
                       {name}
                     </span>
                   ))}
@@ -326,26 +311,14 @@ const UsersPage = () => {
         </td>
         {showRole && (
           <td>
-            <span
-              className="users-badge"
-              style={{
-                background: rc.bg,
-                color: rc.color,
-                border: `1px solid ${rc.border}`,
-              }}
-            >
+            <span className={`users-badge role-${(u.role || "user").toLowerCase()}`}>
               {u.role}
             </span>
           </td>
         )}
         <td>
           <span
-            className="users-badge"
-            style={{
-              background: sc.bg,
-              color: sc.color,
-              border: `1px solid ${sc.border}`,
-            }}
+            className={`users-badge status-${(u.status || "active").toLowerCase()}`}
           >
             {u.status}
           </span>
@@ -364,18 +337,17 @@ const UsersPage = () => {
                 className="users-action-btn"
                 onClick={() => handleOpenEditDepts(u)}
                 title="Edit departments"
-                style={{ fontSize: 13 }}
               >
-                ✎
+                <I.edit />
               </button>
             )}
             {u.status === "PENDING" && (
               <button
                 className="users-action-btn"
                 onClick={() => handleResend(u.id, u.email)}
-                title="Resend"
+                title="Resend invitation"
               >
-                ↻
+                <I.resend />
               </button>
             )}
             {!isMe && u.role !== "ADMIN" && (
@@ -384,7 +356,7 @@ const UsersPage = () => {
                 onClick={() => handleDelete(u.id, u.name || u.email)}
                 title="Remove"
               >
-                ✕
+                <I.close />
               </button>
             )}
           </div>
@@ -398,23 +370,23 @@ const UsersPage = () => {
     <>
       {error && (
         <div className="users-error">
-          {error}{" "}
+          <span>{error}</span>
           <span
             onClick={() => setError("")}
-            style={{ cursor: "pointer", marginLeft: 8 }}
+            style={{ cursor: "pointer", display: "inline-flex" }}
           >
-            ✕
+            <I.close />
           </span>
         </div>
       )}
       {success && (
         <div className="users-success">
-          {success}{" "}
+          <span>{success}</span>
           <span
             onClick={() => setSuccess("")}
-            style={{ cursor: "pointer", marginLeft: 8 }}
+            style={{ cursor: "pointer", display: "inline-flex" }}
           >
-            ✕
+            <I.close />
           </span>
         </div>
       )}
@@ -435,35 +407,11 @@ const UsersPage = () => {
               ? "Select the departments this IT member can build RAG for."
               : "Select the departments this user can access."}
           </p>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              marginTop: 12,
-              padding: "10px 12px",
-              background: "#F9FAFB",
-              borderRadius: 8,
-              border: "1px solid #E5E7EB",
-              maxHeight: 220,
-              overflowY: "auto",
-            }}
-          >
+          <div className="users-checklist" style={{ maxHeight: 220 }}>
             {depts.map((d) => (
               <label
                 key={d.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 13,
-                  cursor: "pointer",
-                  padding: "6px 4px",
-                  borderRadius: 6,
-                  background: editDepts.includes(d.id)
-                    ? "#EFF6FF"
-                    : "transparent",
-                }}
+                className={`users-checkitem ${editDepts.includes(d.id) ? "on" : ""}`}
               >
                 <input
                   type="checkbox"
@@ -475,28 +423,13 @@ const UsersPage = () => {
                         : [...prev, d.id],
                     )
                   }
-                  style={{ accentColor: "#2563EB", width: 16, height: 16 }}
                 />
-                <span
-                  style={{
-                    color: "#1F2937",
-                    fontWeight: editDepts.includes(d.id) ? 500 : 400,
-                  }}
-                >
-                  {d.name}
-                </span>
+                <span>{d.name}</span>
               </label>
             ))}
           </div>
           {editDepts.length === 0 && (
-            <span
-              style={{
-                fontSize: 11,
-                color: "#DC2626",
-                marginTop: 6,
-                display: "block",
-              }}
-            >
+            <span className="users-check-warn">
               At least one department is required
             </span>
           )}
@@ -532,7 +465,7 @@ const UsersPage = () => {
               className="users-back-btn"
               onClick={() => setActiveView(null)}
             >
-              ←
+              <I.back />
             </button>
             <div>
               <h1 className="users-title">All Users</h1>
@@ -582,7 +515,7 @@ const UsersPage = () => {
               className="users-back-btn"
               onClick={() => setActiveDept(null)}
             >
-              ←
+              <I.back />
             </button>
             <div>
               <h1 className="users-title">{activeDept.name}</h1>
@@ -600,7 +533,7 @@ const UsersPage = () => {
               setShowInvite(true);
             }}
           >
-            + Invite to {activeDept.name}
+            <I.plus /> Invite to {activeDept.name}
           </button>
         </div>
 
@@ -609,17 +542,8 @@ const UsersPage = () => {
         {/* IT members in this department */}
         {deptIT.length > 0 && (
           <div style={{ marginBottom: 24 }}>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#6B7280",
-                marginBottom: 8,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-              }}
-            >
-              🛠 IT members ({deptIT.length})
+            <div className="users-eyebrow">
+              <I.team width={13} height={13} /> IT members ({deptIT.length})
             </div>
             <div className="users-table-wrap">
               <table className="users-table">
@@ -643,17 +567,8 @@ const UsersPage = () => {
 
         {/* End Users in this department */}
         <div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#6B7280",
-              marginBottom: 8,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            👤 End users ({deptUsers.length})
+          <div className="users-eyebrow">
+            <I.dept width={13} height={13} /> End users ({deptUsers.length})
           </div>
           <div className="users-table-wrap">
             <table className="users-table">
@@ -701,27 +616,14 @@ const UsersPage = () => {
               </div>
               <div className="field" style={{ marginTop: 12 }}>
                 <label>Role</label>
-                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                <div className="users-rolepick">
                   {["USER", "IT"].map((r) => (
                     <button
                       key={r}
+                      className={`users-rolepick-btn ${invRole === r ? "on" : ""}`}
                       onClick={() => setInvRole(r)}
-                      style={{
-                        flex: 1,
-                        padding: "8px 12px",
-                        borderRadius: 8,
-                        border:
-                          invRole === r
-                            ? "2px solid #2563EB"
-                            : "1px solid #E5E7EB",
-                        background: invRole === r ? "#EFF6FF" : "#fff",
-                        color: invRole === r ? "#1D4ED8" : "#6B7280",
-                        fontWeight: invRole === r ? 600 : 400,
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
                     >
-                      {r === "USER" ? "👤 End User" : "🛠 IT"}
+                      {r === "USER" ? "End User" : "IT"}
                     </button>
                   ))}
                 </div>
@@ -776,15 +678,10 @@ const UsersPage = () => {
           </p>
         </div>
         <button
-          className="users-invite-btn"
+          className="users-dept-btn"
           onClick={() => setActiveView("all")}
-          style={{
-            background: "#F3F4F6",
-            color: "#374151",
-            border: "1px solid #E5E7EB",
-          }}
         >
-          👁 View all users ({users.length})
+          <I.eye /> View all users ({users.length})
         </button>
       </div>
 
@@ -798,7 +695,9 @@ const UsersPage = () => {
           <div className="users-section">
             <div className="users-section-header">
               <div className="users-section-title-row">
-                <span className="users-section-icon it">🛠</span>
+                <span className="users-section-icon it">
+                  <I.team />
+                </span>
                 <div>
                   <h2 className="users-section-title">IT Team</h2>
                   <p className="users-section-count">
@@ -810,7 +709,7 @@ const UsersPage = () => {
                 className="users-invite-btn"
                 onClick={() => setShowInviteIT(true)}
               >
-                + Invite IT
+                <I.plus /> Invite IT
               </button>
             </div>
 
@@ -844,7 +743,9 @@ const UsersPage = () => {
           <div className="users-section" style={{ marginTop: 32 }}>
             <div className="users-section-header">
               <div className="users-section-title-row">
-                <span className="users-section-icon dept">👥</span>
+                <span className="users-section-icon dept">
+                  <I.dept />
+                </span>
                 <div>
                   <h2 className="users-section-title">Departments</h2>
                   <p className="users-section-count">
@@ -856,7 +757,7 @@ const UsersPage = () => {
                 className="users-dept-btn"
                 onClick={() => setShowAddDept(true)}
               >
-                + Add department
+                <I.plus /> Add department
               </button>
             </div>
 
@@ -882,7 +783,9 @@ const UsersPage = () => {
                     onClick={() => setActiveDept(d)}
                   >
                     <div className="dept-card-top">
-                      <div className="dept-card-icon">👥</div>
+                      <div className="dept-card-icon">
+                        <I.dept />
+                      </div>
                       <button
                         className="dept-card-del"
                         onClick={(e) => {
@@ -890,24 +793,25 @@ const UsersPage = () => {
                           handleDeleteDept(d.id, d.name);
                         }}
                       >
-                        ✕
+                        <I.close />
                       </button>
                     </div>
                     <div className="dept-card-name">{d.name}</div>
                     <div className="dept-card-count">
                       {totalCount} member{totalCount !== 1 ? "s" : ""}
                     </div>
-                    <div
-                      style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}
-                    >
-                      {itCount > 0 && <span>{itCount} IT</span>}
-                      {itCount > 0 && userCount > 0 && <span> · </span>}
-                      {userCount > 0 && (
-                        <span>
-                          {userCount} User{userCount !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
+                    {(itCount > 0 || userCount > 0) && (
+                      <div className="dept-card-breakdown">
+                        {itCount > 0 && (
+                          <span className="dept-card-stat">{itCount} IT</span>
+                        )}
+                        {userCount > 0 && (
+                          <span className="dept-card-stat">
+                            {userCount} User{userCount !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

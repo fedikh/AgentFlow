@@ -162,6 +162,34 @@ def set_document_strategy(
     )
 
 
+class SetExtractImagesRequest(BaseModel):
+    enabled: bool
+
+
+@router.put("/spaces/{space_id}/documents/{doc_id}/extract-images")
+def set_document_extract_images(
+    space_id: str, doc_id: str, data: SetExtractImagesRequest,
+    request: Request, db: Session = Depends(get_db),
+):
+    """Toggle image extraction for a single document (applied on next parse)."""
+    user = _get_current_user(request, db)
+    return rag_service.set_document_extract_images(
+        db, space_id, doc_id, data.enabled, user.organization_id
+    )
+
+
+@router.post("/spaces/{space_id}/documents/{doc_id}/image")
+def add_document_image(
+    space_id: str, doc_id: str, request: Request,
+    file: UploadFile = File(...), db: Session = Depends(get_db),
+):
+    """Upload an image to add to a document's parsed content (editor)."""
+    user = _get_current_user(request, db)
+    return rag_service.add_document_image(
+        db, space_id, doc_id, user.organization_id, file
+    )
+
+
 # ══════════════════════════════════════════
 # LOADED CONTENT — raw text from Loader
 # ══════════════════════════════════════════
@@ -268,3 +296,15 @@ def serve_image(space_id: str, path: str, db: Session = Depends(get_db)):
     if not os.path.exists(full):
         raise HTTPException(404, "Image not found")
     return FileResponse(full)
+
+
+@router.get("/spaces/{space_id}/documents/{doc_id}/file")
+def serve_document_file(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
+    """Serve the ORIGINAL uploaded file inline (PDF opens in the browser)."""
+    user = _get_current_user(request, db)
+    info = rag_service.get_document_file(db, space_id, doc_id, user.organization_id)
+    return FileResponse(
+        info["path"],
+        filename=info["file_name"],
+        content_disposition_type="inline",
+    )

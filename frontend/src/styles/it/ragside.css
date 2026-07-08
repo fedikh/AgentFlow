@@ -258,6 +258,29 @@
 }
 .rag-doc-chosen strong { font-weight: 600; }
 
+/* per-document "Extract images" toggle in the Uploads list */
+.rag-doc-imgtoggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  font: 500 12px system-ui, sans-serif;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+}
+.rag-doc-imgtoggle input {
+  accent-color: #0f1b2d;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.rag-doc-imgtoggle-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 400;
+}
+
 /* two-up field grid (chunk size / overlap, etc.) */
 .rag-cfg-grid2 {
   display: grid;

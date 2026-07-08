@@ -39,6 +39,8 @@ def _run_light_migrations():
         "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS embedding_provider_id VARCHAR",
         "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS embedding_api_key_enc TEXT",
         "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS embedding_base_url VARCHAR",
+        # Per-document image extraction toggle
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS extract_images BOOLEAN DEFAULT TRUE",
     ]
     try:
         with engine.begin() as conn:

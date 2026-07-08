@@ -8,7 +8,7 @@ Status flow:
 import uuid
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -48,3 +48,7 @@ class Document(Base):
     chunks    = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
     chunk_strategy  = Column(String, nullable=True)
     chosen_strategy = Column(String, nullable=True)
+
+    # Per-document image extraction toggle (PDF/DOCX/PPTX). When False, images
+    # are dropped from the parsed content (not summarized, not indexed).
+    extract_images  = Column(Boolean, default=True)

@@ -13,6 +13,9 @@ Everything else (loaders, parsers, chunking, embedding, search) is UNCHANGED.
 
 import os
 import json
+import uuid
+import glob
+import shutil
 import tempfile
 from collections import Counter
 from sqlalchemy.orm import Session
@@ -173,6 +176,7 @@ def _space_dict(db, space):
         "status": getattr(space, 'status', 'DRAFT') or 'DRAFT',
         "organization_id": space.organization_id,
         "department_id": space.department_id,
+        "department_name": space.department.name if getattr(space, "department", None) else None,
         "chunk_size": space.chunk_size, "chunk_overlap": space.chunk_overlap,
         "chunk_strategy": space.chunk_strategy,
         "chunk_mode": getattr(space, 'chunk_mode', 'FIXED_ALL') or 'FIXED_ALL',
@@ -210,6 +214,7 @@ def _doc_dict(doc):
         "num_chunks": doc.num_chunks, "status": status, "error_msg": doc.error_msg,
         "chunk_strategy": getattr(doc, 'chunk_strategy', None),
         "chosen_strategy": getattr(doc, 'chosen_strategy', None),
+        "extract_images": bool(getattr(doc, 'extract_images', True)),
         "has_loaded_content": bool(doc.loaded_content) if hasattr(doc, 'loaded_content') else False,
         "has_extracted_content": bool(doc.extracted_content) if hasattr(doc, 'extracted_content') else False,
         "rag_space_id": doc.rag_space_id, "uploaded_at": str(doc.uploaded_at),
@@ -290,10 +295,56 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
     db.refresh(space)
     return _space_dict(db, space)
 
+def _safe_unlink(path: str, space_id: str):
+    """Delete a file only if it lives under uploads/{space_id} (path-guard)."""
+    if not path:
+        return
+    try:
+        safe_root = os.path.abspath(os.path.join("uploads", space_id))
+        full = os.path.abspath(path)
+        if full.startswith(safe_root) and os.path.isfile(full):
+            os.unlink(full)
+    except Exception as e:
+        logger.warning(f"[CLEANUP] could not remove {path}: {e}")
+
+
+def _document_file_paths(doc, space_id: str) -> list[str]:
+    """All on-disk files owned by a document: the source file + its images."""
+    paths = []
+    # 1) source file — from loaded_content, else uploads/{space_id}/{doc.id}.*
+    if doc.loaded_content:
+        try:
+            fp = json.loads(doc.loaded_content).get("file_path", "")
+            if fp:
+                paths.append(fp)
+        except Exception:
+            pass
+    paths += glob.glob(os.path.join("uploads", space_id, f"{doc.id}.*"))
+    # 2) extracted images referenced by this document's parsed content
+    if doc.extracted_content:
+        try:
+            pd = json.loads(doc.extracted_content)
+            for img in pd.get("images", []):
+                p = img.get("image_path")
+                if p:
+                    paths.append(p)
+        except Exception:
+            pass
+    return paths
+
+
 def delete_space(db: Session, space_id: str, org_id: str) -> dict:
     space = _find_space(db, space_id, org_id)
     db.delete(space)
     db.commit()
+    # Remove the whole uploads folder for this space (source files + images).
+    try:
+        space_dir = os.path.abspath(os.path.join("uploads", space_id))
+        uploads_root = os.path.abspath("uploads")
+        if space_dir.startswith(uploads_root + os.sep) and os.path.isdir(space_dir):
+            shutil.rmtree(space_dir, ignore_errors=True)
+    except Exception as e:
+        logger.warning(f"[CLEANUP] could not remove space folder {space_id}: {e}")
     return {"message": f"Space '{space.name}' deleted"}
 
 def list_documents(db: Session, space_id: str, org_id: str) -> list:
@@ -307,18 +358,38 @@ def delete_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dic
     if not doc:
         raise HTTPException(404, "Document not found")
 
-    if doc.loaded_content:
-        try:
-            loaded = json.loads(doc.loaded_content)
-            fp = loaded.get("file_path", "")
-            if fp and os.path.exists(fp):
-                os.unlink(fp)
-        except Exception:
-            pass
+    # Remove the document's on-disk files (source + its extracted images).
+    for path in _document_file_paths(doc, space_id):
+        _safe_unlink(path, space_id)
 
+    name = doc.file_name
     db.delete(doc)
     db.commit()
-    return {"message": f"Document '{doc.file_name}' deleted"}
+    return {"message": f"Document '{name}' deleted"}
+
+
+def get_document_file(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
+    """Locate the original uploaded file for a document (to preview/download)."""
+    _find_space(db, space_id, org_id)
+    doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    path = None
+    if doc.loaded_content:
+        try:
+            fp = json.loads(doc.loaded_content).get("file_path")
+            if fp and os.path.exists(fp):
+                path = fp
+        except Exception:
+            pass
+    if not path:
+        matches = [m for m in glob.glob(os.path.join("uploads", space_id, f"{doc_id}.*")) if os.path.isfile(m)]
+        if matches:
+            path = os.path.abspath(matches[0])
+    if not path or not os.path.exists(path):
+        raise HTTPException(404, "Original file not found on disk")
+    return {"path": os.path.abspath(path), "file_name": doc.file_name}
 
 def list_chunks(db: Session, space_id: str, doc_id: str, org_id: str) -> list:
     _find_space(db, space_id, org_id)
@@ -351,6 +422,49 @@ def set_document_strategy(db: Session, space_id: str, doc_id: str, strategy: str
     db.commit()
     db.refresh(doc)
     return _doc_dict(doc)
+
+
+def set_document_extract_images(db: Session, space_id: str, doc_id: str, enabled: bool, org_id: str) -> dict:
+    """Toggle image extraction for a single document (applied on next Load & Parse)."""
+    _find_space(db, space_id, org_id)
+    doc = db.query(Document).filter(
+        Document.id == doc_id,
+        Document.rag_space_id == space_id,
+    ).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    doc.extract_images = bool(enabled)
+    db.commit()
+    db.refresh(doc)
+    return _doc_dict(doc)
+
+
+def add_document_image(db: Session, space_id: str, doc_id: str, org_id: str, file) -> dict:
+    """
+    Save an uploaded image into the document's images folder and return its
+    absolute path (to be added as an image block in the parsed-content editor).
+    """
+    _find_space(db, space_id, org_id)
+    doc = db.query(Document).filter(
+        Document.id == doc_id,
+        Document.rag_space_id == space_id,
+    ).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    ext = os.path.splitext(file.filename or "")[1].lower() or ".png"
+    if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"):
+        raise HTTPException(400, "Unsupported image type. Use PNG, JPG, WEBP, GIF or BMP.")
+
+    images_dir = os.path.abspath(os.path.join("uploads", space_id, "images"))
+    os.makedirs(images_dir, exist_ok=True)
+    filename = f"manual_{uuid.uuid4().hex[:10]}{ext}"
+    save_path = os.path.join(images_dir, filename)
+
+    with open(save_path, "wb") as f:
+        f.write(file.file.read())
+
+    return {"image_path": save_path, "file_name": file.filename}
 
 
 # ══════════════════════════════════════════════════════
@@ -509,7 +623,13 @@ def load_and_parse_document(db, space_id, doc_id, org_id):
                 from app.services.providers.parsers.image_summarizer import summarize_images_in_parsed
  
                 pd = ParsedDocument.from_dict(parsed_doc_data)
-                if pd.images:
+                if not getattr(doc, "extract_images", True):
+                    # Image extraction OFF for this document → drop all images.
+                    if pd.images:
+                        logger.info(f"[LOAD+PARSE] {doc.file_name}: image extraction OFF, dropping {len(pd.images)} image(s)")
+                    pd.images = []
+                    parsed_doc_data = pd.to_dict()
+                elif pd.images:
                     n = summarize_images_in_parsed(pd)   # appelle Gemini par image
                     logger.info(f"[LOAD+PARSE] {doc.file_name}: summarized {n}/{len(pd.images)} image(s)")
                     parsed_doc_data = pd.to_dict()        # re-sérialise AVEC les résumés

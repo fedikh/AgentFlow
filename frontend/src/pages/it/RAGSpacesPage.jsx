@@ -26,6 +26,8 @@ import {
   getEmbeddingModels,
   getLLMModels,
   setDocumentStrategy,
+  setDocumentExtractImages,
+  uploadDocumentImage,
   listDepartmentUsers,
 } from "../../services/ragApi";
 import { openGooglePicker } from "../../services/useGooglePicker";
@@ -419,6 +421,18 @@ const RAGSpacesPage = () => {
       setError(e.message);
     }
   };
+  const handleSetExtractImages = async (docId, enabled) => {
+    // optimistic
+    setDocs((p) =>
+      p.map((d) => (d.id === docId ? { ...d, extract_images: enabled } : d)),
+    );
+    try {
+      await setDocumentExtractImages(activeSpace.id, docId, enabled);
+    } catch (e) {
+      setError(e.message);
+      await refreshDocs();
+    }
+  };
 
   const handleDeleteDoc = async (id) => {
     try {
@@ -525,6 +539,38 @@ const RAGSpacesPage = () => {
       ];
       return next;
     });
+  };
+  // Upload an image file, then append it as a new image block in the editor.
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const addImage = async (file) => {
+    if (!file || !editDoc) return;
+    setUploadingImage(true);
+    try {
+      const { image_path } = await uploadDocumentImage(
+        activeSpace.id,
+        editDoc.id,
+        file,
+      );
+      setEditDoc((prev) => {
+        const next = { ...prev, parsed_document: { ...prev.parsed_document } };
+        next.parsed_document.images = [
+          ...(next.parsed_document.images || []),
+          {
+            caption: "",
+            ocr_text: "",
+            image_path,
+            page: 1,
+            bbox: [],
+            text_for_embedding: "",
+          },
+        ];
+        return next;
+      });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploadingImage(false);
+    }
   };
   const saveEdit = async () => {
     setSavingEdit(true);
@@ -660,6 +706,8 @@ const RAGSpacesPage = () => {
               counts={{ uploadingCount, loadedCount, extractedCount }}
               chunkMode={activeSpace.chunk_mode || "FIXED_ALL"}
               handleSetDocStrategy={handleSetDocStrategy}
+              handleSetExtractImages={handleSetExtractImages}
+              spaceId={activeSpace.id}
             />
           )}
 
@@ -720,6 +768,8 @@ const RAGSpacesPage = () => {
         editField={editField}
         removeBlock={removeBlock}
         addSection={addSection}
+        addImage={addImage}
+        uploadingImage={uploadingImage}
         spaceId={activeSpace?.id}
       />
     </div>

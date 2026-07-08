@@ -17,9 +17,15 @@ const DocModal = ({
   editField,
   removeBlock,
   addSection,
+  addImage = () => {},
+  uploadingImage = false,
   spaceId,
 }) => {
   if (!modal) return null;
+
+  const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+  const imgUrl = (path) =>
+    `${API}/rag/spaces/${spaceId}/image?path=${encodeURIComponent(path || "")}`;
 
   return (
     <div
@@ -137,9 +143,9 @@ const DocModal = ({
               {editMode && editDoc ? (
                 <>
                   <div className="rag-edit-note">
-                    Edit sections and tables below. Saving keeps the document at{" "}
-                    <strong>Parsed</strong> — re-process to rebuild chunks from
-                    your changes.
+                    Edit sections, tables and images below. Saving keeps the
+                    document at <strong>Parsed</strong> — re-process to rebuild
+                    chunks from your changes.
                   </div>
                   <input
                     className="rag-edit-input"
@@ -265,13 +271,104 @@ const DocModal = ({
                       </div>
                     </div>
                   ))}
-                  <button
-                    className="rag-btn rag-btn-sm"
-                    onClick={addSection}
-                    style={{ marginTop: 10 }}
-                  >
-                    + Add section
-                  </button>
+                  {editDoc.parsed_document.images?.map((img, i) => (
+                    <div key={`ei${i}`} className="rag-block">
+                      <div className="rag-block-header">
+                        <span className="rag-block-tag">Image {i + 1}</span>
+                        <button
+                          className="rag-btn rag-btn-xs rag-btn-red"
+                          onClick={() => removeBlock("images", i)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                        <img
+                          src={imgUrl(img.image_path)}
+                          alt={`Image ${i + 1}`}
+                          style={{
+                            width: 140,
+                            height: 140,
+                            objectFit: "contain",
+                            borderRadius: 8,
+                            background: "#F8FAFC",
+                            border: "1px solid #F1F1F1",
+                            flexShrink: 0,
+                          }}
+                          onError={(e) => {
+                            e.target.style.opacity = 0.2;
+                          }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <textarea
+                            className="rag-edit-textarea"
+                            rows={3}
+                            placeholder="Description (used for retrieval)"
+                            value={img.text_for_embedding || ""}
+                            onChange={(e) =>
+                              editField("images", i, "text_for_embedding", e.target.value)
+                            }
+                          />
+                          <input
+                            className="rag-edit-input"
+                            placeholder="Caption (optional)"
+                            value={img.caption || ""}
+                            onChange={(e) =>
+                              editField("images", i, "caption", e.target.value)
+                            }
+                          />
+                          <input
+                            className="rag-edit-input"
+                            placeholder="OCR text (optional)"
+                            value={img.ocr_text || ""}
+                            onChange={(e) =>
+                              editField("images", i, "ocr_text", e.target.value)
+                            }
+                          />
+                          <div className="rag-edit-fields">
+                            <label className="rag-edit-field">
+                              Page
+                              <input
+                                type="number"
+                                min={1}
+                                value={img.page || 1}
+                                onChange={(e) =>
+                                  editField(
+                                    "images",
+                                    i,
+                                    "page",
+                                    parseInt(e.target.value) || 1,
+                                  )
+                                }
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button className="rag-btn rag-btn-sm" onClick={addSection}>
+                      + Add section
+                    </button>
+                    <label
+                      className="rag-btn rag-btn-sm"
+                      style={{ cursor: uploadingImage ? "default" : "pointer" }}
+                    >
+                      {uploadingImage ? "Uploading…" : "+ Add image"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: "none" }}
+                        disabled={uploadingImage}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) addImage(f);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
                 </>
               ) : showJson ? (
                 <div className="rag-json">

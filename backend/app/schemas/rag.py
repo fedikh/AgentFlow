@@ -192,6 +192,9 @@ class ImageEdit(BaseModel):
     image_path: str = ""
     page:       int = 1
     bbox:       list[float] = Field(default_factory=list)
+    # The description used for retrieval — must round-trip so edited/added
+    # images stay indexable (to_content_blocks only emits images that have it).
+    text_for_embedding: str = ""
 
 
 class UpdateExtractedRequest(BaseModel):

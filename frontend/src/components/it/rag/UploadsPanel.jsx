@@ -39,8 +39,19 @@ const UploadsPanel = ({
   counts,
   chunkMode,
   handleSetDocStrategy,
+  handleSetExtractImages = () => {},
+  spaceId,
 }) => {
   const { uploadingCount, loadedCount, extractedCount } = counts;
+  const canImages = (d) =>
+    ["pdf", "docx", "pptx"].includes((d.file_type || "").toLowerCase());
+  const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+  const viewFile = (d) =>
+    window.open(
+      `${API}/rag/spaces/${spaceId}/documents/${d.id}/file`,
+      "_blank",
+      "noopener",
+    );
 
   return (
     <>
@@ -163,7 +174,35 @@ const UploadsPanel = ({
 
               {/* Chunking strategy & indexing now live in the Chunking section. */}
 
+              {/* Per-document image extraction (PDF/DOCX/PPTX, before indexing) */}
+              {canImages(d) && d.status !== "INDEXED" && (
+                <label className="rag-doc-imgtoggle">
+                  <input
+                    type="checkbox"
+                    checked={d.extract_images !== false}
+                    onChange={(e) =>
+                      handleSetExtractImages(d.id, e.target.checked)
+                    }
+                  />
+                  Extract images
+                  <span className="rag-doc-imgtoggle-hint">
+                    {d.has_extracted_content
+                      ? "· re-run Load + Parse to apply"
+                      : "· applied on Load + Parse"}
+                  </span>
+                </label>
+              )}
+
               <div className="rag-doc-btns">
+                {d.source_type !== "url" && (
+                  <button
+                    className="rag-btn rag-btn-xs"
+                    onClick={() => viewFile(d)}
+                    title="Open the original file"
+                  >
+                    View document
+                  </button>
+                )}
                 {d.status === "UPLOADING" && (
                   <button
                     className="rag-btn rag-btn-xs rag-btn-blue"
