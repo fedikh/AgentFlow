@@ -84,9 +84,29 @@ app.include_router(models_routes.router)
 app.include_router(api_provider.router, prefix="/api")
 
 
+def _warmup_docling():
+    """
+    Pre-load the Docling converter + ML models in a background thread so the
+    FIRST document parse doesn't pay the one-time model-load latency.
+    """
+    try:
+        from app.config import settings
+        if str(getattr(settings, "PDF_EXTRACTION_MODE", "accurate")).lower() == "fast":
+            return  # fast mode uses PyMuPDF, nothing to warm
+        if not getattr(settings, "DOCLING_WARMUP", True):
+            return
+        from app.services.providers.loaders.documents.pdf_loader import _get_converter
+        _get_converter()  # builds converter + loads layout/table models
+        print("✅ Docling models warmed up")
+    except Exception as e:
+        print(f"⚠️  Docling warmup skipped: {e}")
+
+
 @app.on_event("startup")
 async def startup():
     test_connection()
+    import threading
+    threading.Thread(target=_warmup_docling, daemon=True).start()
 
 
 @app.get("/")

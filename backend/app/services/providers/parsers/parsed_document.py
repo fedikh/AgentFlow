@@ -10,6 +10,7 @@ class Section:
     level: int = 1
     page: int = 1
     font_size: Optional[float] = None
+    parent_section: Optional[str] = None   # enclosing heading text (hierarchy)
 
 
 @dataclass
@@ -60,6 +61,14 @@ class ParsedDocument:
     ocr_quality: str = "good"
     ocr_issues: list[str] = field(default_factory=list)
 
+    # ── Element-based representation (new schema) ──
+    # Flat, reading-ordered list of typed elements (heading/paragraph/table/
+    # image/list_item) with hierarchy + location. Built alongside the legacy
+    # sections/tables/images so consumers can migrate incrementally.
+    document_id: str = ""
+    document: dict = field(default_factory=dict)   # {id, name, version, source{...}, created_by}
+    elements: list = field(default_factory=list)
+
     @property
     def total_sections(self):
         return len(self.sections)
@@ -81,10 +90,14 @@ class ParsedDocument:
 
     def to_dict(self):
         return {
+            "document_id": self.document_id,
+            "document": self.document,
+            "elements": self.elements,
             "title": self.title,
             "sections": [
                 {"heading": s.heading, "content": s.content, "level": s.level,
-                 "page": s.page, "font_size": s.font_size}
+                 "page": s.page, "font_size": s.font_size,
+                 "parent_section": s.parent_section}
                 for s in self.sections
             ],
             "tables": [
@@ -136,7 +149,9 @@ class ParsedDocument:
                 category=d.get("category", "document"),
                 ocr_quality=d.get("ocr_quality", "good"),
                 ocr_issues=d.get("ocr_issues", []),
-
+                document_id=d.get("document_id", ""),
+                document=d.get("document", {}),
+                elements=d.get("elements", []),
             )
 
     def to_content_blocks(self):

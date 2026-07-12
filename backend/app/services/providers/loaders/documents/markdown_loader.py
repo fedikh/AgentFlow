@@ -1,9 +1,12 @@
 """
-Markdown Loader — uses LlamaIndex SimpleDirectoryReader.
+Markdown Loader — reads the raw Markdown (encoding-aware).
+
+Structural parsing into the element schema happens in the Parse step
+(markdown_parser), so the lifecycle stays UPLOAD → LOADED → (Parse) → EXTRACTED
+and the manual "Parse" button is preserved.
 """
 import os
 import logging
-from llama_index.core import SimpleDirectoryReader
 
 logger = logging.getLogger(__name__)
 
@@ -11,24 +14,16 @@ logger = logging.getLogger(__name__)
 def load(file_path: str) -> dict:
     logger.info(f"[MD_LOADER] Loading: {os.path.basename(file_path)}")
 
-    reader = SimpleDirectoryReader(input_files=[file_path])
-    documents = reader.load_data()
+    from app.services.providers.loaders._utils import (
+        read_text_file, clean_text, build_doc_metadata,
+    )
 
-    if not documents:
+    raw = read_text_file(file_path)
+    if not raw.strip():
         raise ValueError("Markdown file is empty")
 
-    raw_text = "\n\n".join(doc.text for doc in documents if doc.text.strip())
-
-    from app.services.providers.loaders._utils import clean_text
-    raw_text = clean_text(raw_text)
-
-    if not raw_text.strip():
-        raise ValueError("Markdown loaded but no text extracted")
-
-    metadata = {}
-    if documents and hasattr(documents[0], "metadata") and documents[0].metadata:
-        from app.services.providers.loaders._utils import sanitize_metadata
-        metadata = sanitize_metadata(documents[0].metadata)
+    raw_text = clean_text(raw)
+    metadata = build_doc_metadata(file_path, 1, "md", parser_name="markdown")
 
     return {
         "raw_text": raw_text,

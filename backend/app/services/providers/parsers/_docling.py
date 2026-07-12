@@ -39,8 +39,77 @@ def _looks_like_heading(text: str) -> bool:
     return False
 
 
-def docling_to_parsed_document(result, file_type="PDF", category="document", metadata=None):
+def _table_structured(item, doc):
+    """Return (headers, rows) for a docling TableItem. rows = list of dicts keyed
+    by header. Falls back to ([], []) if the table can't be structured."""
+    try:
+        df = item.export_to_dataframe(doc)
+    except Exception:
+        try:
+            df = item.export_to_dataframe()
+        except Exception:
+            return [], []
+    try:
+        headers = [str(c) for c in df.columns]
+        rows = [
+            {str(k): ("" if v is None else str(v)) for k, v in rec.items()}
+            for rec in df.to_dict(orient="records")
+        ]
+        return headers, rows
+    except Exception:
+        return [], []
+
+
+def _caption_text(item, doc):
+    """Best-effort caption for a table/picture item."""
+    try:
+        c = item.caption_text(doc)
+        if c:
+            return str(c).strip()
+    except Exception:
+        pass
+    return ""
+
+
+def docling_to_parsed_document(result, file_type="PDF", category="document",
+                               metadata=None, ro_start=0, heading_stack=None):
     doc = result.document
+
+    # ── Element-based output (new schema), built in the SAME pass ──
+    # ids are global via ro_start; parent references use a heading stack that can
+    # be carried across batches (so a paragraph's parent heading resolves even
+    # when the heading was in an earlier batch).
+    elements = []
+    reading_order = ro_start
+    if heading_stack is None:
+        heading_stack = []
+
+    def _emit(el_type, content, page, bbox, level=None, list_level=None):
+        nonlocal reading_order
+        reading_order += 1
+        eid = f"e{reading_order}"
+        if el_type == "heading":
+            lvl = level or 1
+            while heading_stack and heading_stack[-1][0] >= lvl:
+                heading_stack.pop()
+            parent = heading_stack[-1][1] if heading_stack else None
+            heading_stack.append((lvl, eid))
+        else:
+            parent = heading_stack[-1][1] if heading_stack else None
+        el = {
+            "id": eid,
+            "type": el_type,
+            "content": content,
+            "location": {"page": page, "bbox": bbox or []},
+            "hierarchy": {"parent": parent},
+            "metadata": {"reading_order": reading_order},
+        }
+        if level is not None:
+            el["level"] = level
+        if list_level is not None:
+            el["metadata"]["list_level"] = list_level
+        elements.append(el)
+        return eid
 
     sections = []
     tables = []
@@ -150,6 +219,13 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
                         bbox=bbox,
                     ))
 
+            if image_path or caption or ocr_text:
+                _emit("image", {
+                    "image_path": image_path,
+                    "caption": caption or "Image",
+                    "text_for_embedding": "",
+                    "ocr_text": ocr_text,
+                }, page, bbox)
             continue
 
         # ── TABLE ──
@@ -173,6 +249,13 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
                     content=text, headers=headers,
                     num_rows=_count_rows(text), num_cols=len(headers), page=page,
                 ))
+                s_headers, s_rows = _table_structured(item, doc)
+                _emit("table", {
+                    "caption": _caption_text(item, doc),
+                    "headers": s_headers or headers,
+                    "rows": s_rows,
+                    "markdown": text,
+                }, page, bbox)
             continue
 
         # ── HEADING ──
@@ -188,15 +271,22 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
             current_page = page
             if not title:
                 title = text
+            _emit("heading", {"text": text}, page, bbox, level=current_level)
             continue
 
         # ── BODY TEXT ──
         if label in TEXT_LABELS or class_name == "TextItem":
             text = str(item.text).strip() if hasattr(item, 'text') and item.text else ""
             if text:
+                # A Docling-labelled list item is NEVER a heading — the DOCX
+                # heading heuristic would otherwise misread short bullets
+                # (e.g. "Fixed Chunking (taille fixe)") as section titles and
+                # drop their content.
+                is_list = (label == "list_item" or class_name == "ListItem")
+
                 # DOCX: treat heading-like lines as section headers so the
                 # output is structured like a PDF (Docling can't label them).
-                if detect_headings and _looks_like_heading(text):
+                if detect_headings and not is_list and _looks_like_heading(text):
                     _flush(sections, current_heading, current_lines, current_level, current_page)
                     current_lines = []
                     current_heading = text
@@ -204,6 +294,7 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
                     current_page = page
                     if not title:
                         title = text
+                    _emit("heading", {"text": text}, page, bbox, level=1)
                     continue
 
                 # PPTX: start a new section whenever the slide (page) changes.
@@ -215,6 +306,11 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
                 current_lines.append(text)
                 if not current_heading:
                     current_page = page
+                # Docling nests lists via `level` (1 = body, 2 = first bullet
+                # level, 3 = sub-bullet …) → expose depth so nested items indent.
+                _emit("list_item" if is_list else "paragraph",
+                      {"text": text}, page, bbox,
+                      list_level=(max(1, level - 1) if is_list else None))
             continue
 
     # Flush last section
@@ -236,10 +332,15 @@ def docling_to_parsed_document(result, file_type="PDF", category="document", met
         category=category,
         ocr_quality="good",
         ocr_issues=[],
+        elements=elements,
     )
+    # Carried across batches so ids/reading_order stay globally unique and the
+    # heading stack (parent resolution) survives batch boundaries.
+    parsed._next_ro = reading_order
 
     logger.info(f"[DOCLING] -> {parsed.total_sections} sections, "
-                f"{parsed.total_tables} tables, {parsed.total_images} images")
+                f"{parsed.total_tables} tables, {parsed.total_images} images, "
+                f"{len(elements)} elements")
 
     return parsed
 
@@ -275,12 +376,19 @@ def _save_image(item, doc, images_dir, page, counter):
 
 
 def _get_images_dir(file_path):
-    """Create images directory next to the uploaded file."""
+    """Per-document images directory next to the uploaded file.
+
+    Scoped as uploads/{space_id}/images/{file_stem}/ so that (a) two documents
+    in the same space never overwrite each other's page images, and (b) deleting
+    a document can drop all of its images by removing this single folder.
+    """
     if not file_path:
         return ""
     parent = os.path.dirname(os.path.abspath(file_path))
-    images_dir = os.path.join(parent, "images")
-    return images_dir
+    stem = os.path.splitext(os.path.basename(file_path))[0]
+    if not stem:
+        return os.path.join(parent, "images")
+    return os.path.join(parent, "images", stem)
 
 
 def _flush(sections, heading, lines, level, page):

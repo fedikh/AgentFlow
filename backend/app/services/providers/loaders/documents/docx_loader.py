@@ -61,24 +61,32 @@ def load(file_path: str) -> dict:
     # ParsedDocument from structure.
     # NOTE: pass the real file_path so _docling saves images next to it
     # (uploads/{space_id}/images), which the image route can then serve.
-    metadata = {
-        "source": os.path.basename(file_path),
-        "file_path": os.path.abspath(file_path),
-        "parser": "docling",
-    }
+    from app.services.providers.loaders._utils import build_doc_metadata
     parsed_doc = docling_to_parsed_document(
         result=result,
         file_type="Word",
         category="document",
-        metadata=metadata,
+        metadata={"source": os.path.basename(file_path),
+                  "file_path": os.path.abspath(file_path)},
     )
 
     if not raw_text.strip():
         raise ValueError("DOCX contains no readable text")
 
+    num_pages = parsed_doc.num_pages or 1
+    metadata = build_doc_metadata(file_path, num_pages, "docx")
+
+    # Rebuild heading levels + parent links from section numbering.
+    from app.services.providers.parsers.hierarchy import (
+        build_hierarchy, build_section_hierarchy,
+    )
+    build_hierarchy(parsed_doc.elements)
+    build_section_hierarchy(parsed_doc.sections)
+    parsed_doc.metadata = metadata
+
     return {
         "raw_text": raw_text,
-        "num_pages": parsed_doc.num_pages or 1,
+        "num_pages": num_pages,
         "file_type": "Word",
         "category": "document",
         "metadata": metadata,

@@ -1,8 +1,7 @@
 """
-HTML Loader — uses BeautifulSoup + chardet for encoding detection.
-
-Removes non-content elements (script, style, nav, footer, aside).
-Extracts tables separately as markdown.
+HTML Loader — reads an uploaded .html file (encoding-aware) and PRESERVES the
+raw HTML so the web parser can extract the canonical element model. raw_text is
+a readable text preview.
 """
 import os
 import logging
@@ -14,51 +13,28 @@ def load(file_path: str) -> dict:
     logger.info(f"[HTML_LOADER] Loading: {os.path.basename(file_path)}")
 
     from bs4 import BeautifulSoup
-    import chardet
+    from app.services.providers.loaders._utils import read_text_file
+    from app.services.providers.parsers.web_elements import extract_web_metadata
 
-    with open(file_path, "rb") as f:
-        raw = f.read()
-    detected = chardet.detect(raw)
-    encoding = detected.get("encoding", "utf-8") or "utf-8"
-    html = raw.decode(encoding, errors="replace")
-
+    html = read_text_file(file_path)
     soup = BeautifulSoup(html, "html.parser")
+    meta = extract_web_metadata(soup, None)
 
-    # Remove non-content elements
-    for tag in soup(["script", "style", "nav", "footer", "aside", "iframe", "header"]):
+    for tag in soup(["script", "style", "nav", "footer", "aside", "header", "iframe"]):
         tag.decompose()
-
-    # Extract tables → markdown format
-    tables_text = []
-    for table in soup.find_all("table"):
-        rows = []
-        for tr in table.find_all("tr"):
-            cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
-            rows.append(" | ".join(cells))
-        if rows:
-            tables_text.append("\n".join(rows))
-        table.decompose()
-
-    # Remaining text content
-    text = soup.get_text(separator="\n", strip=True)
-    full_text = text
-    if tables_text:
-        full_text += "\n\n" + "\n\n".join(tables_text)
-
-    if not full_text.strip():
+    raw_text = soup.get_text("\n", strip=True)
+    if not raw_text.strip():
         raise ValueError("HTML file contains no readable content")
 
-    # Try to extract title
-    title = ""
-    title_tag = BeautifulSoup(html, "html.parser").find("title")
-    if title_tag:
-        title = title_tag.get_text(strip=True)
+    metadata = {"source": os.path.basename(file_path), "mime_type": "text/html"}
+    metadata.update({k: v for k, v in meta.items() if v})
 
     return {
-        "raw_text": full_text,
+        "raw_text": raw_text,
         "num_pages": 1,
         "file_type": "HTML",
         "category": "web",
-        "metadata": {"source": file_path, "title": title, "encoding": encoding},
-        "total_chars": len(full_text),
+        "html": html,
+        "metadata": metadata,
+        "total_chars": len(raw_text),
     }

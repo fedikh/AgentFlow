@@ -10,6 +10,10 @@ import {
   deleteDocument,
   uploadDocument,
   scrapeUrl,
+  parseRawHtml,
+  crawlWebsite,
+  ingestSitemap,
+  ingestRss,
   getLoadedContent,
   parseDocument,
   parseAllDocuments,
@@ -329,6 +333,34 @@ const RAGSpacesPage = () => {
       await scrapeUrl(activeSpace.id, urlInput);
       setSuccess("Scraped");
       setUrlInput("");
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setScraping(false);
+    }
+  };
+  const handleWebIngest = async (mode, payload) => {
+    if (!activeSpace) return;
+    setScraping(true);
+    setError("");
+    try {
+      if (mode === "url") {
+        await scrapeUrl(activeSpace.id, payload.url);
+        setSuccess("Scraped");
+      } else if (mode === "html") {
+        await parseRawHtml(activeSpace.id, payload.html, payload.name);
+        setSuccess("HTML added");
+      } else if (mode === "crawl") {
+        const r = await crawlWebsite(activeSpace.id, payload);
+        setSuccess(`Crawled ${r.count}/${r.total} pages`);
+      } else if (mode === "sitemap") {
+        const r = await ingestSitemap(activeSpace.id, payload);
+        setSuccess(`Imported ${r.count}/${r.total} pages`);
+      } else if (mode === "rss") {
+        const r = await ingestRss(activeSpace.id, payload);
+        setSuccess(`Imported ${r.count} articles`);
+      }
       await refreshDocs();
     } catch (e) {
       setError(e.message);
@@ -695,6 +727,7 @@ const RAGSpacesPage = () => {
               handleUpload={handleUpload}
               handleDriveUpload={handleDriveUpload}
               handleScrape={handleScrape}
+              handleWebIngest={handleWebIngest}
               handleLoadParse={handleLoadParse}
               handleLoadParseAll={handleLoadParseAll}
               handleParse={handleParse}

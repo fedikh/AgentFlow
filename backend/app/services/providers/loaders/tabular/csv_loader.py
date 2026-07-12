@@ -18,16 +18,13 @@ logger = logging.getLogger(__name__)
 def load(file_path: str) -> dict:
     logger.info(f"[CSV_LOADER] Loading: {os.path.basename(file_path)}")
 
+    from app.services.providers.loaders._utils import build_doc_metadata
     try:
         import pandas as pd
         df = pd.read_csv(file_path, encoding="utf-8", on_bad_lines="skip")
         raw_text = df.to_markdown(index=False)
-        metadata = {
-            "source": os.path.basename(file_path),
-            "rows": len(df),
-            "columns": len(df.columns),
-            "column_names": ", ".join(str(c) for c in df.columns.tolist()),
-        }
+        metadata = build_doc_metadata(file_path, 1, "csv", parser_name="pandas",
+                                      extra={"rows": len(df), "columns": len(df.columns)})
     except Exception as e:
         logger.warning(f"Pandas CSV failed: {e}, falling back to raw read")
         raw_text, metadata = _fallback_read(file_path)

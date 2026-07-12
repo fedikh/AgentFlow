@@ -47,9 +47,17 @@ export const uploadDocument = async (spaceId, file) => {
   return data;
 };
 
-// ── Scrape ──
+// ── Web sources ──
 export const scrapeUrl = (s, url) =>
   req("POST", `/rag/spaces/${s}/scrape`, { url });
+export const parseRawHtml = (s, html, name) =>
+  req("POST", `/rag/spaces/${s}/web/html`, { html, name });
+export const crawlWebsite = (s, payload) =>
+  req("POST", `/rag/spaces/${s}/web/crawl`, payload);
+export const ingestSitemap = (s, payload) =>
+  req("POST", `/rag/spaces/${s}/web/sitemap`, payload);
+export const ingestRss = (s, payload) =>
+  req("POST", `/rag/spaces/${s}/web/rss`, payload);
 
 // ── Loader output (raw text) ──
 export const getLoadedContent = (s, d) =>

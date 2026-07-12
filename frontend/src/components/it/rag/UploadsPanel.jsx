@@ -22,27 +22,70 @@ const UploadsPanel = ({
   uploading,
   scraping,
   parsing,
-  processing,
-  urlInput,
-  setUrlInput,
   handleUpload,
   handleDriveUpload,
-  handleScrape,
+  handleWebIngest = () => {},
   handleLoadParse,
   handleLoadParseAll,
   handleParse,
   handleParseAll,
-  handleProcess,
-  handleProcessAll,
   handleDeleteDoc,
   openModal,
   counts,
-  chunkMode,
-  handleSetDocStrategy,
   handleSetExtractImages = () => {},
   spaceId,
 }) => {
   const { uploadingCount, loadedCount, extractedCount } = counts;
+
+  // ── Web source selector ──
+  const [webMode, setWebMode] = React.useState("url");
+  const [webUrl, setWebUrl] = React.useState("");
+  const [rawHtml, setRawHtml] = React.useState("");
+  const [maxDepth, setMaxDepth] = React.useState(2);
+  const [maxPages, setMaxPages] = React.useState(50);
+  const [webOpen, setWebOpen] = React.useState(false);
+
+  const WEB_MODES = [
+    ["url", "🔗", "Single URL"],
+    ["crawl", "🕸️", "Website"],
+    ["sitemap", "🗺️", "Sitemap"],
+    ["rss", "📰", "RSS Feed"],
+    ["html", "≺≻", "Raw HTML"],
+  ];
+  const WEB_ICON = { url: "🔗", crawl: "🕸️", sitemap: "🗺️", rss: "📰" };
+  const WEB_DESC = {
+    url: "Scrape one page with JavaScript rendering (Crawl4AI).",
+    crawl: "Follow same-domain links and import every page found.",
+    sitemap: "Import every URL listed in a sitemap.xml.",
+    rss: "Import each article from an RSS / Atom feed.",
+    html: "Paste raw HTML to parse it directly — no fetch.",
+  };
+  const WEB_PLACEHOLDER = {
+    url: "https://example.com/page",
+    crawl: "https://docs.example.com",
+    sitemap: "https://example.com/sitemap.xml",
+    rss: "https://blog.example.com/rss.xml",
+  };
+  const WEB_SUBMIT = {
+    url: "Scrape page", crawl: "Crawl website", sitemap: "Import sitemap",
+    rss: "Import feed", html: "Add HTML",
+  };
+
+  const submitWeb = async () => {
+    const payloads = {
+      url: { url: webUrl },
+      html: { html: rawHtml },
+      crawl: { url: webUrl, max_depth: maxDepth, max_pages: maxPages },
+      sitemap: { url: webUrl, max_pages: maxPages },
+      rss: { url: webUrl, max_items: maxPages },
+    };
+    await handleWebIngest(webMode, payloads[webMode]);
+    setWebUrl("");
+    setRawHtml("");
+  };
+  const webDisabled =
+    scraping || (webMode === "html" ? !rawHtml.trim() : !webUrl.trim());
+
   const canImages = (d) =>
     ["pdf", "docx", "pptx"].includes((d.file_type || "").toLowerCase());
   const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
@@ -59,7 +102,7 @@ const UploadsPanel = ({
         <div className="rag-upload-zone-head">
           <div className="rag-upload-zone-title">Add documents</div>
           <div className="rag-upload-zone-sub">
-            Upload from your computer, Google Drive, or paste a URL to scrape
+            Upload a file, import from Google Drive, or add content from the web
           </div>
         </div>
         <input
@@ -70,53 +113,124 @@ const UploadsPanel = ({
           accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.html,.htm,.json,.xml,.pptx"
           multiple
         />
-        <div className="rag-upload-tiles">
+        <div className="rag-src-tiles">
           <button
-            className="rag-upload-tile"
+            className="rag-src-tile"
             onClick={() => fileRef.current.click()}
             disabled={uploading}
           >
-            <span className="rag-upload-tile-icon">📁</span>
-            <span className="rag-upload-tile-title">
-              {uploading ? "Uploading…" : "Upload a file"}
-            </span>
-            <span className="rag-upload-tile-sub">
-              PDF, DOCX, CSV, XLSX, TXT…
+            <span className="rag-src-icon rag-src-icon-file">📁</span>
+            <span className="rag-src-text">
+              <span className="rag-src-title">
+                {uploading ? "Uploading…" : "Upload a file"}
+              </span>
+              <span className="rag-src-sub">PDF, DOCX, CSV, XLSX…</span>
             </span>
           </button>
           <button
-            className="rag-upload-tile"
+            className="rag-src-tile"
             onClick={handleDriveUpload}
             disabled={uploading}
           >
-            <span className="rag-upload-tile-icon">☁️</span>
-            <span className="rag-upload-tile-title">Google Drive</span>
-            <span className="rag-upload-tile-sub">Import from the cloud</span>
+            <span className="rag-src-icon rag-src-icon-drive">☁️</span>
+            <span className="rag-src-text">
+              <span className="rag-src-title">Google Drive</span>
+              <span className="rag-src-sub">Import from the cloud</span>
+            </span>
           </button>
-        </div>
-        <div className="rag-upload-or">
-          <span className="rag-upload-or-line" />
-          <span className="rag-upload-or-text">or</span>
-          <span className="rag-upload-or-line" />
-        </div>
-        <div className="rag-upload-url-row">
-          <div className="rag-upload-url-input">
-            <span className="rag-upload-url-icon">🔗</span>
-            <input
-              placeholder="Paste a URL to scrape…"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleScrape()}
-            />
-          </div>
           <button
-            className="rag-upload-scrape-btn"
-            onClick={handleScrape}
-            disabled={scraping}
+            className={`rag-src-tile ${webOpen ? "active" : ""}`}
+            onClick={() => setWebOpen((v) => !v)}
           >
-            {scraping ? "…" : "Scrape"}
+            <span className="rag-src-icon rag-src-icon-web">🌐</span>
+            <span className="rag-src-text">
+              <span className="rag-src-title">Web</span>
+              <span className="rag-src-sub">URL, site, sitemap, RSS</span>
+            </span>
           </button>
         </div>
+        {webOpen && (
+        <div className="rag-web">
+          <div className="rag-web-tabs">
+            {WEB_MODES.map(([m, icon, label]) => (
+              <button
+                key={m}
+                className={`rag-web-tab ${webMode === m ? "active" : ""}`}
+                onClick={() => setWebMode(m)}
+              >
+                <span className="rag-web-tab-icon">{icon}</span>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="rag-web-desc">{WEB_DESC[webMode]}</div>
+
+          {webMode === "html" ? (
+            <textarea
+              className="rag-web-textarea"
+              placeholder="Paste raw HTML here…"
+              value={rawHtml}
+              onChange={(e) => setRawHtml(e.target.value)}
+            />
+          ) : (
+            <div className="rag-web-field">
+              <span className="rag-upload-url-icon">{WEB_ICON[webMode]}</span>
+              <input
+                placeholder={WEB_PLACEHOLDER[webMode]}
+                value={webUrl}
+                onChange={(e) => setWebUrl(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !webDisabled && submitWeb()}
+              />
+            </div>
+          )}
+
+          {(webMode === "crawl" || webMode === "sitemap" || webMode === "rss") && (
+            <div className="rag-web-opts">
+              {webMode === "crawl" && (
+                <label className="rag-web-opt">
+                  Depth
+                  <input
+                    className="rag-web-num"
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={maxDepth}
+                    onChange={(e) => setMaxDepth(+e.target.value)}
+                  />
+                </label>
+              )}
+              <label className="rag-web-opt">
+                {webMode === "rss" ? "Max items" : "Max pages"}
+                <input
+                  className="rag-web-num"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={maxPages}
+                  onChange={(e) => setMaxPages(+e.target.value)}
+                />
+              </label>
+            </div>
+          )}
+
+          <div className="rag-web-actions">
+            <button
+              className="rag-upload-scrape-btn"
+              onClick={submitWeb}
+              disabled={webDisabled}
+              style={{ padding: "9px 20px" }}
+            >
+              {scraping ? "Working…" : WEB_SUBMIT[webMode]}
+            </button>
+            {(webMode === "crawl" || webMode === "sitemap" || webMode === "rss") && (
+              <span className="rag-web-hint">
+                Each page becomes a separate document.
+              </span>
+            )}
+          </div>
+        </div>
+        )}
       </div>
 
       {(uploadingCount > 0 || loadedCount > 0) && (

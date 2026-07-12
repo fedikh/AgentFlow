@@ -89,6 +89,32 @@ def normalize_text(text: str) -> tuple[str, list[str]]:
     return text, fixes
 
 
+_HTML_TAG = re.compile(r"<[^>]+>")
+_HTML_ENTITY = re.compile(r"&(?:#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);")
+
+
+def strip_html(text: str) -> tuple[str, list[str]]:
+    """
+    Remove stray HTML tags/entities that survive extraction (common in DOCX/HTML
+    → markdown conversions). Only acts when the text actually looks like it has
+    markup, so plain text with a lone '<' or '>' is left untouched.
+    """
+    if not text or "<" not in text:
+        return text, []
+    fixes = []
+    tags = len(_HTML_TAG.findall(text))
+    if tags:
+        text = _HTML_TAG.sub("", text)
+        fixes.append(f"Stripped {tags} HTML tag(s)")
+    if _HTML_ENTITY.search(text):
+        import html as _html
+        text = _html.unescape(text)
+        fixes.append("Decoded HTML entities")
+    if fixes:
+        logger.info(f"[HTML] {', '.join(fixes)}")
+    return text, fixes
+
+
 def get_search_text(text: str) -> str:
     """
     Generate ASCII-only version for search indexing.

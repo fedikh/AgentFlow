@@ -30,8 +30,8 @@ SUPPORTED_FORMATS = {
     ".docx": {"loader": "app.services.providers.loaders.documents.docx_loader",     "category": "document", "label": "Word"},
     ".txt":  {"loader": "app.services.providers.loaders.documents.txt_loader",      "category": "document", "label": "Text"},
     ".md":   {"loader": "app.services.providers.loaders.documents.markdown_loader",  "category": "document", "label": "Markdown"},
-    ".json": {"loader": "app.services.providers.loaders.documents.json_loader", "category": "document", "label": "JSON"},
-    ".xml":  {"loader": "app.services.providers.loaders.documents.xml_loader",  "category": "document", "label": "XML"},
+    ".json": {"loader": "app.services.providers.loaders.semi_structured.json_loader", "category": "document", "label": "JSON"},
+    ".xml":  {"loader": "app.services.providers.loaders.semi_structured.xml_loader",  "category": "document", "label": "XML"},
     ".pptx": {"loader": "app.services.providers.loaders.documents.pptx_loader", "category": "document", "label": "PPTX"},
     # Tabular
     ".csv":  {"loader": "app.services.providers.loaders.tabular.csv_loader",        "category": "table",    "label": "CSV"},
@@ -75,12 +75,13 @@ def load_document(file_path: str) -> dict:
     return loader_module.load(file_path)
 
 
-def load_from_url(url: str) -> dict:
+def load_from_url(url: str, render: bool = True) -> dict:
     """
     Load content from a URL using the URL loader.
+    render=True → Crawl4AI (JS rendering); False → fast requests (batch crawl).
     """
     from app.services.providers.loaders._utils import validate_url
     url = validate_url(url)
 
     from app.services.providers.loaders.web.url_loader import load
-    return load(url)
+    return load(url, render=render)

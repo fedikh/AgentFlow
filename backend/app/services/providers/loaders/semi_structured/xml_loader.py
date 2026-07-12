@@ -1,5 +1,9 @@
 """
-XML Loader — reads XML files, converts to readable text.
+XML Loader — validates the file (lxml) and produces a readable text preview.
+
+Structural (tree) parsing into the element schema happens in the Parse step
+(xml_parser), so the lifecycle stays UPLOAD → LOADED → (Parse) → EXTRACTED and
+the manual "Parse" button is preserved.
 """
 import os
 import logging
@@ -10,41 +14,19 @@ logger = logging.getLogger(__name__)
 def load(file_path: str) -> dict:
     logger.info(f"[XML_LOADER] Loading: {os.path.basename(file_path)}")
 
-    import chardet
+    from lxml import etree
+    from app.services.providers.loaders._utils import clean_text, build_doc_metadata
 
-    with open(file_path, "rb") as f:
-        raw = f.read()
-    detected = chardet.detect(raw)
-    encoding = detected.get("encoding", "utf-8") or "utf-8"
-    content = raw.decode(encoding, errors="replace")
-
-    # Validate XML
     try:
-        import xml.etree.ElementTree as ET
-        root = ET.fromstring(content)
-    except ET.ParseError as e:
+        tree = etree.parse(file_path, etree.XMLParser(recover=True))
+        root = tree.getroot()
+    except Exception as e:
         raise ValueError(f"Invalid XML file: {e}")
+    if root is None:
+        raise ValueError("Invalid XML file (no root element)")
 
-    # Convert to readable text
-    raw_text = _xml_to_text(root)
-
-    # Metadata
-    metadata = {
-        "root_tag": root.tag,
-        "num_children": len(list(root)),
-        "encoding": encoding,
-        "source": os.path.basename(file_path),
-    }
-
-    # Count all elements
-    all_tags = set()
-    for el in root.iter():
-        all_tags.add(el.tag)
-    metadata["tags"] = ", ".join(list(all_tags)[:20])
-    metadata["num_tags"] = len(all_tags)
-
-    from app.services.providers.loaders._utils import clean_text
-    raw_text = clean_text(raw_text)
+    raw_text = clean_text(_xml_to_text(root))
+    metadata = build_doc_metadata(file_path, 1, "xml", parser_name="lxml")
 
     return {
         "raw_text": raw_text,
@@ -56,37 +38,25 @@ def load(file_path: str) -> dict:
     }
 
 
-def _xml_to_text(element, depth=0) -> str:
-    """Convert XML element tree to indented readable text."""
-    lines = []
-    tag = element.tag.split("}")[-1] if "}" in element.tag else element.tag  # remove namespace
-
-    # Attributes
+def _xml_to_text(element, depth: int = 0) -> str:
+    """Indented, human-readable rendering of the tree (for the Loaded view)."""
+    if not isinstance(element.tag, str):     # comment / processing instruction
+        return ""
+    tag = element.tag.split("}")[-1] if "}" in element.tag else element.tag
     attrs = ""
     if element.attrib:
         attrs = " (" + ", ".join(f"{k}={v}" for k, v in element.attrib.items()) + ")"
-
-    # Text content
     text = (element.text or "").strip()
-
     indent = "  " * depth
-
-    if text and not list(element):
-        # Leaf node with text
+    lines = []
+    if text and len(element) == 0:
         lines.append(f"{indent}{tag}{attrs}: {text}")
-    elif text:
-        lines.append(f"{indent}{tag}{attrs}:")
-        lines.append(f"{indent}  {text}")
     else:
         lines.append(f"{indent}{tag}{attrs}:")
-
-    # Children
+        if text:
+            lines.append(f"{indent}  {text}")
     for child in element:
-        lines.append(_xml_to_text(child, depth + 1))
-
-    # Tail text
-    tail = (element.tail or "").strip()
-    if tail:
-        lines.append(f"{indent}{tail}")
-
+        sub = _xml_to_text(child, depth + 1)
+        if sub:
+            lines.append(sub)
     return "\n".join(lines)

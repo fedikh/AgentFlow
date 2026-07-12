@@ -1,0 +1,193 @@
+RAG Test Sets and Where to Find Them | by Anh Khoa NGO HO | Towards AI
+Sitemap
+Open in app
+Sign up
+Sign in
+Medium Logo
+Get app
+Write
+Search
+Sign up
+Sign in
+Towards AI
+·
+We build Enterprise AI. We teach what we learn. Join 100K+ AI practitioners on Towards AI Academy. Free: 6-day Agentic AI Engineering Email Guide:
+https://email-course.towardsai.net/
+Genai
+Large Language Models
+Dataset
+Evaluation
+Ai Generative Models
+RAG Test Sets and Where to Find Them
+Anh Khoa NGO HO
+8 min read
+·
+Aug 28, 2024
+--
+Listen
+Share
+In the field of Question-Answering (QA) chatbot development, Retrieval-Augmented Generation (RAG) seems to be the best option at the moment. It combines the strengths of retrieval-based and generation-based models to improve the quality of generated text. However, a significant hurdle is the evaluation of RAG systems, which begins with the task of finding appropriate test sets. Through this article, I aim to disseminate a collection of RAG test sets that I’ve recently collected online. This work mainly concentrates on the set sets that we can easily download and quickly use for our experiments and benchmarks. Each dataset has a link to its download page and a link to its original paper.
+Press enter or click to view image in full size
+Photo by
+Emiliano Vittoriosi
+on
+Unsplash
+The compilation is categorized into three groups: open-domain dataset, closed-domain dataset, and dataset generation framework. An open-domain dataset is not restricted to any specific domain. Its question-answer pairs are sourced from a wide range of texts, such as Wikipedia articles. In contrast, a closed-domain dataset is limited to a specific domain or area of knowledge, such as legal, medical, or technical documents. It can be used to fine-tune the large language models (LLMs) in RAG for a specific task. Another option for a test set is the dataset generation framework, where we can create easily a test set based on a text corpus. Moreover, another way of categorizing those datasets is based on the use of an external source of knowledge. A closed-book QA dataset consists of a source of knowledge (e.g., a text corpus supporting the ground-truth answers) whereas an open-book dataset does not need one (
+Lewis et al., 2020
+)
+Open-domain datasets
+Open-domain datasets are readily available within the NLP research community, with many derived from Wikipedia and other web content. Below, I highlight several datasets frequently used in various RAG/QA studies.
+TriviaQA
+of
+Joshi et al., (2017)
+is a reading comprehension dataset with over 650,000 question-answer-evidence sets. It includes 95,000 question-answer pairs created by trivia fans, with six evidence documents per question on average. TriviaQA stands out because it has complex questions, varied language between questions and evidence, and requires reasoning across multiple sentences to find answers.
+A Wikipedia-based dataset is
+HotpotQA
+of
+Yang et al., (2018)
+with 113,000 question-answer pairs. Its questions require finding and reasoning over multiple documents. They are diverse and not limited to specific knowledge bases. It provides sentence-level supporting facts for reasoning and explanations and includes fact comparison questions to test the ability to extract and compare facts.
+A well-known dataset is
+SQuAD
+and its versions of
+Rajpurkar et al., (2018)
+. The latest version SQuAD 2.0 combines the 100,000 questions from SQuAD 1.1 with over 50,000 unanswerable questions that look like answerable ones, written by crowdworkers. To succeed, QA systems must answer questions when possible and recognize when no answer is supported by the text, choosing not to answer in those cases.
+The most popular dataset for open-domain QA is
+Natural Questions
+of
+Kwiatkowski et al., (2019)
+. It includes real, anonymized questions from Google searches. Annotators review a question and a Wikipedia page from the top 5 search results. They provide a long answer (usually a paragraph) and a short answer (one or more entities) if available, or mark it as null if no answers are present. The dataset contains 323,045 pairs of question-answer.
+2WikiMultiHopQA
+of
+Ho et al., (2020)
+includes evidence information that shows the reasoning path for multi-hop questions. They designed a process to ensure questions require multi-hop reasoning and are of high quality. Using Wikidata and logical rules, they created natural questions that need multi-hop reasoning. Their dataset consists of 192,606 examples.
+A multi-domain dataset is
+TruthfulQA
+in
+Lin et al., (2022)
+. It includes 817 questions across 38 categories like health, law, finance, and politics. Some questions are designed to be tricky, as people might answer them incorrectly due to false beliefs. QA systems need to avoid giving false answers learned from human texts. You can download the dataset from
+Hugging Face
+.
+A multi-language dataset is
+TyDi QA
+of
+Clark et al., (2020)
+. It consists of 204,000 question-answer pairs in 11 diverse languages. These languages have different linguistic features, so QA systems that do well on TyDi QA should work well across many languages. We analyzed the data quality and unique language features not found in English-only datasets. To make the task realistic, questions are written by people who don’t know the answers and are collected directly in each language without translation.
+KILT
+of
+Petroni et al., (2021)
+provides a dataset for several tasks e.g., open-domain question answering, fact-checking, slot filling, and entity linking require access to large, external knowledge sources. For QA, the authors provide an intensive knowledge source for many open-domain datasets such as Natural Questions, HotpotQA, TriviaQA, and ELI5. This means that they added the paragraphs supporting the ground-truth answers.
+Press enter or click to view image in full size
+Image in the paper of
+Petroni et al., (2021)
+Get
+Anh Khoa NGO HO
+’s stories in your inbox
+Join Medium for free to get updates from this writer.
+Subscribe
+Subscribe
+Remember me for faster sign in
+Attributed QA
+of
+Bohnet et al., (2023)
+consists of the 83,030 triplets (question, answer, and supporting texts). In this case, a QA system generates an answer to a given question and provides an attribution, which is a reference to a specific source within a fixed corpus that supports the answer. This dataset is well suited for the task of evaluating RAG.
+Some nice data collections are
+Hugging Face Hallucination Leaderboard
+,
+MRC dataset
+,
+large QA datasets
+of Freiburg University,
+Tensorflow collection
+,
+Llama Hub
+.
+Closed-domain datasets
+The closed-domain datasets below are mainly in finance, with one in medicine. They must include questions, answers, and evidence, along with a corpus specific to the domain. For the financial datasets, a QA system requires numerical reasoning such as addition, subtraction, multiplication, division, counting, comparison, and composition, to answer questions.
+FinQA
+of
+Chen et al., (2021)
+is a new large-scale dataset featuring question-answer pairs over financial reports written by experts. The dataset includes annotated reasoning programs for full explainability. Analyzing financial statements is challenging due to their volume and the need for robust numerical reasoning. A QA system can answer complex questions about the tables and the texts (e.g., captions) in financial reports. Unlike general tasks, the finance domain requires numerical reasoning and an understanding of diverse representations. The financial corpus comes from
+IBM’s FinTabNet
+, which includes earnings reports of S&P 500 companies from 1999 to 2019. Each report is a PDF file with pages outlining a company’s financials, typically containing tables and text. Note that it has annotated the tables in these reports.
+Press enter or click to view image in full size
+Statistics of FINQA. Image in the paper of
+Chen et al., (2021)
+Chen et al., (2022)
+, followed their previous work and introduced
+ConvFinQA
+. It is designed to study numerical reasoning in conversational question answering. Its 3,892 conversations are challenges in modeling long-range, complex numerical reasoning in real-world conversations.
+Another finance dataset is
+TAT-QA
+of
+Zhu et al., (2021)
+. It is based on 500 financial reports released in 2019–2020 from
+annualreports.com
+. This dataset consists of 16,552 questions associated with 2,757 hybrid contexts from those financial reports. Since it is not easy to obtain those 500 financial reports, I suggest extracting the texts from the hybrid contexts to create the corpus for the RAG database.
+FinanceBench
+of
+Islam et al., (2023)
+is designed to evaluate the performance of LLMs in answering financial questions. It includes 10,231 questions about publicly traded companies, along with answers and evidence. It covers 40 companies that are publicly traded in the USA and 361 public filings, released between 2015 and 2023, including 10Ks, 10Qs, 8Ks, and Earnings Reports. The questions are realistic and cover various scenarios, aiming to be straightforward to set a minimum performance standard. On their GitHub page, only 150 triplets are published. It also contains 360 PDF reports to create a database for our QA systems. The rest of the dataset can be accessed by request via email at
+contact@patronus.ai
+.
+The medical dataset comes from the
+BioASQ
+challenge (
+Tsatsaronis et al., 2015
+), which focuses on biomedical semantic indexing and QA. These challenges cover a variety of tasks, including hierarchical text classification, machine learning, information retrieval, QA from texts and structured data, multi-document summarization, etc. To access this dataset, we need to register for the challenge. However, you can easily download its subset on
+Hugging Face
+. It includes 4,720 examples and a text corpus of 40,200 paragraphs.
+ToolQA
+, created by
+Zhuang et al. (2023)
+, is a new way to evaluate RAG. LLMs often struggle with hallucinations and numerical reasoning. The authors suggest using external tools to improve LLMs’ question-answering abilities. Current evaluations don’t distinguish between questions that LLMs can answer on their own and those that need external tools. ToolQA addresses this by providing a dataset to test LLMs’ use of external tools. It includes data from 8 domains and defines 13 types of tools for gathering information, with different knowledge formats (e.g., tabular database, professional ability, graph, and pure-text corpus).
+- We all know that LLMs are trained on a lot of internet data, including encyclopedic sources like Wikipedia. This can overlap with test data, leading to misleading evaluations. To improve this,
+Monteiro et al., (2024)
+propose a new test dataset called
+RepLiQA
+. It has five test sets, four of which were available online after. Each sample includes a human-made reference document with an imaginary scenario, a question about the document, a ground-truth answer from the document, and a paragraph containing the answer. Accurate answers require finding relevant content in the provided document.
+At the end of this list, I put a nice collection of Hugging Face which aims to collect the RAG test sets:
+rag-datasets
+.
+Dataset generation framework
+This section presents several attempts to automatically generate a dataset for RAG evaluation. We only need to find a corpus of your choice or extract text from the raw source of knowledge.
+RAGEval of
+Zhu et al., (2024)
+is a new framework that creates evaluation datasets to test LLMs in different scenarios. It generates diverse documents and question-answer pairs from seed documents. RAGEval uses three metrics (e.g., Completeness, Hallucination, and Irrelevance) to evaluate LLM responses. This helps better assess LLMs’ knowledge usage in specific domains, avoiding confusion about the source of knowledge in existing QA datasets. Just one thing there is no code available for this framework.
+-
+Giskard
+is an open-source Python library designed to automatically identify performance, bias, and security issues in AI applications. In RAG evaluation, an LLM automatically generates 6 different questions (complex questions, conversational questions, distracting questions, double questions, simple questions, situational questions) types for an evaluation dataset. The text corpus must be in the dataframe format where each row is a paragraph.
+-
+RAGAS
+also provides a nice LLM-based framework to generate a synthetic evaluation dataset.
+Through this work, I hope that my collection of test sets provides a valuable resource for researchers and developers in the field of QA chatbot development.
+Genai
+Large Language Models
+Dataset
+Evaluation
+Ai Generative Models
+Published in
+Towards AI
+145K followers
+·
+Last published
+just now
+We build Enterprise AI. We teach what we learn. Join 100K+ AI practitioners on Towards AI Academy. Free: 6-day Agentic AI Engineering Email Guide:
+https://email-course.towardsai.net/
+Written by
+Anh Khoa NGO HO
+40 followers
+·
+112 following
+Ph.D - Data Consultant in Capgemini Invent. Research in Deep Learning and GenAI. Website:
+ngohoanhkhoa.info
+Help
+Status
+About
+Careers
+Press
+Blog
+Store
+Privacy
+Rules
+Terms
+Text to speech

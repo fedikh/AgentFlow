@@ -13,8 +13,8 @@ PARSER_REGISTRY = {
     ("document", "Markdown"): "app.services.providers.parsers.documents.markdown_parser",
     ("document", "PPTX"): "app.services.providers.parsers.documents.pptx_parser",
     ("table", "CSV"):         "app.services.providers.parsers.tabular.csv_parser",
-    ("document", "JSON"): "app.services.providers.parsers.documents.json_parser",
-    ("document", "XML"):  "app.services.providers.parsers.documents.xml_parser",
+    ("document", "JSON"): "app.services.providers.parsers.semi_structured.json_parser",
+    ("document", "XML"):  "app.services.providers.parsers.semi_structured.xml_parser",
     ("table", "Excel"):       "app.services.providers.parsers.tabular.excel_parser",
     ("web", "HTML"):          "app.services.providers.parsers.web.html_parser",
     

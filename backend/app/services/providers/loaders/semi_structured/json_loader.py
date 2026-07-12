@@ -1,5 +1,9 @@
 """
-JSON Loader — reads JSON files, converts to readable text.
+JSON Loader — validates the file and produces a pretty-printed text preview.
+
+Structural (tree) parsing into the element schema happens in the Parse step
+(json_parser), so the lifecycle stays UPLOAD → LOADED → (Parse) → EXTRACTED and
+the manual "Parse" button is preserved.
 """
 import os
 import json
@@ -11,34 +15,18 @@ logger = logging.getLogger(__name__)
 def load(file_path: str) -> dict:
     logger.info(f"[JSON_LOADER] Loading: {os.path.basename(file_path)}")
 
-    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-        content = f.read()
+    from app.services.providers.loaders._utils import (
+        read_text_file, clean_text, build_doc_metadata,
+    )
 
-    # Validate JSON
+    raw = read_text_file(file_path)
     try:
-        data = json.loads(content)
+        data = json.loads(raw)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON file: {e}")
 
-    # Pretty-print for raw text display
-    raw_text = json.dumps(data, indent=2, ensure_ascii=False)
-
-    # Metadata
-    metadata = {
-        "type": type(data).__name__,  # dict, list, etc.
-        "source": os.path.basename(file_path),
-    }
-
-    if isinstance(data, dict):
-        metadata["keys"] = ", ".join(list(data.keys())[:20])
-        metadata["num_keys"] = len(data.keys())
-    elif isinstance(data, list):
-        metadata["num_items"] = len(data)
-        if data and isinstance(data[0], dict):
-            metadata["item_keys"] = ", ".join(list(data[0].keys())[:20])
-
-    from app.services.providers.loaders._utils import clean_text
-    raw_text = clean_text(raw_text)
+    raw_text = clean_text(json.dumps(data, indent=2, ensure_ascii=False))
+    metadata = build_doc_metadata(file_path, 1, "json", parser_name="python-json")
 
     return {
         "raw_text": raw_text,

@@ -302,10 +302,36 @@ def _safe_unlink(path: str, space_id: str):
     try:
         safe_root = os.path.abspath(os.path.join("uploads", space_id))
         full = os.path.abspath(path)
-        if full.startswith(safe_root) and os.path.isfile(full):
+        if full.startswith(safe_root + os.sep) and os.path.isfile(full):
             os.unlink(full)
     except Exception as e:
         logger.warning(f"[CLEANUP] could not remove {path}: {e}")
+
+
+def _safe_rmtree(path: str, space_id: str):
+    """Recursively delete a directory only if it lives under uploads/{space_id}."""
+    if not path:
+        return
+    try:
+        safe_root = os.path.abspath(os.path.join("uploads", space_id))
+        full = os.path.abspath(path)
+        if full.startswith(safe_root + os.sep) and os.path.isdir(full):
+            shutil.rmtree(full, ignore_errors=True)
+    except Exception as e:
+        logger.warning(f"[CLEANUP] could not remove dir {path}: {e}")
+
+
+def _document_source_path(doc, space_id: str) -> str:
+    """Absolute path to a document's original uploaded file, or '' if unknown."""
+    if doc.loaded_content:
+        try:
+            fp = json.loads(doc.loaded_content).get("file_path", "")
+            if fp:
+                return fp
+        except Exception:
+            pass
+    matches = glob.glob(os.path.join("uploads", space_id, f"{doc.id}.*"))
+    return matches[0] if matches else ""
 
 
 def _document_file_paths(doc, space_id: str) -> list[str]:
@@ -361,6 +387,17 @@ def delete_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dic
     # Remove the document's on-disk files (source + its extracted images).
     for path in _document_file_paths(doc, space_id):
         _safe_unlink(path, space_id)
+
+    # Remove the document's dedicated images folder as well. This catches images
+    # that were extracted to disk but are no longer listed in extracted_content
+    # (e.g. image extraction was turned OFF after a first parse).
+    try:
+        from app.services.providers.parsers._docling import _get_images_dir
+        src = _document_source_path(doc, space_id)
+        if src:
+            _safe_rmtree(_get_images_dir(src), space_id)
+    except Exception as e:
+        logger.warning(f"[CLEANUP] could not remove images folder for {doc_id}: {e}")
 
     name = doc.file_name
     db.delete(doc)
@@ -470,6 +507,22 @@ def add_document_image(db: Session, space_id: str, doc_id: str, org_id: str, fil
 # ══════════════════════════════════════════════════════
 # STEP 1: UPLOAD
 # ══════════════════════════════════════════════════════
+
+def _document_identity(doc, org_id: str) -> dict:
+    """Document-identity object stamped into the element schema (all formats)."""
+    return {
+        "id": doc.id,
+        "name": doc.file_name,
+        "version": "",
+        "source": {
+            "type": doc.source_type or "upload",
+            "filename": doc.file_name,
+            "url": doc.source_url or "",
+        },
+        "created_by": org_id,
+    }
+
+
 async def upload_document(db: Session, space_id: str, org_id: str, file: UploadFile) -> dict:
     space = _find_space(db, space_id, org_id)
 
@@ -522,6 +575,8 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
         doc.loaded_content = json.dumps(loaded_data, ensure_ascii=False, default=str)
 
         if parsed_doc_data:
+            parsed_doc_data["document_id"] = doc.id
+            parsed_doc_data["document"] = _document_identity(doc, org_id)
             doc.extracted_content = json.dumps(parsed_doc_data, ensure_ascii=False)
             doc.status = DocStatus.EXTRACTED
         else:
@@ -636,7 +691,11 @@ def load_and_parse_document(db, space_id, doc_id, org_id):
             except Exception as img_err:
                 # Ne bloque jamais le parsing si le résumé échoue
                 logger.warning(f"[LOAD+PARSE] image summary skipped: {img_err}")
- 
+
+            # Stamp document identity into the element-schema output.
+            if isinstance(parsed_doc_data, dict):
+                parsed_doc_data["document_id"] = doc.id
+                parsed_doc_data["document"] = _document_identity(doc, org_id)
             doc.extracted_content = json.dumps(parsed_doc_data, ensure_ascii=False)
             doc.status = DocStatus.EXTRACTED
         else:
@@ -675,51 +734,140 @@ def load_and_parse_all(db, space_id, org_id):
 # UPLOAD FROM URL
 # ══════════════════════════════════════════════════════
 
-async def upload_from_url(db: Session, space_id: str, org_id: str, url: str) -> dict:
-    space = _find_space(db, space_id, org_id)
-
+def _ingest_url(db: Session, space_id: str, url: str, source_type: str = "url",
+                render: bool = True) -> Document:
+    """Fetch one URL → save raw HTML → LOADED. Returns the Document (raises on error)."""
     url = validate_url(url)
-    filename = get_url_filename(url)
-
     doc = Document(
-        file_name=filename,
-        file_type="html",
-        file_size=0,
-        source_type="url",
-        source_url=url,
-        status=DocStatus.UPLOADING,
-        rag_space_id=space_id,
+        file_name=get_url_filename(url), file_type="html", file_size=0,
+        source_type=source_type, source_url=url,
+        status=DocStatus.UPLOADING, rag_space_id=space_id,
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
-
     try:
-        loaded_data = li_load_from_url(url)
-
+        loaded_data = li_load_from_url(url, render=render)
         if not loaded_data or not loaded_data.get("raw_text"):
             raise Exception(f"No content found at {url}")
 
         upload_dir = os.path.join("uploads", space_id)
         os.makedirs(upload_dir, exist_ok=True)
         file_path = os.path.join(upload_dir, f"{doc.id}.html")
-
         with open(file_path, "w", encoding="utf-8") as f:
-            f.write(loaded_data["raw_text"])
+            f.write(loaded_data.get("html") or loaded_data["raw_text"])
 
         loaded_data["file_path"] = os.path.abspath(file_path)
+        loaded_data.pop("html", None)
         doc.loaded_content = json.dumps(loaded_data, ensure_ascii=False, default=str)
         doc.status = DocStatus.LOADED
         db.commit()
         db.refresh(doc)
-
+        return doc
     except Exception as e:
         doc.status = DocStatus.ERROR
-        doc.error_msg = str(e)
+        doc.error_msg = str(e)[:500]
         db.commit()
-        raise HTTPException(500, f"Scraping failed: {str(e)}")
+        raise
 
+
+async def upload_from_url(db: Session, space_id: str, org_id: str, url: str) -> dict:
+    _find_space(db, space_id, org_id)
+    try:
+        doc = _ingest_url(db, space_id, url, "url", render=True)
+    except Exception as e:
+        raise HTTPException(500, f"Scraping failed: {str(e)}")
     return _doc_dict(doc)
+
+
+def _ingest_urls(db: Session, space_id: str, org_id: str, urls: list,
+                 source_type: str) -> dict:
+    """Batch-ingest a list of URLs (fast requests fetch). Returns per-URL results."""
+    _find_space(db, space_id, org_id)
+    results = []
+    for url in urls:
+        try:
+            doc = _ingest_url(db, space_id, url, source_type, render=False)
+            results.append({"url": url, "document_id": doc.id, "status": "LOADED"})
+        except Exception as e:
+            results.append({"url": url, "status": "ERROR", "error": str(e)[:200]})
+    ok = sum(1 for r in results if r.get("document_id"))
+    return {"documents": results, "count": ok, "total": len(urls)}
+
+
+def ingest_raw_html(db: Session, space_id: str, org_id: str, html: str,
+                    name: str = None) -> dict:
+    """Ingest pasted raw HTML → LOADED (parsed on the Parse step)."""
+    _find_space(db, space_id, org_id)
+    if not html or not html.strip():
+        raise HTTPException(400, "Empty HTML")
+
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    title = soup.title.get_text(strip=True) if soup.title else ""
+    fname = name or ((title[:60] + ".html") if title else "raw.html")
+
+    doc = Document(file_name=fname, file_type="html", source_type="raw_html",
+                   status=DocStatus.UPLOADING, rag_space_id=space_id)
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    try:
+        upload_dir = os.path.join("uploads", space_id)
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, f"{doc.id}.html")
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        for tag in soup(["script", "style", "nav", "footer", "aside", "header", "iframe"]):
+            tag.decompose()
+        preview = soup.get_text("\n", strip=True)
+        loaded_data = {
+            "raw_text": preview, "file_type": "HTML", "category": "web",
+            "total_chars": len(preview), "file_path": os.path.abspath(file_path),
+            "metadata": {"source": fname, "mime_type": "text/html", "title": title},
+        }
+        doc.loaded_content = json.dumps(loaded_data, ensure_ascii=False, default=str)
+        doc.status = DocStatus.LOADED
+        db.commit()
+        db.refresh(doc)
+        return _doc_dict(doc)
+    except Exception as e:
+        doc.status = DocStatus.ERROR
+        doc.error_msg = str(e)[:500]
+        db.commit()
+        raise HTTPException(500, f"Raw HTML failed: {str(e)}")
+
+
+def crawl_website(db: Session, space_id: str, org_id: str, url: str,
+                  max_depth: int = 2, max_pages: int = 50) -> dict:
+    _find_space(db, space_id, org_id)
+    from app.services.providers.loaders.web.discovery import crawl_website as discover
+    urls = discover(validate_url(url), max_depth=max_depth, max_pages=min(max_pages, 200))
+    if not urls:
+        raise HTTPException(400, "No pages discovered at that URL")
+    return _ingest_urls(db, space_id, org_id, urls, "crawl")
+
+
+def ingest_sitemap(db: Session, space_id: str, org_id: str, url: str,
+                   max_pages: int = 100) -> dict:
+    _find_space(db, space_id, org_id)
+    from app.services.providers.loaders.web.discovery import discover_sitemap
+    urls = discover_sitemap(validate_url(url), max_pages=min(max_pages, 500))
+    if not urls:
+        raise HTTPException(400, "No URLs found in sitemap")
+    return _ingest_urls(db, space_id, org_id, urls, "sitemap")
+
+
+def ingest_rss(db: Session, space_id: str, org_id: str, url: str,
+               max_items: int = 50) -> dict:
+    _find_space(db, space_id, org_id)
+    from app.services.providers.loaders.web.discovery import discover_rss
+    articles = discover_rss(validate_url(url), max_items=min(max_items, 200))
+    if not articles:
+        raise HTTPException(400, "No articles found in feed")
+    res = _ingest_urls(db, space_id, org_id, [a["url"] for a in articles], "rss")
+    res["articles"] = articles
+    return res
 
 
 # ══════════════════════════════════════════════════════
@@ -770,6 +918,8 @@ def parse_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict
         if not parsed_doc.total_sections and not parsed_doc.total_tables:
             raise Exception("Parser produced no sections or tables")
 
+        parsed_doc.document_id = doc.id
+        parsed_doc.document = _document_identity(doc, org_id)
         doc.extracted_content = parsed_doc.to_json()
         doc.status = DocStatus.EXTRACTED
         db.commit()

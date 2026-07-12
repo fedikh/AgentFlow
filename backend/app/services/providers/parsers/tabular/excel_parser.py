@@ -1,89 +1,45 @@
 """
-Excel Parser — one Table per sheet with structured rows.
+Excel Parser — Table Document Model (openpyxl + pandas).
+
+Builds workbook → sheet → table elements, plus `formula` and `merged_cell`
+elements (with cell ranges) for citations. openpyxl reads the workbook
+structure / formulas / merged cells; pandas types the tables. Also emits one
+Table chunking block per sheet for the Chunking Factory.
+
+(An optional ks-xlsx-parser layer could be slotted in front of openpyxl here;
+openpyxl remains the reliable fallback.)
 """
-import re
+import os
 import logging
-import pandas as pd
-from app.services.providers.parsers.parsed_document import ParsedDocument, Table
+from app.services.providers.parsers.parsed_document import ParsedDocument, Section
 
 logger = logging.getLogger(__name__)
 
 
 def parse(loaded_data: dict) -> ParsedDocument:
     file_path = loaded_data.get("file_path")
-    raw_text = loaded_data.get("raw_text", "")
+    if not file_path or not os.path.exists(file_path):
+        raise ValueError("Excel parser needs the original file (file_path)")
 
-    if not file_path and not raw_text:
-        raise ValueError("No Excel data")
+    logger.info("[EXCEL_PARSER] Parsing Excel → workbook/sheet/table elements")
 
-    logger.info(f"[EXCEL_PARSER] Parsing Excel")
+    from app.services.providers.parsers.table_elements import build_excel_workbook
+    elements, chunk_sections, engine = build_excel_workbook(file_path)
+    logger.info(f"[EXCEL_PARSER] engine={engine}, {len(chunk_sections)} chunk section(s)")
 
-    tables = []
+    # ── Chunking: one Section per extracted block (ks-xlsx-parser chunks carry
+    # their own cell-range citation in the text). ──
+    sections = [Section(heading=h, content=c, level=1, page=1)
+                for h, c in chunk_sections if c and c.strip()]
 
-    # Read structured data from file
-    if file_path:
-        try:
-            dfs = pd.read_excel(file_path, sheet_name=None, engine="openpyxl")
-            for sheet_name, df in dfs.items():
-                if df.empty:
-                    continue
-
-                headers = df.columns.tolist()
-                rows = df.values.tolist()
-                rows = [[None if pd.isna(v) else v for v in row] for row in rows]
-                md = f"[Sheet: {sheet_name}]\n{df.to_markdown(index=False)}"
-
-                tables.append(Table(
-                    content=md,
-                    headers=headers,
-                    rows=rows,
-                    num_rows=len(rows),
-                    num_cols=len(headers),
-                    page=1,
-                ))
-
-            if tables:
-                sheet_names = [list(dfs.keys())]
-                return ParsedDocument(
-                    tables=tables,
-                    metadata=loaded_data.get("metadata", {}),
-                    file_type="Excel",
-                    category="table",
-                )
-        except Exception as e:
-            logger.warning(f"Pandas Excel read failed: {e}, using raw text")
-
-    # Fallback: parse from raw text
-    if raw_text:
-        parts = re.split(r"(\[Sheet:\s*[^\]]+\])", raw_text)
-        current_sheet = "Sheet1"
-
-        for part in parts:
-            part = part.strip()
-            if not part:
-                continue
-            match = re.match(r"\[Sheet:\s*([^\]]+)\]", part)
-            if match:
-                current_sheet = match.group(1).strip()
-                continue
-
-            lines = [l for l in part.split("\n") if l.strip()]
-            headers = []
-            if lines and "|" in lines[0]:
-                headers = [h.strip() for h in lines[0].split("|") if h.strip()]
-
-            tables.append(Table(
-                content=f"[Sheet: {current_sheet}]\n{part}",
-                headers=headers,
-                rows=[],
-                num_rows=max(0, len(lines) - 2),
-                num_cols=len(headers),
-                page=1,
-            ))
+    wb = next((e for e in elements if e["type"] == "workbook"), None)
+    meta = dict(loaded_data.get("metadata", {}))
+    meta.update({"source_type": "xlsx", "encoding": "utf-8", "excel_engine": engine,
+                 "sheets": wb["content"]["sheets"] if wb else []})
 
     return ParsedDocument(
-        tables=tables,
-        metadata=loaded_data.get("metadata", {}),
-        file_type="Excel",
-        category="table",
+        title=os.path.splitext(meta.get("source") or os.path.basename(file_path))[0],
+        sections=sections, elements=elements, metadata=meta,
+        num_pages=max(1, len(meta.get("sheets", []))),
+        file_type="Excel", category="structured_data",
     )

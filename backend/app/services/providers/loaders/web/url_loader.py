@@ -1,54 +1,46 @@
 """
-URL Loader — scrapes a web page using requests + BeautifulSoup.
-
-Returns raw text content stripped of scripts, styles, nav elements.
+URL Loader — fetches a web page (Crawl4AI → requests fallback) and PRESERVES the
+raw HTML so the web parser can extract the canonical element model. raw_text is
+a readable markdown/text preview.
 """
 import logging
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
-def load(url: str) -> dict:
-    logger.info(f"[URL_LOADER] Loading: {url}")
+def load(url: str, render: bool = True) -> dict:
+    logger.info(f"[URL_LOADER] Fetching: {url} (render={render})")
 
-    import requests
     from bs4 import BeautifulSoup
+    from app.services.providers.loaders.web import web_fetch
+    from app.services.providers.parsers.web_elements import extract_web_metadata
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
-        )
-    }
+    # render → Crawl4AI (JS); otherwise fast requests (used for batch crawl).
+    fetched = web_fetch.fetch_page(url) if render else web_fetch._fetch_requests(url)
+    html = fetched["html"]
+    soup = BeautifulSoup(html, "html.parser")
+    meta = extract_web_metadata(soup, url)
 
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-    except Exception as e:
-        raise ValueError(f"Failed to fetch URL '{url}': {str(e)}")
+    # Readable preview: Crawl4AI markdown, else stripped text.
+    raw_text = (fetched.get("markdown") or "").strip()
+    if not raw_text:
+        for tag in soup(["script", "style", "nav", "footer", "aside", "header", "iframe"]):
+            tag.decompose()
+        raw_text = soup.get_text("\n", strip=True)
+    if not raw_text.strip():
+        raise ValueError(f"No readable content at {url}")
 
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # Remove non-content
-    for tag in soup(["script", "style", "nav", "footer", "aside", "iframe", "header"]):
-        tag.decompose()
-
-    text = soup.get_text(separator="\n", strip=True)
-
-    if not text.strip():
-        raise ValueError(f"No content found at {url}")
-
-    # Extract title
-    title = ""
-    title_tag = soup.find("title")
-    if title_tag:
-        title = title_tag.get_text(strip=True)
+    metadata = {"source_url": url, "domain": urlparse(url).netloc,
+                "engine": fetched["engine"], "mime_type": "text/html"}
+    metadata.update({k: v for k, v in meta.items() if v})
 
     return {
-        "raw_text": text,
+        "raw_text": raw_text,
         "num_pages": 1,
         "file_type": "HTML",
         "category": "web",
-        "metadata": {"source_url": url, "title": title},
-        "total_chars": len(text),
+        "html": html,            # ← raw HTML preserved for the parser
+        "metadata": metadata,
+        "total_chars": len(raw_text),
     }

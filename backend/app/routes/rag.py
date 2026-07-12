@@ -30,6 +30,23 @@ router = APIRouter(prefix="/rag", tags=["RAG"])
 class ScrapeRequest(BaseModel):
     url: str
 
+class RawHtmlRequest(BaseModel):
+    html: str
+    name: str | None = None
+
+class CrawlRequest(BaseModel):
+    url: str
+    max_depth: int = 2
+    max_pages: int = 50
+
+class SitemapRequest(BaseModel):
+    url: str
+    max_pages: int = 100
+
+class RssRequest(BaseModel):
+    url: str
+    max_items: int = 50
+
 class DriveUploadRequest(BaseModel):
     file_id: str
     access_token: str
@@ -115,9 +132,38 @@ async def upload_document(
 
 @router.post("/spaces/{space_id}/scrape")
 async def scrape_url(space_id: str, data: ScrapeRequest, request: Request, db: Session = Depends(get_db)):
-    """Scrape URL → raw text. No parsing yet."""
+    """Scrape a single URL (Crawl4AI, JS rendering) → LOADED."""
     user = _get_current_user(request, db)
     return await rag_service.upload_from_url(db, space_id, user.organization_id, data.url)
+
+
+@router.post("/spaces/{space_id}/web/html")
+def web_raw_html(space_id: str, data: RawHtmlRequest, request: Request, db: Session = Depends(get_db)):
+    """Ingest pasted raw HTML → LOADED."""
+    user = _get_current_user(request, db)
+    return rag_service.ingest_raw_html(db, space_id, user.organization_id, data.html, data.name)
+
+
+@router.post("/spaces/{space_id}/web/crawl")
+def web_crawl(space_id: str, data: CrawlRequest, request: Request, db: Session = Depends(get_db)):
+    """Crawl a website (BFS, same-domain) → one document per page."""
+    user = _get_current_user(request, db)
+    return rag_service.crawl_website(db, space_id, user.organization_id, data.url,
+                                     data.max_depth, data.max_pages)
+
+
+@router.post("/spaces/{space_id}/web/sitemap")
+def web_sitemap(space_id: str, data: SitemapRequest, request: Request, db: Session = Depends(get_db)):
+    """Ingest a sitemap.xml → one document per <loc> URL."""
+    user = _get_current_user(request, db)
+    return rag_service.ingest_sitemap(db, space_id, user.organization_id, data.url, data.max_pages)
+
+
+@router.post("/spaces/{space_id}/web/rss")
+def web_rss(space_id: str, data: RssRequest, request: Request, db: Session = Depends(get_db)):
+    """Ingest an RSS/Atom feed → one document per article."""
+    user = _get_current_user(request, db)
+    return rag_service.ingest_rss(db, space_id, user.organization_id, data.url, data.max_items)
 
 
 @router.get("/spaces/{space_id}/documents")

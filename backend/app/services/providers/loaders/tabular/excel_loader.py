@@ -35,15 +35,17 @@ def load(file_path: str) -> dict:
 
     raw_text = "\n\n".join(parts)
 
+    from app.services.providers.loaders._utils import build_doc_metadata
+    metadata = build_doc_metadata(file_path, len(parts), "xlsx", parser_name="openpyxl",
+                                  extra={"num_sheets": len(sheet_names), "total_rows": total_rows})
+
     return {
         "raw_text": raw_text,
         "num_pages": len(parts),
         "file_type": "Excel",
         "category": "table",
-        "metadata": {
-            "sheets": ", ".join(sheet_names),
-            "total_rows": total_rows,
-            "num_sheets": len(sheet_names),
-        },
+        "metadata": metadata,
         "total_chars": len(raw_text),
+        # Pass the path through so the parser can read the workbook structure.
+        "file_path": os.path.abspath(file_path),
     }
