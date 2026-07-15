@@ -44,8 +44,9 @@ def _get_converter():
     return _converter
 
 
-def load(file_path: str) -> dict:
-    logger.info(f"[DOCX_LOADER] Loading with Docling: {os.path.basename(file_path)}")
+def load(file_path: str, extract_images: bool = True) -> dict:
+    logger.info(f"[DOCX_LOADER] Loading with Docling: {os.path.basename(file_path)}"
+                f"{'' if extract_images else ' (images OFF)'}")
 
     from app.services.providers.parsers._docling import docling_to_parsed_document
 
@@ -68,6 +69,7 @@ def load(file_path: str) -> dict:
         category="document",
         metadata={"source": os.path.basename(file_path),
                   "file_path": os.path.abspath(file_path)},
+        extract_images=extract_images,
     )
 
     if not raw_text.strip():

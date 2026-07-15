@@ -38,22 +38,23 @@ def _get_converter():
     return _converter
 
 
-def load(file_path: str) -> dict:
+def load(file_path: str, extract_images: bool = True) -> dict:
     """python-pptx first (richest slide structure); fall back to Docling."""
     try:
-        result = _load_native(file_path)
+        result = _load_native(file_path, extract_images)
         if result and result.get("raw_text", "").strip():
             return result
         logger.warning("[PPTX_LOADER] python-pptx produced no text; using Docling")
     except Exception as e:
         logger.warning(f"[PPTX_LOADER] python-pptx failed ({e}); using Docling")
-    return _load_docling(file_path)
+    return _load_docling(file_path, extract_images)
 
 
 # ── Docling path (fallback — same shared pipeline as PDF/DOCX) ──
 
-def _load_docling(file_path: str) -> dict:
-    logger.info(f"[PPTX_LOADER] Loading with Docling: {os.path.basename(file_path)}")
+def _load_docling(file_path: str, extract_images: bool = True) -> dict:
+    logger.info(f"[PPTX_LOADER] Loading with Docling: {os.path.basename(file_path)}"
+                f"{'' if extract_images else ' (images OFF)'}")
 
     from app.services.providers.parsers._docling import docling_to_parsed_document
     from app.services.providers.loaders._utils import build_doc_metadata, clean_text
@@ -75,6 +76,7 @@ def _load_docling(file_path: str) -> dict:
         category="document",
         metadata={"source": os.path.basename(file_path),
                   "file_path": os.path.abspath(file_path)},
+        extract_images=extract_images,
     )
 
     num_pages = parsed_doc.num_pages or 1
@@ -101,8 +103,9 @@ def _load_docling(file_path: str) -> dict:
 
 # ── Native python-pptx path (primary) ──
 
-def _load_native(file_path: str) -> dict:
-    logger.info(f"[PPTX_LOADER] Parsing with python-pptx: {os.path.basename(file_path)}")
+def _load_native(file_path: str, extract_images: bool = True) -> dict:
+    logger.info(f"[PPTX_LOADER] Parsing with python-pptx: {os.path.basename(file_path)}"
+                f"{'' if extract_images else ' (images OFF)'}")
 
     from pptx import Presentation
     from app.services.providers.parsers.parsed_document import ParsedDocument, Section
@@ -178,7 +181,8 @@ def _load_native(file_path: str) -> dict:
         # relationships (not the shape tree) so it catches picture shapes AND
         # picture-fills / freeform-fills / backgrounds — which python-pptx does
         # not expose as PICTURE shapes and _save_pic used to miss entirely.
-        for idx, (blob, ext) in enumerate(_slide_images(slide), 1):
+        # Skipped entirely when image extraction is disabled for this document.
+        for idx, (blob, ext) in enumerate(_slide_images(slide) if extract_images else [], 1):
             saved = _save_blob(blob, ext, images_dir, page, idx)
             if saved:
                 all_images.append(saved)

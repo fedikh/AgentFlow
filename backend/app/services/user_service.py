@@ -17,11 +17,13 @@ from app.models.user import User, RoleType, UserStatus
 from app.models.organization import Organization, OrgType
 from app.models.department import Department
 from app.models.user_department import UserDepartment
+from app.models.rag_space import RAGSpace
 from app.schemas.user import (
     InviteUserRequest, ActivateUserRequest, UpdateUserRoleRequest,
     CreateDepartmentRequest
 )
-from app.services.auth_service import hash_password, mail_conf
+from app.services.auth_service import hash_password, mail_conf, send_mail_safe
+from app.config import settings
 
 
 # ══════════════════════════════════════════════════════
@@ -112,7 +114,7 @@ async def invite_user(db: Session, data: InviteUserRequest, admin_user: User) ->
     db.refresh(user)
 
     # Build email
-    activate_url = f"http://localhost:5173/activate?token={invite_token}"
+    activate_url = f"{settings.FRONTEND_URL.rstrip('/')}/activate?token={invite_token}"
     dept_text = ", ".join(dept_names)
     dept_html = f" in department(s): <strong>{dept_text}</strong>"
 
@@ -136,10 +138,15 @@ async def invite_user(db: Session, data: InviteUserRequest, admin_user: User) ->
         """,
         subtype="html",
     )
-    fm = FastMail(mail_conf)
-    await fm.send_message(message)
+    email_sent = await send_mail_safe(message)
 
-    return _user_dict(user, db)
+    # The invite exists either way (user + token are committed). If the email
+    # failed, hand the activation link back so the admin can share it manually.
+    result = _user_dict(user, db)
+    result["email_sent"] = email_sent
+    if not email_sent:
+        result["activate_url"] = activate_url
+    return result
 
 
 # ══════════════════════════════════════════════════════
@@ -214,7 +221,61 @@ def update_user(db: Session, user_id: str, org_id: str, data: UpdateUserRoleRequ
     return _user_dict(user, db)
 
 
-def delete_user(db: Session, user_id: str, org_id: str, admin_user: User) -> dict:
+# ── RAG-space ownership transfer (before deleting an IT) ──
+
+def _owned_spaces_by_dept(db: Session, user_id: str) -> dict:
+    """RAG spaces owned by a user, bucketed by department id ('' = no dept)."""
+    spaces = db.query(RAGSpace).filter(RAGSpace.owner_id == user_id).all()
+    buckets: dict = {}
+    for sp in spaces:
+        buckets.setdefault(sp.department_id or "", []).append(sp)
+    return buckets
+
+
+def get_user_transfer_info(db: Session, user_id: str, org_id: str, admin_user: User) -> dict:
+    """Preview what must happen before deleting a user: the RAG spaces they own
+    (grouped by department) and the eligible IT users who can inherit them."""
+    if admin_user.role != RoleType.ADMIN:
+        raise HTTPException(403, "Only Admin can manage users")
+    user = db.query(User).filter(User.id == user_id, User.organization_id == org_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    all_it = (
+        db.query(User)
+        .filter(User.organization_id == org_id, User.role == RoleType.IT, User.id != user.id)
+        .all()
+    )
+    buckets = _owned_spaces_by_dept(db, user.id)
+    departments = []
+    for key, spaces in buckets.items():
+        if key:
+            dept = db.query(Department).filter(Department.id == key).first()
+            dept_name = dept.name if dept else "—"
+            targets = [u for u in all_it if any(d.id == key for d in u.departments)]
+        else:
+            dept_name = "No department"
+            targets = all_it
+        departments.append({
+            "department_id": key or None,
+            "department_key": key,     # "" for no-department (transfers map key)
+            "department_name": dept_name,
+            "space_count": len(spaces),
+            "spaces": [{"id": s.id, "name": s.name} for s in spaces],
+            "eligible_targets": [
+                {"id": u.id, "name": u.name, "email": u.email} for u in targets
+            ],
+        })
+
+    return {
+        "user": {"id": user.id, "name": user.name, "email": user.email},
+        "total_spaces": sum(len(v) for v in buckets.values()),
+        "departments": departments,
+    }
+
+
+def delete_user(db: Session, user_id: str, org_id: str, admin_user: User,
+                transfers=None, delete_spaces=False) -> dict:
     if admin_user.role != RoleType.ADMIN:
         raise HTTPException(403, "Only Admin can delete users")
 
@@ -227,6 +288,44 @@ def delete_user(db: Session, user_id: str, org_id: str, admin_user: User) -> dic
         raise HTTPException(400, "Cannot delete another Admin")
 
     name = user.name or user.email
+    deleted_spaces = 0
+
+    # ── RAG spaces this user owns: DELETE them or TRANSFER them (admin's pick) ──
+    buckets = _owned_spaces_by_dept(db, user.id)
+    if buckets and delete_spaces:
+        # Admin chose to remove the IT's whole RAG system. rag_service.delete_space
+        # handles the DB cascade (documents, chunks, versions, access) AND the
+        # on-disk uploads cleanup; ADMIN passes its owner check.
+        from app.services import rag_service
+        for spaces in buckets.values():
+            for sp in spaces:
+                rag_service.delete_space(db, sp.id, org_id, admin_user)
+                deleted_spaces += 1
+    elif buckets:
+        transfers = transfers or {}
+        for key, spaces in buckets.items():
+            target_id = transfers.get(key)
+            if not target_id:
+                raise HTTPException(
+                    409,
+                    f"This IT owns {sum(len(v) for v in buckets.values())} RAG space(s). "
+                    "Choose another IT to receive them (or delete them) before deleting.",
+                )
+            target = db.query(User).filter(
+                User.id == target_id,
+                User.organization_id == org_id,
+                User.role == RoleType.IT,
+            ).first()
+            if not target or target.id == user.id:
+                raise HTTPException(400, "Transfer target must be another IT user.")
+            # For a departmental space, the new owner must belong to that department.
+            if key and not any(d.id == key for d in target.departments):
+                raise HTTPException(
+                    400, "The chosen IT must belong to the department of the transferred spaces."
+                )
+            for sp in spaces:
+                sp.owner_id = target.id
+        db.flush()
 
     # Clear the relationship first so SQLAlchemy doesn't try to delete them again
     user.departments.clear()
@@ -234,7 +333,10 @@ def delete_user(db: Session, user_id: str, org_id: str, admin_user: User) -> dic
 
     db.delete(user)
     db.commit()
-    return {"message": f"User '{name}' deleted"}
+    msg = f"User '{name}' deleted"
+    if deleted_spaces:
+        msg += f" with {deleted_spaces} RAG space(s)"
+    return {"message": msg, "deleted_spaces": deleted_spaces}
 
 
 async def resend_invite(db: Session, user_id: str, org_id: str, admin_user: User) -> dict:
@@ -255,7 +357,7 @@ async def resend_invite(db: Session, user_id: str, org_id: str, admin_user: User
     dept_names = [d.name for d in user.departments]
     dept_text = ", ".join(dept_names) if dept_names else "no department"
 
-    activate_url = f"http://localhost:5173/activate?token={user.invite_token}"
+    activate_url = f"{settings.FRONTEND_URL.rstrip('/')}/activate?token={user.invite_token}"
 
     message = MessageSchema(
         subject="AgentFlow — Invitation reminder",
@@ -277,10 +379,15 @@ async def resend_invite(db: Session, user_id: str, org_id: str, admin_user: User
         """,
         subtype="html",
     )
-    fm = FastMail(mail_conf)
-    await fm.send_message(message)
+    if not await send_mail_safe(message):
+        # Token was regenerated and is valid — give the admin the link to share.
+        return {
+            "message": "Email could not be sent — share the activation link manually.",
+            "email_sent": False,
+            "activate_url": activate_url,
+        }
 
-    return {"message": f"Invitation resent to {user.email}"}
+    return {"message": f"Invitation resent to {user.email}", "email_sent": True}
 
 
 # ══════════════════════════════════════════════════════

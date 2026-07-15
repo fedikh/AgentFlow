@@ -4,6 +4,7 @@ import {
   inviteUser,
   updateUser,
   deleteUser,
+  getUserTransferInfo,
   resendInvite,
   listDepartments,
   createDepartment,
@@ -92,6 +93,12 @@ const UsersPage = () => {
   const [editDepts, setEditDepts] = useState([]);
   const [saving, setSaving] = useState(false);
 
+  // Delete / transfer-ownership modal
+  const [transferInfo, setTransferInfo] = useState(null); // { user, departments, total_spaces, name }
+  const [transferTargets, setTransferTargets] = useState({}); // { deptKey: targetItId }
+  const [deleteMode, setDeleteMode] = useState("transfer"); // "transfer" | "delete"
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => {
     loadAll();
   }, []);
@@ -134,6 +141,25 @@ const UsersPage = () => {
     );
   };
 
+  // When SMTP is down/misconfigured the invite still exists — surface the
+  // activation link so the admin can share it manually.
+  const notifyInviteResult = async (res, email, okMsg) => {
+    if (res && res.email_sent === false && res.activate_url) {
+      try {
+        await navigator.clipboard.writeText(res.activate_url);
+        setError(
+          `Invite created for ${email}, but the email could not be sent (check SMTP settings). Activation link copied to clipboard — share it manually.`,
+        );
+      } catch {
+        setError(
+          `Invite created for ${email}, but the email could not be sent. Share this link manually: ${res.activate_url}`,
+        );
+      }
+    } else {
+      setSuccess(okMsg);
+    }
+  };
+
   // ── Invite IT ──
   const handleInviteIT = async () => {
     if (!invITEmail.trim() || invITSelectedDepts.length === 0) return;
@@ -141,8 +167,8 @@ const UsersPage = () => {
     setError("");
     setSuccess("");
     try {
-      await inviteUser(invITEmail, "IT", invITSelectedDepts);
-      setSuccess(`IT invitation sent to ${invITEmail}`);
+      const res = await inviteUser(invITEmail, "IT", invITSelectedDepts);
+      await notifyInviteResult(res, invITEmail, `IT invitation sent to ${invITEmail}`);
       setShowInviteIT(false);
       setInvITEmail("");
       setInvITSelectedDepts([]);
@@ -161,8 +187,8 @@ const UsersPage = () => {
     setError("");
     setSuccess("");
     try {
-      await inviteUser(invEmail, invRole, invSelectedDepts);
-      setSuccess(`Invitation sent to ${invEmail}`);
+      const res = await inviteUser(invEmail, invRole, invSelectedDepts);
+      await notifyInviteResult(res, invEmail, `Invitation sent to ${invEmail}`);
       setShowInvite(false);
       setInvEmail("");
       setInvSelectedDepts([]);
@@ -225,20 +251,67 @@ const UsersPage = () => {
 
   // ── User actions ──
   const handleDelete = async (id, name) => {
-    if (!confirm(`Remove ${name || "this user"}?`)) return;
     try {
-      await deleteUser(id);
-      setSuccess("User removed");
-      await loadAll();
+      // Check first whether this user owns RAG spaces that must be reassigned.
+      const info = await getUserTransferInfo(id);
+      if (!info.total_spaces) {
+        if (!confirm(`Remove ${name || "this user"}?`)) return;
+        await deleteUser(id);
+        setSuccess("User removed");
+        await loadAll();
+        return;
+      }
+      // Owns spaces → open the transfer modal. Pre-select any bucket that has a
+      // single eligible target.
+      const init = {};
+      info.departments.forEach((d) => {
+        if (d.eligible_targets.length === 1)
+          init[d.department_key] = d.eligible_targets[0].id;
+      });
+      setTransferTargets(init);
+      setDeleteMode("transfer");
+      setTransferInfo({ ...info, name });
     } catch (e) {
       setError(e.message);
     }
   };
 
+  const confirmTransferDelete = async () => {
+    if (!transferInfo) return;
+    if (deleteMode === "transfer") {
+      const allChosen = transferInfo.departments.every(
+        (d) => transferTargets[d.department_key],
+      );
+      if (!allChosen) return;
+    }
+    setDeleting(true);
+    setError("");
+    try {
+      if (deleteMode === "delete") {
+        await deleteUser(transferInfo.user.id, { delete_spaces: true });
+        setSuccess(
+          `${transferInfo.name || "User"} deleted with ${transferInfo.total_spaces} RAG space(s)`,
+        );
+      } else {
+        await deleteUser(transferInfo.user.id, { transfers: transferTargets });
+        setSuccess(
+          `${transferInfo.name || "User"} deleted — ${transferInfo.total_spaces} RAG space(s) transferred`,
+        );
+      }
+      setTransferInfo(null);
+      setTransferTargets({});
+      await loadAll();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleResend = async (id, email) => {
     try {
-      await resendInvite(id);
-      setSuccess(`Invitation resent to ${email}`);
+      const res = await resendInvite(id);
+      await notifyInviteResult(res, email, `Invitation resent to ${email}`);
     } catch (e) {
       setError(e.message);
     }
@@ -453,6 +526,190 @@ const UsersPage = () => {
     );
   };
 
+  // ── Delete + transfer-ownership modal ──
+  const TransferModal = () => {
+    if (!transferInfo) return null;
+    const blocked = transferInfo.departments.some(
+      (d) => d.eligible_targets.length === 0,
+    );
+    const allChosen = transferInfo.departments.every(
+      (d) => transferTargets[d.department_key],
+    );
+    return (
+      <div
+        className="users-overlay"
+        onClick={() => !deleting && setTransferInfo(null)}
+      >
+        <div className="users-modal" onClick={(e) => e.stopPropagation()}>
+          <h3 className="users-modal-title">
+            Delete {transferInfo.name || transferInfo.user.email}
+          </h3>
+          <p className="users-modal-sub">
+            This IT owns <strong>{transferInfo.total_spaces}</strong> RAG space
+            {transferInfo.total_spaces !== 1 ? "s" : ""}. Choose what happens to
+            them before the account is removed.
+          </p>
+
+          {/* Mode choice: transfer the work vs delete everything */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+            {[
+              {
+                key: "transfer",
+                icon: "🔁",
+                title: "Transfer the work",
+                sub: "Another IT takes ownership — nothing is lost.",
+                accent: "#2563eb",
+              },
+              {
+                key: "delete",
+                icon: "🗑️",
+                title: "Delete everything",
+                sub: "Remove the IT and all their RAG spaces.",
+                accent: "#dc2626",
+              },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setDeleteMode(opt.key)}
+                style={{
+                  textAlign: "left",
+                  padding: "12px 13px",
+                  borderRadius: 11,
+                  cursor: "pointer",
+                  background: deleteMode === opt.key ? `${opt.accent}0d` : "#fff",
+                  border:
+                    deleteMode === opt.key
+                      ? `1.5px solid ${opt.accent}`
+                      : "1.5px solid #e2e8f0",
+                  transition: "all .12s",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f1b2d" }}>
+                  {opt.icon} {opt.title}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 3, lineHeight: 1.4 }}>
+                  {opt.sub}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {deleteMode === "transfer" ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+                maxHeight: 300,
+                overflowY: "auto",
+              }}
+            >
+              {transferInfo.departments.map((d) => (
+                <div key={d.department_key} className="field" style={{ margin: 0 }}>
+                  <label>
+                    {d.department_name} · {d.space_count} space
+                    {d.space_count !== 1 ? "s" : ""}
+                  </label>
+                  <div style={{ fontSize: 11, color: "#94a3b8", margin: "2px 0 6px" }}>
+                    {d.spaces.map((s) => s.name).join(", ")}
+                  </div>
+                  {d.eligible_targets.length === 0 ? (
+                    <div className="users-check-warn">
+                      No other IT in {d.department_name}. Add an IT to this
+                      department first — or switch to “Delete everything”.
+                    </div>
+                  ) : (
+                    <select
+                      value={transferTargets[d.department_key] || ""}
+                      onChange={(e) =>
+                        setTransferTargets((prev) => ({
+                          ...prev,
+                          [d.department_key]: e.target.value,
+                        }))
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "9px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #e2e8f0",
+                        fontSize: 13,
+                        background: "#fff",
+                      }}
+                    >
+                      <option value="">Transfer to…</option>
+                      {d.eligible_targets.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name || t.email}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: 10,
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                maxHeight: 300,
+                overflowY: "auto",
+              }}
+            >
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#991b1b" }}>
+                ⚠️ This cannot be undone
+              </div>
+              <div style={{ fontSize: 12, color: "#b91c1c", marginTop: 4, lineHeight: 1.55 }}>
+                These {transferInfo.total_spaces} RAG space
+                {transferInfo.total_spaces !== 1 ? "s" : ""} will be permanently
+                deleted — documents, index and versions included. End users will
+                lose access to the deployed agents.
+              </div>
+              <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "#7f1d1d" }}>
+                {transferInfo.departments.map((d) =>
+                  d.spaces.map((s) => (
+                    <li key={s.id}>
+                      {s.name}
+                      <span style={{ color: "#b91c1c" }}> · {d.department_name}</span>
+                    </li>
+                  )),
+                )}
+              </ul>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+            <button
+              className="users-btn-cancel"
+              onClick={() => setTransferInfo(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </button>
+            <button
+              className="users-btn-primary"
+              onClick={confirmTransferDelete}
+              disabled={
+                deleting ||
+                (deleteMode === "transfer" && (blocked || !allChosen))
+              }
+              style={{ background: "#dc2626", borderColor: "#dc2626" }}
+            >
+              {deleting
+                ? "Deleting..."
+                : deleteMode === "delete"
+                  ? `Delete IT + ${transferInfo.total_spaces} space${transferInfo.total_spaces !== 1 ? "s" : ""}`
+                  : "Transfer & delete"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ══════════════════════════════════════════════════
   // VIEW: ALL USERS
   // ══════════════════════════════════════════════════
@@ -499,6 +756,7 @@ const UsersPage = () => {
         </div>
 
         <EditDeptsModal />
+        <TransferModal />
       </div>
     );
   }
@@ -661,6 +919,7 @@ const UsersPage = () => {
         )}
 
         <EditDeptsModal />
+        <TransferModal />
       </div>
     );
   }
@@ -926,6 +1185,7 @@ const UsersPage = () => {
       )}
 
       <EditDeptsModal />
+        <TransferModal />
     </div>
   );
 };

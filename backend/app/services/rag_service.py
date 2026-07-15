@@ -19,11 +19,12 @@ import shutil
 import tempfile
 from collections import Counter
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from fastapi import HTTPException, UploadFile
 
-from app.models.rag_space import RAGSpace
+from app.models.rag_space import RAGSpace, SpaceStatus
 from app.models.rag_space_access import RAGSpaceAccess
+from app.models.rag_space_version import RAGSpaceVersion
 from app.models.document import Document, DocStatus
 from app.models.chunk import Chunk
 from app.models.user import User, RoleType
@@ -41,7 +42,7 @@ from app.services.providers.loaders._utils import validate_url, get_url_filename
 from app.services.providers.parsers import parse_document as li_parse_document
 
 # ── Chunking factory ──
-from app.services.providers.chunking_factory import chunk_document
+from app.services.providers.chunking_factory import chunk_document, resolve_config
 
 # ── LLM Factory (NEW) — replaces the hardcoded Groq generate_answer ──
 from app.services.llm_factory import generate_answer
@@ -119,10 +120,84 @@ def _set_space_access(db: Session, space: RAGSpace, org_id: str, user_ids):
         db.add(RAGSpaceAccess(rag_space_id=space.id, user_id=uid))
 
 
+# ══════════════════════════════════════════════════════
+# PERMISSIONS — ownership (build) vs department-wide read (view)
+# ══════════════════════════════════════════════════════
+
+def _role_name(user) -> str:
+    return _strval(getattr(user, "role", None)) or ""
+
+
+def _is_dept_member(space: RAGSpace, user) -> bool:
+    dept_id = getattr(space, "department_id", None)
+    return bool(dept_id) and any(
+        d.id == dept_id for d in getattr(user, "departments", [])
+    )
+
+
+def _is_owner_or_admin(space: RAGSpace, user) -> bool:
+    if _role_name(user) == "ADMIN":
+        return True
+    owner_id = getattr(space, "owner_id", None)
+    # Legacy owner-less spaces: any IT acts as owner (no backfill available).
+    if owner_id is None:
+        return _role_name(user) == "IT"
+    return owner_id == user.id
+
+
+def _can_build(db: Session, space: RAGSpace, user) -> bool:
+    """Only the OWNER (or admin) may edit/config/version/deploy/delete a space."""
+    if user is None:
+        return False
+    return _is_owner_or_admin(space, user)
+
+
+def _require_builder(db: Session, space: RAGSpace, user):
+    """Raise 403 unless `user` owns this space (or is admin)."""
+    if not _can_build(db, space, user):
+        raise HTTPException(403, "Only the space owner can modify this space")
+
+
+def _can_view(db: Session, space: RAGSpace, user) -> bool:
+    """Any IT of the space's department may VIEW it (read-only). Owner/admin edit."""
+    if user is None:
+        return True
+    if _can_build(db, space, user):
+        return True
+    return _role_name(user) == "IT" and _is_dept_member(space, user)
+
+
+def _require_view(db: Session, space: RAGSpace, user):
+    """Raise 403 unless `user` may at least view this space."""
+    if not _can_view(db, space, user):
+        raise HTTPException(403, "You don't have access to this space")
+
+
+def require_owner(db: Session, space_id: str, org_id: str, user) -> RAGSpace:
+    """Owner-only actions (upload/delete docs, deploy, publish). Raises 403."""
+    space = _find_space(db, space_id, org_id)
+    if not _is_owner_or_admin(space, user):
+        raise HTTPException(403, "Only the space owner can do this")
+    return space
+
+
+def require_editable(db: Session, space_id: str, org_id: str, user) -> RAGSpace:
+    """Owner-only AND the space must not be live. A deployed (ACTIVE) space is
+    locked; the owner must 'Stop to edit' (pause) before changing docs/config."""
+    space = require_owner(db, space_id, org_id, user)
+    if _strval(space.status) == "ACTIVE":
+        raise HTTPException(
+            409,
+            "This space is deployed and live. Click 'Stop to edit' before making changes.",
+        )
+    return space
+
+
 def list_department_users(db: Session, dept_id: str, org_id: str) -> list[dict]:
     """
-    List the USER-role members of a department (the pool the IT picks from
-    for 'who can use this space'). Scoped to the caller's organization.
+    List the members of a department the owner can grant usage to — both
+    end-users AND IT users (an owner can personalise who consumes the deployed
+    agent). Scoped to the caller's organization.
     """
     dept = db.query(Department).filter(
         Department.id == dept_id, Department.organization_id == org_id
@@ -132,7 +207,8 @@ def list_department_users(db: Session, dept_id: str, org_id: str) -> list[dict]:
 
     users = (
         db.query(User)
-        .filter(User.organization_id == org_id, User.role == RoleType.USER)
+        .filter(User.organization_id == org_id,
+                User.role.in_([RoleType.USER, RoleType.IT]))
         .all()
     )
     members = [u for u in users if any(d.id == dept_id for d in u.departments)]
@@ -150,17 +226,28 @@ def list_department_users(db: Session, dept_id: str, org_id: str) -> list[dict]:
 
 def check_space_access(db: Session, space: RAGSpace, user: User):
     """
-    Enforce query-time access. Raises 403 if the user may not query this space.
-      - ADMIN / IT → always allowed (they build & test spaces)
-      - USER       → must be a member of the space's department AND
-                     (no restriction set OR listed in rag_space_access)
+    Enforce query-time (consumption) access. Raises if the user may not use it.
+      - ADMIN            → always allowed.
+      - OWNER            → always allowed (builds & tests the space).
+      - everyone else    → the space must be DEPLOYED + published, the user a
+                           member of its department, and (if a restriction is
+                           set) listed in rag_space_access. This now applies to
+                           non-owner IT consumers too, so the owner can truly
+                           restrict who uses the agent.
     Org scoping is already handled by _find_space.
     """
-    if user.role in (RoleType.ADMIN, RoleType.IT):
+    if _role_name(user) == "ADMIN" or getattr(space, "owner_id", None) == user.id:
         return
 
-    # USER must belong to the space's department
-    if space.department_id and not any(d.id == space.department_id for d in user.departments):
+    # A space paused for editing is visible but temporarily unusable.
+    if _strval(space.status) == "EDITING":
+        raise HTTPException(409, "This agent is being updated. Please check back soon.")
+    # Must be DEPLOYED and published to consumers.
+    if _strval(space.status) != "ACTIVE" or getattr(space, "is_private", False):
+        raise HTTPException(403, "This space is not available")
+
+    # Must belong to the space's department
+    if space.department_id and not _is_dept_member(space, user):
         raise HTTPException(403, "You are not a member of this space's department")
 
     allowed = _get_access_user_ids(db, space.id)
@@ -168,18 +255,57 @@ def check_space_access(db: Session, space: RAGSpace, user: User):
         raise HTTPException(403, "You are not allowed to use this space")
 
 
-def _space_dict(db, space):
+def _strval(v):
+    """Enum-or-string → lowercase-safe string name (or None)."""
+    if v is None:
+        return None
+    return str(v.value if hasattr(v, "value") else v)
+
+
+def _load_json(raw):
+    """JSON text (or dict) → dict; {} on anything unparseable."""
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, dict) else {}
+    except Exception:
+        return {}
+
+
+def _norm_chunk_mode(mode) -> str:
+    """Legacy FIXED_ALL/ADAPTIVE → SINGLE; PER_DOCUMENT preserved."""
+    m = _strval(mode) or "SINGLE"
+    m = m.upper()
+    return "PER_DOCUMENT" if m in ("PER_DOCUMENT", "PER_DOC") else "SINGLE"
+
+
+def _space_dict(db, space, user=None):
     num_docs = db.query(Document).filter(Document.rag_space_id == space.id).count()
     num_chunks = db.query(Chunk).filter(Chunk.rag_space_id == space.id).count()
     return {
         "id": space.id, "name": space.name, "description": space.description,
-        "status": getattr(space, 'status', 'DRAFT') or 'DRAFT',
+        "status": _strval(getattr(space, 'status', 'DRAFT')) or 'DRAFT',
         "organization_id": space.organization_id,
         "department_id": space.department_id,
+        # ── Ownership / lifecycle (versioning + permissions) ──
+        "owner_id": getattr(space, "owner_id", None),
+        "is_private": bool(getattr(space, "is_private", False)),
+        "deployed_version_id": getattr(space, "deployed_version_id", None),
+        "reindex_required": bool(getattr(space, "reindex_required", False)),
+        "version_count": db.query(RAGSpaceVersion).filter(
+            RAGSpaceVersion.rag_space_id == space.id
+        ).count(),
+        "is_owner": (user is not None and getattr(space, "owner_id", None) == user.id),
+        "can_build": _can_build(db, space, user) if user is not None else True,
         "department_name": space.department.name if getattr(space, "department", None) else None,
         "chunk_size": space.chunk_size, "chunk_overlap": space.chunk_overlap,
-        "chunk_strategy": space.chunk_strategy,
-        "chunk_mode": getattr(space, 'chunk_mode', 'FIXED_ALL') or 'FIXED_ALL',
+        "chunk_strategy": _strval(space.chunk_strategy) or "recursive",
+        "chunk_params": _load_json(getattr(space, 'chunk_params', None)),
+        "chunk_format_map": _load_json(getattr(space, 'chunk_format_map', None)),
+        "chunk_mode": _norm_chunk_mode(getattr(space, 'chunk_mode', None)),
         "embedding_provider": getattr(space, 'embedding_provider', 'LOCAL') or 'LOCAL',
         "embedding_model": getattr(space, 'embedding_model', 'BAAI/bge-m3') or 'BAAI/bge-m3',
         # NEW (Batch 6): embedding source for the IT selector (mirrors LLM)
@@ -212,13 +338,247 @@ def _doc_dict(doc):
         "source_type": getattr(doc, 'source_type', 'local') or 'local',
         "source_url": getattr(doc, 'source_url', None),
         "num_chunks": doc.num_chunks, "status": status, "error_msg": doc.error_msg,
-        "chunk_strategy": getattr(doc, 'chunk_strategy', None),
+        "chunk_strategy": _strval(getattr(doc, 'chunk_strategy', None)),
+        "chunk_params": _load_json(getattr(doc, 'chunk_params', None)),
         "chosen_strategy": getattr(doc, 'chosen_strategy', None),
         "extract_images": bool(getattr(doc, 'extract_images', True)),
         "has_loaded_content": bool(doc.loaded_content) if hasattr(doc, 'loaded_content') else False,
         "has_extracted_content": bool(doc.extracted_content) if hasattr(doc, 'extracted_content') else False,
         "rag_space_id": doc.rag_space_id, "uploaded_at": str(doc.uploaded_at),
     }
+
+
+# ══════════════════════════════════════════════════════
+# VERSIONING — config snapshots + deploy lifecycle
+# ══════════════════════════════════════════════════════
+
+# The pipeline columns captured in a version snapshot. Identity/lifecycle fields
+# (name, department, status, owner, is_private) are intentionally excluded.
+_VERSION_CONFIG_COLUMNS = [
+    "chunk_mode", "chunk_size", "chunk_overlap", "chunk_strategy",
+    "chunk_params", "chunk_format_map",
+    "embedding_provider", "embedding_model",
+    "embedding_provider_id", "embedding_api_key_enc", "embedding_base_url",
+    "llm_provider", "llm_model", "llm_temperature", "llm_max_tokens",
+    "llm_provider_id", "llm_api_key_enc", "llm_base_url",
+    "top_k", "search_engine", "semantic_weight", "reranking_enabled",
+    "system_prompt",
+]
+_VERSION_SECRET_KEYS = ("llm_api_key_enc", "embedding_api_key_enc")
+
+# Only these columns affect the built index. A change to any of them means the
+# stored chunks are stale and a full re-index is needed. Query-time fields
+# (llm_*, top_k, semantic_weight, reranking, system_prompt) do NOT.
+_INDEX_COLUMNS = [
+    "chunk_mode", "chunk_size", "chunk_overlap", "chunk_strategy",
+    "chunk_params", "chunk_format_map",
+    "embedding_provider", "embedding_model",
+    "embedding_provider_id", "embedding_api_key_enc", "embedding_base_url",
+]
+
+
+def _index_fp(space) -> tuple:
+    """Fingerprint of the index-relevant config; compare before/after an edit to
+    decide whether a re-index is actually required."""
+    return tuple(str(getattr(space, c, None)) for c in _INDEX_COLUMNS)
+
+
+def _config_fp(space) -> tuple:
+    """Fingerprint of the FULL pipeline config (index + query-time). Used to tell
+    whether an edit changed the pipeline — a change is not allowed while a space
+    is deployed (live); the owner must 'Stop to edit' first."""
+    return tuple(str(getattr(space, c, None)) for c in _VERSION_CONFIG_COLUMNS)
+
+
+def _snapshot_config(space: RAGSpace) -> dict:
+    """Capture the space's current pipeline config as a JSON-serializable dict.
+    chunk_params/chunk_format_map are stored as text and copied verbatim."""
+    return {col: getattr(space, col, None) for col in _VERSION_CONFIG_COLUMNS}
+
+
+def _apply_config(space: RAGSpace, cfg: dict):
+    """Write a version's snapshot back onto the space columns."""
+    for col in _VERSION_CONFIG_COLUMNS:
+        if col in cfg:
+            setattr(space, col, cfg[col])
+
+
+def _version_dict(v: RAGSpaceVersion) -> dict:
+    cfg = _load_json(v.config)
+    # Never leak encrypted keys to the client — expose only their presence.
+    safe_cfg = {k: val for k, val in cfg.items() if k not in _VERSION_SECRET_KEYS}
+    return {
+        "id": v.id,
+        "rag_space_id": v.rag_space_id,
+        "version_number": v.version_number,
+        "label": v.label,
+        "status": v.status,
+        "notes": v.notes,
+        "config": safe_cfg,
+        "has_own_llm_key": bool(cfg.get("llm_api_key_enc")),
+        "has_own_embedding_key": bool(cfg.get("embedding_api_key_enc")),
+        "created_by": v.created_by,
+        "created_at": str(v.created_at),
+    }
+
+
+def _find_version(db: Session, space_id: str, version_id: str) -> RAGSpaceVersion:
+    v = db.query(RAGSpaceVersion).filter(
+        RAGSpaceVersion.id == version_id,
+        RAGSpaceVersion.rag_space_id == space_id,
+    ).first()
+    if not v:
+        raise HTTPException(404, "Version not found")
+    return v
+
+
+def _next_version_number(db: Session, space_id: str) -> int:
+    last = db.query(RAGSpaceVersion).filter(
+        RAGSpaceVersion.rag_space_id == space_id
+    ).order_by(RAGSpaceVersion.version_number.desc()).first()
+    return (last.version_number + 1) if last else 1
+
+
+def _create_version(db, space, user, label=None, notes=None) -> RAGSpaceVersion:
+    n = _next_version_number(db, space.id)
+    v = RAGSpaceVersion(
+        rag_space_id=space.id,
+        version_number=n,
+        label=(label or f"v{n}").strip(),
+        status="SAVED",
+        notes=notes,
+        config=json.dumps(_snapshot_config(space)),
+        created_by=getattr(user, "id", None),
+    )
+    db.add(v)
+    db.flush()
+    return v
+
+
+def save_version(db, space_id, org_id, user, label=None, notes=None) -> dict:
+    space = _find_space(db, space_id, org_id)
+    _require_builder(db, space, user)
+    v = _create_version(db, space, user, label, notes)
+    db.commit()
+    db.refresh(v)
+    return _version_dict(v)
+
+
+def list_versions(db, space_id, org_id, user) -> list[dict]:
+    space = _find_space(db, space_id, org_id)
+    _require_view(db, space, user)   # read-only for non-owner IT of the department
+    versions = db.query(RAGSpaceVersion).filter(
+        RAGSpaceVersion.rag_space_id == space.id
+    ).order_by(RAGSpaceVersion.version_number.desc()).all()
+    return [_version_dict(v) for v in versions]
+
+
+def apply_version(db, space_id, org_id, user, version_id) -> dict:
+    """Load a version's config into the working space (without deploying it)."""
+    space = _find_space(db, space_id, org_id)
+    _require_builder(db, space, user)
+    if _strval(space.status) == "ACTIVE":
+        raise HTTPException(
+            409,
+            "This space is deployed and live. Click 'Stop to edit' before loading another config.",
+        )
+    v = _find_version(db, space.id, version_id)
+    fp_before = _index_fp(space)
+    _apply_config(space, _load_json(v.config))
+    if _index_fp(space) != fp_before:
+        space.reindex_required = True   # index-relevant config changed
+    db.commit()
+    db.refresh(space)
+    return {"space": _space_dict(db, space, user),
+            "reindex_required": bool(space.reindex_required)}
+
+
+def _mark_deployed(db, space, version: RAGSpaceVersion, publish: bool):
+    """Shared deploy tail: flip status/pointer + archive the prior deployed one.
+    Does NOT touch reindex_required — callers set it only when the config that's
+    being deployed actually differs from what's indexed."""
+    # Archive any previously-deployed version of this space.
+    db.query(RAGSpaceVersion).filter(
+        RAGSpaceVersion.rag_space_id == space.id,
+        RAGSpaceVersion.status == "DEPLOYED",
+    ).update({RAGSpaceVersion.status: "ARCHIVED"})
+    version.status = "DEPLOYED"
+    space.status = SpaceStatus.ACTIVE
+    space.deployed_version_id = version.id
+    if publish:
+        space.is_private = False
+
+
+def deploy_version(db, space_id, org_id, user, version_id, publish=False) -> dict:
+    """Deploy an existing saved version → applies its config + flips to ACTIVE.
+    Owner-only."""
+    space = _find_space(db, space_id, org_id)
+    if not _is_owner_or_admin(space, user):
+        raise HTTPException(403, "Only the owner can deploy this space")
+    v = _find_version(db, space.id, version_id)
+    fp_before = _index_fp(space)
+    _apply_config(space, _load_json(v.config))
+    if _index_fp(space) != fp_before:
+        space.reindex_required = True   # deploying a different index config
+    _mark_deployed(db, space, v, publish)
+    db.commit()
+    db.refresh(space)
+    return {"space": _space_dict(db, space, user),
+            "reindex_required": bool(space.reindex_required)}
+
+
+def deploy_current(db, space_id, org_id, user, label=None, notes=None, publish=False) -> dict:
+    """Snapshot the current working config into a new version and deploy it.
+    Owner-only."""
+    space = _find_space(db, space_id, org_id)
+    if not _is_owner_or_admin(space, user):
+        raise HTTPException(403, "Only the owner can deploy this space")
+    # Deploying the CURRENT working config → no config change, so reindex_required
+    # keeps whatever it already is (True only if the IT changed index settings and
+    # hasn't re-indexed yet).
+    v = _create_version(db, space, user, label, notes)
+    _mark_deployed(db, space, v, publish)
+    db.commit()
+    db.refresh(space)
+    return {"space": _space_dict(db, space, user),
+            "reindex_required": bool(space.reindex_required)}
+
+
+def set_publish(db, space_id, org_id, user, is_private: bool) -> dict:
+    """Toggle end-user exposure of a deployed space (publish / unpublish).
+    Owner-only."""
+    space = _find_space(db, space_id, org_id)
+    if not _is_owner_or_admin(space, user):
+        raise HTTPException(403, "Only the owner can publish this space")
+    space.is_private = bool(is_private)
+    db.commit()
+    db.refresh(space)
+    return _space_dict(db, space, user)
+
+
+def pause_deployment(db, space_id, org_id, user) -> dict:
+    """Take a deployed space offline for editing. End users see it as "updating"
+    and can't query it until it's re-deployed. Owner-only."""
+    space = _find_space(db, space_id, org_id)
+    if not _is_owner_or_admin(space, user):
+        raise HTTPException(403, "Only the owner can pause this space")
+    if _strval(space.status) != "ACTIVE":
+        raise HTTPException(400, "Only a deployed (ACTIVE) space can be paused")
+    space.status = SpaceStatus.EDITING
+    db.commit()
+    db.refresh(space)
+    return _space_dict(db, space, user)
+
+
+def delete_version(db, space_id, org_id, user, version_id) -> dict:
+    space = _find_space(db, space_id, org_id)
+    _require_builder(db, space, user)
+    v = _find_version(db, space.id, version_id)
+    if space.deployed_version_id == v.id:
+        raise HTTPException(400, "Can't delete the currently deployed version")
+    db.delete(v)
+    db.commit()
+    return {"message": f"Version '{v.label}' deleted"}
 
 
 # ══════════════════════════════════════════════════════
@@ -229,9 +589,16 @@ def create_space(db: Session, data: CreateRAGSpaceRequest, org_id: str, user) ->
     space = RAGSpace(
         name=data.name, description=data.description or "",
         organization_id=org_id, department_id=data.department_id,
+        # Owner = the creating IT; private to the owner until deployed/published.
+        owner_id=getattr(user, "id", None),
+        # Default private (just the owner + IT team); the creator can opt into
+        # a department space at creation.
+        is_private=(data.is_private if getattr(data, "is_private", None) is not None else True),
         chunk_size=data.chunk_size or 512, chunk_overlap=data.chunk_overlap or 50,
-        chunk_strategy=data.chunk_strategy or "FIXED",
-        chunk_mode=getattr(data, 'chunk_mode', None) or "FIXED_ALL",
+        chunk_strategy=(_strval(data.chunk_strategy) or "recursive").lower(),
+        chunk_mode=_norm_chunk_mode(getattr(data, 'chunk_mode', None)),
+        chunk_params=json.dumps(data.chunk_params) if getattr(data, 'chunk_params', None) else None,
+        chunk_format_map=json.dumps(data.chunk_format_map) if getattr(data, 'chunk_format_map', None) else None,
     )
     db.add(space)
     db.flush()  # need space.id before adding access rows
@@ -241,19 +608,70 @@ def create_space(db: Session, data: CreateRAGSpaceRequest, org_id: str, user) ->
 
     db.commit()
     db.refresh(space)
-    return _space_dict(db, space)
+    return _space_dict(db, space, user)
+
 
 def list_spaces(db: Session, org_id: str, user) -> list:
-    spaces = db.query(RAGSpace).filter(RAGSpace.organization_id == org_id).all()
-    return [_space_dict(db, s) for s in spaces]
+    """Role-scoped listing (a single endpoint feeds IT / ADMIN / USER pages):
+      ADMIN → every space in the org (the admin monitor depends on this).
+      IT    → spaces they own or collaborate on (+ legacy owner-less spaces).
+      USER  → only DEPLOYED, published, department spaces they're allowed on.
+    """
+    q = db.query(RAGSpace).filter(RAGSpace.organization_id == org_id)
+    role = _role_name(user)
 
-def get_space(db: Session, space_id: str, org_id: str) -> dict:
-    space = _find_space(db, space_id, org_id)
-    return _space_dict(db, space)
+    if role == "ADMIN":
+        spaces = q.all()
 
-def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRequest) -> dict:
+    elif role == "IT":
+        # An IT sees every space of their department(s) — read-only for the ones
+        # they don't own. Plus their own spaces and legacy owner-less spaces.
+        dept_ids = [d.id for d in getattr(user, "departments", [])]
+        conds = [RAGSpace.owner_id == user.id, RAGSpace.owner_id.is_(None)]
+        if dept_ids:
+            conds.append(RAGSpace.department_id.in_(dept_ids))
+        spaces = q.filter(or_(*conds)).all()
+
+    else:  # USER
+        dept_ids = [d.id for d in getattr(user, "departments", [])]
+        if not dept_ids:
+            return []
+        # ACTIVE = usable; EDITING = shown as "updating" (visible but not usable).
+        candidates = q.filter(
+            RAGSpace.status.in_([SpaceStatus.ACTIVE, SpaceStatus.EDITING]),
+            RAGSpace.is_private.is_(False),
+            RAGSpace.department_id.in_(dept_ids),
+        ).all()
+        spaces = [
+            s for s in candidates
+            if not (_get_access_user_ids(db, s.id))  # unrestricted
+            or user.id in _get_access_user_ids(db, s.id)
+        ]
+
+    return [_space_dict(db, s, user) for s in spaces]
+
+
+def get_space(db: Session, space_id: str, org_id: str, user=None) -> dict:
     space = _find_space(db, space_id, org_id)
+    if user is not None:
+        _require_view(db, space, user)   # any department IT may open (read-only)
+    return _space_dict(db, space, user)
+
+
+def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRequest, user=None) -> dict:
+    space = _find_space(db, space_id, org_id)
+    if user is not None:
+        _require_builder(db, space, user)
     payload = data.dict(exclude_unset=True)
+
+    # Snapshot the index-relevant config BEFORE applying the edit. We flag a
+    # re-index only if it actually CHANGES (the form re-sends every field on
+    # every save, so presence alone can't mean "changed").
+    _fp_before = _index_fp(space)
+    # Full-config snapshot too — a live (deployed) space may NOT change its
+    # pipeline config; access-list / name changes stay allowed.
+    _cfp_before = _config_fp(space)
+    _was_active = _strval(space.status) == "ACTIVE"
 
     # Chiffre la clé propre de l'IT si fournie (jamais stockée en clair)
     if "llm_api_key" in payload:
@@ -278,6 +696,18 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
     if "allowed_user_ids" in payload:
         _set_space_access(db, space, org_id, payload.pop("allowed_user_ids"))
 
+    # ── Chunking: params dict → JSON text; normalize strategy/mode strings ──
+    if "chunk_params" in payload:
+        cp = payload.pop("chunk_params")
+        space.chunk_params = json.dumps(cp) if cp else None
+    if "chunk_format_map" in payload:
+        fm = payload.pop("chunk_format_map")
+        space.chunk_format_map = json.dumps(fm) if fm else None
+    if payload.get("chunk_strategy"):
+        payload["chunk_strategy"] = str(payload["chunk_strategy"]).lower()
+    if payload.get("chunk_mode"):
+        payload["chunk_mode"] = _norm_chunk_mode(payload["chunk_mode"])
+
     # Fields that may be explicitly set to NULL to CLEAR them (e.g. switching a
     # source from Company back to Local must null out the provider_id). Because
     # payload already excludes unset fields, a None here is an intentional clear.
@@ -291,9 +721,23 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
         if value is not None or field in NULLABLE_FIELDS:
             setattr(space, field, value)
 
+    # A live space is locked: reject any change to the pipeline config. (Access
+    # list, name, description are not part of the config fingerprint, so those
+    # still go through while deployed.)
+    if _was_active and _config_fp(space) != _cfp_before:
+        db.rollback()
+        raise HTTPException(
+            409,
+            "This space is deployed and live. Click 'Stop to edit' before changing its configuration.",
+        )
+
+    # Flag a re-index only if an index-relevant value actually changed.
+    if _index_fp(space) != _fp_before:
+        space.reindex_required = True
+
     db.commit()
     db.refresh(space)
-    return _space_dict(db, space)
+    return _space_dict(db, space, user)
 
 def _safe_unlink(path: str, space_id: str):
     """Delete a file only if it lives under uploads/{space_id} (path-guard)."""
@@ -359,8 +803,12 @@ def _document_file_paths(doc, space_id: str) -> list[str]:
     return paths
 
 
-def delete_space(db: Session, space_id: str, org_id: str) -> dict:
+def delete_space(db: Session, space_id: str, org_id: str, user=None) -> dict:
     space = _find_space(db, space_id, org_id)
+    if user is not None:
+        # Only the owner (or an admin) may delete a space.
+        if not _is_owner_or_admin(space, user):
+            raise HTTPException(403, "Only the space owner can delete it")
     db.delete(space)
     db.commit()
     # Remove the whole uploads folder for this space (source files + images).
@@ -377,6 +825,32 @@ def list_documents(db: Session, space_id: str, org_id: str) -> list:
     _find_space(db, space_id, org_id)
     docs = db.query(Document).filter(Document.rag_space_id == space_id).order_by(Document.uploaded_at.desc()).all()
     return [_doc_dict(d) for d in docs]
+
+
+def list_public_documents(db: Session, space_id: str, org_id: str, user) -> list:
+    """End-user document list for a deployed space. Enforces the same access
+    rules as querying (ACTIVE + published + department + allow-list), then
+    returns only INDEXED documents (the ones actually powering answers)."""
+    space = _find_space(db, space_id, org_id)
+    check_space_access(db, space, user)
+    docs = (
+        db.query(Document)
+        .filter(Document.rag_space_id == space_id, Document.status == DocStatus.INDEXED)
+        .order_by(Document.uploaded_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": d.id,
+            "file_name": d.file_name,
+            "file_type": d.file_type,
+            "file_size": d.file_size,
+            "num_chunks": d.num_chunks,
+            "source_type": getattr(d, "source_type", "local") or "local",
+            "source_url": getattr(d, "source_url", None),
+        }
+        for d in docs
+    ]
 
 def delete_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
     _find_space(db, space_id, org_id)
@@ -405,9 +879,13 @@ def delete_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dic
     return {"message": f"Document '{name}' deleted"}
 
 
-def get_document_file(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
-    """Locate the original uploaded file for a document (to preview/download)."""
-    _find_space(db, space_id, org_id)
+def get_document_file(db: Session, space_id: str, doc_id: str, org_id: str, user=None) -> dict:
+    """Locate the original uploaded file for a document (to preview/download).
+    End users are held to the same access rules as querying; IT/ADMIN keep the
+    org-scoped behavior."""
+    space = _find_space(db, space_id, org_id)
+    if user is not None and _role_name(user) == "USER":
+        check_space_access(db, space, user)
     doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
     if not doc:
         raise HTTPException(404, "Document not found")
@@ -431,14 +909,26 @@ def get_document_file(db: Session, space_id: str, doc_id: str, org_id: str) -> d
 def list_chunks(db: Session, space_id: str, doc_id: str, org_id: str) -> list:
     _find_space(db, space_id, org_id)
     chunks = db.query(Chunk).filter(Chunk.document_id == doc_id).order_by(Chunk.chunk_index).all()
-    return [{"id": c.id, "content": c.content, "page": c.page, "chunk_index": c.chunk_index} for c in chunks]
+    return [{"id": c.id, "content": c.content, "page": c.page, "chunk_index": c.chunk_index,
+             "chunk_type": getattr(c, "chunk_type", "text") or "text",
+             "strategy": getattr(c, "strategy", None),
+             "parent_index": getattr(c, "parent_index", None),
+             "image_path": getattr(c, "image_path", None)} for c in chunks]
 
 
 # ══════════════════════════════════════════════════════
 # PER-DOCUMENT STRATEGY
 # ══════════════════════════════════════════════════════
 
-def set_document_strategy(db: Session, space_id: str, doc_id: str, strategy: str, org_id: str) -> dict:
+def set_document_chunking(db: Session, space_id: str, doc_id: str,
+                          strategy: str, params: dict, org_id: str) -> dict:
+    """Set a document's per-document chunking strategy + params (PER_DOCUMENT mode).
+
+    strategy is validated against the document's format catalog. An empty /
+    "default" strategy clears the override so the doc falls back to the space.
+    """
+    from app.services.providers.chunking_factory import strategy_def, default_params
+
     _find_space(db, space_id, org_id)
     doc = db.query(Document).filter(
         Document.id == doc_id,
@@ -447,14 +937,16 @@ def set_document_strategy(db: Session, space_id: str, doc_id: str, strategy: str
     if not doc:
         raise HTTPException(404, "Document not found")
 
-    strategy = (strategy or "").upper()
-    if strategy in ("", "DEFAULT", "NONE"):
-        # "Default" → clear the per-document override, fall back to the space strategy
+    name = (strategy or "").strip().lower()
+    if name in ("", "default", "none"):
         doc.chunk_strategy = None
-    elif strategy in ("FIXED", "SEMANTIC", "HIERARCHICAL"):
-        doc.chunk_strategy = strategy
+        doc.chunk_params = None
     else:
-        raise HTTPException(400, "Invalid strategy")
+        if not strategy_def(doc.file_type, name):
+            raise HTTPException(400, f"Strategy '{name}' is not valid for .{doc.file_type}")
+        merged = {**default_params(doc.file_type, name), **(params or {})}
+        doc.chunk_strategy = name
+        doc.chunk_params = json.dumps(merged)
 
     db.commit()
     db.refresh(doc)
@@ -655,16 +1147,17 @@ def load_and_parse_document(db, space_id, doc_id, org_id):
         raise HTTPException(400, "File not found — re-upload the document")
  
     try:
-        loaded_data = li_load_document(file_path)
- 
+        want_images = bool(getattr(doc, "extract_images", True))
+        loaded_data = li_load_document(file_path, extract_images=want_images)
+
         from app.services.providers.cleaners import clean_loaded_data
         loaded_data = clean_loaded_data(loaded_data)
- 
+
         if not loaded_data or not loaded_data.get("raw_text"):
             raise Exception("No content found in document")
- 
+
         loaded_data["file_path"] = os.path.abspath(file_path)
- 
+
         parsed_doc_data = loaded_data.pop("parsed_document", None)
  
         doc.loaded_content = json.dumps(loaded_data, ensure_ascii=False, default=str)
@@ -678,12 +1171,15 @@ def load_and_parse_document(db, space_id, doc_id, org_id):
                 from app.services.providers.parsers.image_summarizer import summarize_images_in_parsed
  
                 pd = ParsedDocument.from_dict(parsed_doc_data)
-                if not getattr(doc, "extract_images", True):
-                    # Image extraction OFF for this document → drop all images.
-                    if pd.images:
-                        logger.info(f"[LOAD+PARSE] {doc.file_name}: image extraction OFF, dropping {len(pd.images)} image(s)")
+                if not want_images:
+                    # Image extraction OFF: the loader already skipped extraction,
+                    # so pd.images/image elements are empty. Also purge any image
+                    # files left on disk from a previous run with extraction ON.
                     pd.images = []
+                    pd.elements = [e for e in (pd.elements or []) if e.get("type") != "image"]
                     parsed_doc_data = pd.to_dict()
+                    from app.services.providers.parsers._docling import _get_images_dir
+                    _safe_rmtree(_get_images_dir(file_path), space_id)
                 elif pd.images:
                     n = summarize_images_in_parsed(pd)   # appelle Gemini par image
                     logger.info(f"[LOAD+PARSE] {doc.file_name}: summarized {n}/{len(pd.images)} image(s)")
@@ -1035,15 +1531,17 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
 
         from app.services.providers.parsers.parsed_document import ParsedDocument
         parsed_doc = ParsedDocument.from_dict(parsed_data)
-        content_blocks = parsed_doc.to_content_blocks()
 
-        if not content_blocks:
-            raise Exception("No content blocks from parsed document")
+        if not (parsed_doc.elements or parsed_doc.sections):
+            raise Exception("No parsed content to chunk")
 
         db.query(Chunk).filter(Chunk.document_id == doc.id).delete()
         db.flush()
 
-        chunks = chunk_document(content_blocks, space, document=doc)
+        # Per-format chunking: pick strategy+params (SINGLE vs PER_DOCUMENT),
+        # chunk the rich element schema.
+        cfg = resolve_config(space, doc)
+        chunks = chunk_document(parsed_doc, cfg)
         if not chunks:
             raise Exception("No chunks generated")
 
@@ -1054,11 +1552,14 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
             db_chunk = Chunk(
                 content=chunk_data["content"],
                 embedding=embeddings[i],
-                page=chunk_data["page"],
+                page=chunk_data.get("page", 1),
                 chunk_index=chunk_data["chunk_index"],
                 # Batch 5: persist type + image path so the chat can render images
                 chunk_type=chunk_data.get("type", "text"),
                 image_path=chunk_data.get("image_path") or None,
+                # traceability: which strategy made this chunk + parent link
+                strategy=chunk_data.get("strategy"),
+                parent_index=chunk_data.get("parent_index"),
                 document_id=doc.id,
                 rag_space_id=space_id,
             )
@@ -1092,6 +1593,12 @@ def process_all_documents(db: Session, space_id: str, org_id: str) -> dict:
             results.append({"id": doc.id, "file_name": doc.file_name, "status": "INDEXED"})
         except Exception as e:
             results.append({"id": doc.id, "file_name": doc.file_name, "status": "ERROR", "error": str(e)})
+
+    # A full re-index brings the live index back in sync with the config → clear
+    # the drift flag (set by config edits / apply / deploy).
+    if not any(r.get("status") == "ERROR" for r in results):
+        space.reindex_required = False
+        db.commit()
 
     return {"processed": len(results), "results": results}
 

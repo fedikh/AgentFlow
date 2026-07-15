@@ -19,6 +19,7 @@ import ApiProvidersPage from "./pages/admin/ApiProvidersPage";
 // ── IT pages ─────────────────────────────────────────
 import ITDashboard from "./pages/it/ITDashboard";
 import RAGSpacesPage from "./pages/it/RAGSpacesPage";
+import ITAgentsPage from "./pages/it/ITAgentsPage";
 import DataAgentPage from "./pages/it/DataAgentPage";
 
 // ── User pages ────────────────────────────────────────
@@ -97,6 +98,7 @@ export default function App() {
             <Route path="/it" element={<ITDashboard />} />
             <Route path="/it/rag" element={<RAGSpacesPage />} />
             <Route path="/it/rag/:spaceId" element={<RAGSpacesPage />} />
+            <Route path="/it/agents" element={<ITAgentsPage />} />
             <Route
               path="/it/api-agents"
               element={<ComingSoon title="API Agent" />}

@@ -34,17 +34,36 @@ const IcSpaces = () => (
   </svg>
 );
 
-const SpaceCard = ({ s, onClick }) => {
+const IcLock = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect x="4" y="11" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" strokeWidth="1.8" />
+  </svg>
+);
+
+const SpaceCard = ({ s, onClick, currentUserId }) => {
   const status = (s.status || "DRAFT").toLowerCase();
+  const deployed = status === "active";
+  const shared = s.owner_id && currentUserId && s.owner_id !== currentUserId;
   return (
     <button className="sg-card" onClick={onClick}>
       <div className="sg-card-head">
         <span className="sg-mono">{monoInitial(s.name)}</span>
         <div className="sg-card-titles">
-          <div className="sg-card-name">{s.name}</div>
+          <div className="sg-name-row">
+            <div className="sg-card-name">{s.name}</div>
+            {s.is_private && (
+              <span className="sg-lock" title="Private — not visible to end users">
+                <IcLock />
+              </span>
+            )}
+          </div>
+          {shared && <div className="sg-shared">Shared with you</div>}
         </div>
         <span className="sg-status-wrap">
-          <span className={`sg-status ${status}`}>{s.status || "DRAFT"}</span>
+          <span className={`sg-status ${status}`}>
+            {deployed ? "DEPLOYED" : s.status || "DRAFT"}
+          </span>
         </span>
       </div>
       <div className="sg-card-desc">{s.description || "No description"}</div>
@@ -80,8 +99,39 @@ const SpacesGrid = ({
   loadingCreateUsers = false,
   createUserIds = [],
   setCreateUserIds = () => {},
+  createPrivate = true,
+  setCreatePrivate = () => {},
 }) => {
   const [showAccess, setShowAccess] = useState(false);
+  const [filter, setFilter] = useState("all");
+
+  const currentUserId = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "{}").id || null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const FILTERS = [
+    { key: "all", label: "All" },
+    { key: "draft", label: "Drafts" },
+    { key: "deployed", label: "Deployed" },
+    { key: "private", label: "Private" },
+  ];
+  const matchesFilter = (s) => {
+    if (filter === "draft") return (s.status || "DRAFT") === "DRAFT";
+    if (filter === "deployed") return s.status === "ACTIVE";
+    if (filter === "private") return !!s.is_private;
+    return true;
+  };
+  const shownSpaces = spaces.filter(matchesFilter);
+  const counts = {
+    all: spaces.length,
+    draft: spaces.filter((s) => (s.status || "DRAFT") === "DRAFT").length,
+    deployed: spaces.filter((s) => s.status === "ACTIVE").length,
+    private: spaces.filter((s) => s.is_private).length,
+  };
 
   const closeCreate = () => {
     setShowCreate(false);
@@ -146,8 +196,29 @@ const SpacesGrid = ({
                 onChange={(e) => setNewDesc(e.target.value)}
               />
 
-              {/* Access — open to everyone by default; personalize is optional */}
-              {createDept && !showAccess && (
+              {/* Visibility — private (just me + IT team) vs department */}
+              <label className="rag-create-label">Visibility</label>
+              <div className="sg-vis">
+                <button
+                  type="button"
+                  className={`sg-vis-opt ${createPrivate ? "active" : ""}`}
+                  onClick={() => setCreatePrivate(true)}
+                >
+                  🔒 Private
+                  <span>Only me &amp; my IT team</span>
+                </button>
+                <button
+                  type="button"
+                  className={`sg-vis-opt ${!createPrivate ? "active" : ""}`}
+                  onClick={() => setCreatePrivate(false)}
+                >
+                  🏢 Department
+                  <span>Members can use it once deployed</span>
+                </button>
+              </div>
+
+              {/* Member access — only when the space targets the department */}
+              {!createPrivate && createDept && !showAccess && (
                 <div className="rag-create-access">
                   <span className="rag-create-access-dot" />
                   <div style={{ flex: 1 }}>
@@ -168,7 +239,7 @@ const SpacesGrid = ({
                 </div>
               )}
 
-              {createDept && showAccess && (
+              {!createPrivate && createDept && showAccess && (
                 <>
                   <div
                     style={{
@@ -194,8 +265,8 @@ const SpacesGrid = ({
                   </div>
                   <AccessSelector
                     compact
-                    users={createDeptUsers}
-                    allowedIds={createUserIds}
+                    users={createDeptUsers.filter((u) => u.id !== currentUserId)}
+                    allowedIds={createUserIds.filter((id) => id !== currentUserId)}
                     loading={loadingCreateUsers}
                     onChange={setCreateUserIds}
                   />
@@ -219,6 +290,21 @@ const SpacesGrid = ({
         </div>
       )}
 
+      {spaces.length > 0 && (
+        <div className="sg-filters">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              className={`sg-chip ${filter === f.key ? "active" : ""}`}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label}
+              <span className="sg-chip-count">{counts[f.key]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="rag-grid">
         {spaces.length === 0 ? (
           <div className="sg-empty">
@@ -234,9 +320,14 @@ const SpacesGrid = ({
               <IcPlus /> New space
             </button>
           </div>
+        ) : shownSpaces.length === 0 ? (
+          <div className="sg-empty">
+            <div className="sg-empty-title">No spaces match this filter</div>
+            <div className="sg-empty-sub">Try a different filter.</div>
+          </div>
         ) : (
           depts.map((dept) => {
-            const ds = spaces.filter((s) => s.department_id === dept.id);
+            const ds = shownSpaces.filter((s) => s.department_id === dept.id);
             if (!ds.length) return null;
             return (
               <section key={dept.id} className="sg-section">
@@ -247,7 +338,12 @@ const SpacesGrid = ({
                 </div>
                 <div className="sg-grid">
                   {ds.map((s) => (
-                    <SpaceCard key={s.id} s={s} onClick={() => openSpace(s)} />
+                    <SpaceCard
+                      key={s.id}
+                      s={s}
+                      currentUserId={currentUserId}
+                      onClick={() => openSpace(s)}
+                    />
                   ))}
                 </div>
               </section>

@@ -117,8 +117,9 @@ def clean_loaded_data(loaded_data: dict) -> dict:
         def _clean_text_val(v):
             v, _ = fix_encoding(v)
             v, _ = normalize_text(v)
-            if do_html:
-                v, _ = strip_html(v)
+            v, _ = fix_ocr(v)          # match section-level OCR cleanup (hyphen
+            if do_html:                # rejoin, garbage/control removal) so the
+                v, _ = strip_html(v)   # elements[] format is as clean as sections
             return v
 
         for el in doc.get("elements", []):

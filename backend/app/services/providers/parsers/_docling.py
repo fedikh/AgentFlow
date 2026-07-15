@@ -72,7 +72,8 @@ def _caption_text(item, doc):
 
 
 def docling_to_parsed_document(result, file_type="PDF", category="document",
-                               metadata=None, ro_start=0, heading_stack=None):
+                               metadata=None, ro_start=0, heading_stack=None,
+                               extract_images=True):
     doc = result.document
 
     # ── Element-based output (new schema), built in the SAME pass ──
@@ -160,6 +161,11 @@ def docling_to_parsed_document(result, file_type="PDF", category="document",
 
         # ── IMAGE ──
         if class_name == "PictureItem" or label in ("picture", "figure"):
+            # Image extraction disabled for this doc → skip entirely: don't save
+            # to disk and don't emit an image element (was previously extracted
+            # anyway and only dropped afterward, leaving files + elements behind).
+            if not extract_images:
+                continue
             img_counter += 1
             caption = ""
             ocr_text = ""

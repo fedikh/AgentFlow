@@ -20,6 +20,10 @@ class Chunk(Base):
     #   image_path: absolute path of the saved image (only for image_summary)
     chunk_type   = Column(String, default="text")
     image_path   = Column(String, nullable=True)
+    # Which strategy produced this chunk, and (for hierarchical) the chunk_index
+    # of its parent chunk within the same document.
+    strategy     = Column(String, nullable=True)
+    parent_index = Column(Integer, nullable=True)
     document_id  = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     rag_space_id = Column(String, ForeignKey("rag_spaces.id", ondelete="CASCADE"), nullable=False)
     created_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))

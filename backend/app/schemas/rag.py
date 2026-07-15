@@ -55,10 +55,14 @@ class CreateRAGSpaceRequest(BaseModel):
     department_id:  str                                             # requis
 
     # ── Chunking ──
-    chunk_mode: ChunkMode = ChunkMode.FIXED_ALL
-    chunk_size:     int = Field(default=512, ge=100, le=3000)       # min 100, max 3000
-    chunk_overlap:  int = Field(default=50, ge=0, le=500)           # min 0, max 500
-    chunk_strategy: ChunkStrategy = ChunkStrategy.FIXED
+    # Free strings validated against the per-format catalog (chunking_factory).
+    # chunk_mode: "SINGLE" | "PER_DOCUMENT". chunk_params: strategy parameters.
+    chunk_mode:     str = "SINGLE"
+    chunk_size:     int = Field(default=512, ge=100, le=6000)
+    chunk_overlap:  int = Field(default=50, ge=0, le=1000)
+    chunk_strategy: str = "recursive"
+    chunk_params:   Optional[dict] = None
+    chunk_format_map: Optional[dict] = None   # SINGLE: {file_type: {strategy, params}}
 
 
     # ── Embedding ──
@@ -85,6 +89,11 @@ class CreateRAGSpaceRequest(BaseModel):
     # non-empty list → only these users can query it
     allowed_user_ids: Optional[list[str]] = None
 
+    # ── End-user visibility at creation ──
+    # True (default) → private: no end user sees it (just the owner + IT team).
+    # False          → intended for the department (still hidden until deployed).
+    is_private: Optional[bool] = None
+
 
 # ══════════════════════════════════════════════════════
 # UPDATE RAG SPACE
@@ -96,10 +105,12 @@ class UpdateRAGSpaceRequest(BaseModel):
     description:        Optional[str] = None
     department_id:      Optional[str] = None
 
-    chunk_mode: Optional[ChunkMode] = None
+    chunk_mode:         Optional[str] = None
     chunk_size:         Optional[int] = None
     chunk_overlap:      Optional[int] = None
-    chunk_strategy:     Optional[ChunkStrategy] = None
+    chunk_strategy:     Optional[str] = None
+    chunk_params:       Optional[dict] = None
+    chunk_format_map:   Optional[dict] = None
 
     embedding_provider: Optional[str] = None
     embedding_model:    Optional[str] = None
@@ -132,6 +143,30 @@ class UpdateRAGSpaceRequest(BaseModel):
     #   []          → clear all restrictions (every department user can query)
     #   [ids...]    → restrict to exactly these users
     allowed_user_ids:   Optional[list[str]] = None
+
+
+# ══════════════════════════════════════════════════════
+# VERSIONING + DEPLOY + COLLABORATORS
+# ══════════════════════════════════════════════════════
+
+class SaveVersionRequest(BaseModel):
+    label: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DeployVersionRequest(BaseModel):
+    # publish=True flips the space to visible for end users (is_private=False)
+    publish: bool = False
+
+
+class DeployCurrentRequest(BaseModel):
+    label:   Optional[str] = None
+    notes:   Optional[str] = None
+    publish: bool = False
+
+
+class SetPublishRequest(BaseModel):
+    is_private: bool
 
 
 # ══════════════════════════════════════════════════════

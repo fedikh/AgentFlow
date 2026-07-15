@@ -29,10 +29,18 @@ import {
   loadAndParseAll,
   getEmbeddingModels,
   getLLMModels,
-  setDocumentStrategy,
+  getChunkingCatalog,
+  setDocumentChunking,
   setDocumentExtractImages,
   uploadDocumentImage,
   listDepartmentUsers,
+  listVersions,
+  saveVersion,
+  applyVersion,
+  deployVersion,
+  deleteVersion,
+  deployCurrent,
+  pauseDeployment,
 } from "../../services/ragApi";
 import { openGooglePicker } from "../../services/useGooglePicker";
 import { useParams, useNavigate } from "react-router-dom";
@@ -43,6 +51,37 @@ import UploadsPanel from "../../components/it/rag/UploadsPanel";
 import ConfigPanel from "../../components/it/rag/ConfigPanel";
 import EvaluationPanel from "../../components/it/rag/EvaluationPanel";
 import DocModal from "../../components/it/rag/DocModal";
+import VersionsPanel from "../../components/it/rag/VersionsPanel";
+import DeployModal from "../../components/it/rag/DeployModal";
+
+// Lifecycle pill: Draft / Deployed·Live / Deployed·Private / Editing
+const StatusPill = ({ space }) => {
+  const status = space?.status || "DRAFT";
+  let bg = "#f3f4f6", color = "#6b7280", label = "Draft";
+  if (status === "EDITING") {
+    bg = "#fde68a"; color = "#92400e"; label = "Editing";
+  } else if (status === "ACTIVE" && !space.is_private) {
+    bg = "#dcfce7"; color = "#166534"; label = "Deployed · Live";
+  } else if (status === "ACTIVE" && space.is_private) {
+    bg = "#fef3c7"; color = "#92400e"; label = "Deployed · Private";
+  }
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: 0.3,
+        textTransform: "uppercase",
+        padding: "2px 8px",
+        borderRadius: 999,
+        background: bg,
+        color,
+      }}
+    >
+      {label}
+    </span>
+  );
+};
 
 const RAGSpacesPage = () => {
   const [loading, setLoading] = useState(true);
@@ -77,6 +116,7 @@ const RAGSpacesPage = () => {
   const [panel, setPanel] = useState("uploads");
   const [cfg, setCfg] = useState(null);
   const [savingCfg, setSavingCfg] = useState(false);
+  const [chunkCatalog, setChunkCatalog] = useState(null);
   const [embedModels, setEmbedModels] = useState([]);
   const [llmModels, setLlmModels] = useState([]);
   const [llmState, setLlmState] = useState({ available: true, error: "" });
@@ -89,9 +129,24 @@ const RAGSpacesPage = () => {
   const [createDeptUsers, setCreateDeptUsers] = useState([]);
   const [loadingCreateUsers, setLoadingCreateUsers] = useState(false);
   const [createUserIds, setCreateUserIds] = useState([]);
+  // create-modal visibility
+  const [createPrivate, setCreatePrivate] = useState(true);
+
+  // ── Versioning + deploy ──
+  const [versions, setVersions] = useState([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [deployModal, setDeployModal] = useState(null); // null | {mode, version}
+  const [deploying, setDeploying] = useState(false);
+  const [pausing, setPausing] = useState(false);
+
 
   const { spaceId } = useParams();
   const navigate = useNavigate();
+
+  // A deployed (live) space is LOCKED. To change docs/config/versions the owner
+  // must "Stop to edit" (pause) first. editable = can build AND not live.
+  const live = activeSpace?.status === "ACTIVE";
+  const editable = activeSpace?.can_build !== false && !live;
 
   useEffect(() => {
     loadData();
@@ -116,6 +171,12 @@ const RAGSpacesPage = () => {
     getEmbeddingModels()
       .then((r) => setEmbedModels(r.models || []))
       .catch(() => setEmbedModels([]));
+  }, []);
+  // Per-format chunking catalog (strategies + params) — loaded once for the UI.
+  useEffect(() => {
+    getChunkingCatalog()
+      .then((c) => setChunkCatalog(c))
+      .catch(() => setChunkCatalog(null));
   }, []);
   useEffect(() => {
     if (!cfg) return;
@@ -227,12 +288,16 @@ const RAGSpacesPage = () => {
         name: newName,
         description: newDesc,
         department_id: createDept,
-        // Batch 1: empty = everyone in the department can access (default)
-        allowed_user_ids: createUserIds,
+        // Private → just the owner + IT team; Department → intended for end users
+        is_private: createPrivate,
+        // Department-member allow-list (only meaningful for a department space).
+        // empty = everyone in the department can access once deployed.
+        allowed_user_ids: createPrivate ? [] : createUserIds,
       });
       setNewName("");
       setNewDesc("");
       setCreateUserIds([]);
+      setCreatePrivate(true);
       setShowCreate(false);
       await loadData();
       setSuccess("Space created");
@@ -248,6 +313,8 @@ const RAGSpacesPage = () => {
       const payload = {
         chunk_mode: cfg.chunk_mode,
         chunk_strategy: cfg.chunk_strategy,
+        chunk_params: cfg.chunk_params || {},
+        chunk_format_map: cfg.chunk_format_map || {},
         chunk_size: parseInt(cfg.chunk_size),
         chunk_overlap: parseInt(cfg.chunk_overlap),
         embedding_provider: cfg.embedding_provider,
@@ -285,12 +352,107 @@ const RAGSpacesPage = () => {
       const s = u.find((x) => x.id === activeSpace.id);
       if (s) {
         setActiveSpace(s);
-        setCfg((c) => ({ ...s, llm_api_key: "", embedding_api_key: "" }));
+        setCfg(() => ({ ...s, llm_api_key: "", embedding_api_key: "" }));
       }
     } catch (e) {
       setError(e.message);
     } finally {
       setSavingCfg(false);
+    }
+  };
+
+  // ── Sync a space dict returned by the API into local state ──
+  const syncSpace = (s) => {
+    if (!s) return;
+    setActiveSpace(s);
+    setCfg({ ...s, llm_api_key: "", embedding_api_key: "" });
+    setSpaces((list) => list.map((x) => (x.id === s.id ? s : x)));
+  };
+
+  // ── Versions ──
+  const refreshVersions = async (id) => {
+    const sid = id || activeSpace?.id;
+    if (!sid) return;
+    setLoadingVersions(true);
+    try {
+      setVersions(await listVersions(sid));
+    } catch (e) {
+      /* non-fatal — versions just won't render */
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+  // Load versions whenever the open space changes
+  useEffect(() => {
+    if (activeSpace?.id) refreshVersions(activeSpace.id);
+    else setVersions([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSpace?.id]);
+
+  const handleSaveVersion = async ({ label, notes }) => {
+    try {
+      await saveCfg(); // persist the working config so the snapshot matches
+      await saveVersion(activeSpace.id, { label, notes });
+      setSuccess(`Saved ${label}`);
+      await refreshVersions();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const handleApplyVersion = async (v) => {
+    try {
+      const r = await applyVersion(activeSpace.id, v.id);
+      syncSpace(r.space);
+      setSuccess(`Loaded ${v.label} — re-index to apply it to answers`);
+      await refreshVersions();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const handleDeleteVersion = async (v) => {
+    if (!confirm(`Delete ${v.label}?`)) return;
+    try {
+      await deleteVersion(activeSpace.id, v.id);
+      await refreshVersions();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const confirmDeploy = async ({ label, notes, publish }) => {
+    setDeploying(true);
+    try {
+      let r;
+      if (deployModal.mode === "version") {
+        r = await deployVersion(activeSpace.id, deployModal.version.id, publish);
+      } else {
+        await saveCfg(); // persist working config before snapshotting it
+        r = await deployCurrent(activeSpace.id, { label, notes, publish });
+      }
+      syncSpace(r.space);
+      setSuccess(
+        publish
+          ? "Deployed & published to end users"
+          : "Deployed privately (only you & collaborators)",
+      );
+      setDeployModal(null);
+      await refreshVersions();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDeploying(false);
+    }
+  };
+
+  const handlePause = async () => {
+    setPausing(true);
+    try {
+      const s = await pauseDeployment(activeSpace.id);
+      syncSpace(s);
+      setSuccess("Deployment paused — add docs & tweak the config, then Re-deploy.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setPausing(false);
     }
   };
 
@@ -419,9 +581,35 @@ const RAGSpacesPage = () => {
       setParsing(false);
     }
   };
+  // Persist the current chunking config (mode + per-format map + params) so that
+  // Process/Re-index always uses what's on screen — no separate Save needed.
+  // `override` lets a caller persist a value it just set (React state is async).
+  const persistChunkCfg = async (override = {}) => {
+    if (!activeSpace || !cfg || !editable) return; // locked while deployed
+    try {
+      const updated = await updateSpace(activeSpace.id, {
+        chunk_mode: cfg.chunk_mode,
+        chunk_strategy: cfg.chunk_strategy,
+        chunk_params: cfg.chunk_params || {},
+        chunk_format_map: cfg.chunk_format_map || {},
+        ...override,
+      });
+      setActiveSpace((s) => (s ? { ...s, ...updated } : s));
+    } catch (e) {
+      console.warn("chunk config save failed", e);   // non-fatal
+    }
+  };
+  // Switching Single ↔ Per-document saves immediately, so the mode actually
+  // takes effect on the next Process without a separate Save click.
+  const handleChunkModeChange = (mode) => {
+    if (!editable) return;
+    setC("chunk_mode", mode);
+    persistChunkCfg({ chunk_mode: mode });
+  };
   const handleProcess = async (id) => {
     setProcessing(true);
     try {
+      await persistChunkCfg();
       await processDocument(activeSpace.id, id);
       setSuccess("Indexed");
       await refreshDocs();
@@ -434,6 +622,7 @@ const RAGSpacesPage = () => {
   const handleProcessAll = async () => {
     setProcessing(true);
     try {
+      await persistChunkCfg();
       const r = await processAllDocuments(activeSpace.id);
       setSuccess(`${r.processed} processed`);
       await refreshDocs();
@@ -443,12 +632,19 @@ const RAGSpacesPage = () => {
       setProcessing(false);
     }
   };
-  const handleSetDocStrategy = async (docId, strategy) => {
+  const handleSetDocChunking = async (docId, strategy, params) => {
+    if (!editable) return; // locked while deployed
+    // Optimistic and authoritative — the local value stays put. (Merging the
+    // server response here caused a race that reverted the dropdown mid-edit.)
+    setDocs((p) =>
+      p.map((d) =>
+        d.id === docId
+          ? { ...d, chunk_strategy: strategy || null, chunk_params: params || {} }
+          : d,
+      ),
+    );
     try {
-      await setDocumentStrategy(activeSpace.id, docId, strategy);
-      setDocs((p) =>
-        p.map((d) => (d.id === docId ? { ...d, chunk_strategy: strategy } : d)),
-      );
+      await setDocumentChunking(activeSpace.id, docId, strategy, params);
     } catch (e) {
       setError(e.message);
     }
@@ -485,9 +681,9 @@ const RAGSpacesPage = () => {
     }
   };
 
-  const handleQuery = async () => {
-    if (!question.trim()) return;
-    const q = question;
+  const handleQuery = async (preset) => {
+    const q = (typeof preset === "string" ? preset : question).trim();
+    if (!q || querying) return;
     setQuestion("");
     setChatHistory((h) => [...h, { role: "user", content: q }]);
     setQuerying(true);
@@ -666,6 +862,8 @@ const RAGSpacesPage = () => {
           loadingCreateUsers={loadingCreateUsers}
           createUserIds={createUserIds}
           setCreateUserIds={setCreateUserIds}
+          createPrivate={createPrivate}
+          setCreatePrivate={setCreatePrivate}
         />
       </div>
     );
@@ -686,9 +884,15 @@ const RAGSpacesPage = () => {
                 ← Back
               </button>
               <div>
-                <div className="rag-header-title">{activeSpace.name}</div>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: 8 }}
+                >
+                  <div className="rag-header-title">{activeSpace.name}</div>
+                  <StatusPill space={activeSpace} />
+                </div>
                 <div className="rag-header-desc">
                   {deptName(activeSpace.department_id)}
+                  {activeSpace.is_owner === false && " · Shared with you"}
                 </div>
               </div>
             </div>
@@ -705,14 +909,127 @@ const RAGSpacesPage = () => {
               >
                 🔒 Access
               </button>
-              <button
-                className="rag-btn rag-btn-sm rag-btn-red"
-                onClick={() => handleDeleteSpace(activeSpace.id)}
-              >
-                Delete
-              </button>
+              {activeSpace.is_owner !== false &&
+                activeSpace.status === "ACTIVE" && (
+                  <button
+                    className="rag-btn rag-btn-sm"
+                    onClick={handlePause}
+                    disabled={pausing}
+                    title="Take the agent offline to add docs / change config"
+                  >
+                    {pausing ? "Pausing…" : "⏸ Stop to edit"}
+                  </button>
+                )}
+              {activeSpace.is_owner !== false &&
+                activeSpace.status !== "ACTIVE" && (
+                  <button
+                    className="rag-btn rag-btn-sm rag-btn-blue"
+                    onClick={() =>
+                      setDeployModal({ mode: "current", version: null })
+                    }
+                  >
+                    🚀 {activeSpace.status === "EDITING" ? "Re-deploy" : "Deploy"}
+                  </button>
+                )}
+              {activeSpace.is_owner !== false && (
+                <button
+                  className="rag-btn rag-btn-sm rag-btn-red"
+                  onClick={() => handleDeleteSpace(activeSpace.id)}
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
+
+          {activeSpace.can_build === false && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "9px 12px",
+                margin: "0 0 12px",
+                borderRadius: 10,
+                fontSize: 12.5,
+                background: "rgba(100,116,139,.1)",
+                border: "1px solid rgba(100,116,139,.3)",
+                color: "#475569",
+              }}
+            >
+              <span>👁️</span>
+              <div style={{ flex: 1 }}>
+                <strong>Read-only.</strong> This space belongs to another IT in
+                your department — you can view its configuration but not edit,
+                configure, version, or deploy it.
+              </div>
+            </div>
+          )}
+
+          {/* Deployed & live → locked. The owner must Stop to edit to change it. */}
+          {live && activeSpace.can_build !== false && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "9px 12px",
+                margin: "0 0 12px",
+                borderRadius: 10,
+                fontSize: 12.5,
+                background: "rgba(22,163,74,.08)",
+                border: "1px solid rgba(22,163,74,.3)",
+                color: "#166534",
+              }}
+            >
+              <span>🔒</span>
+              <div style={{ flex: 1 }}>
+                <strong>Deployed &amp; live.</strong> This space is locked while
+                deployed. Click <strong>Stop to edit</strong> to change documents,
+                configuration or versions, then re-deploy.
+              </div>
+              {activeSpace.is_owner !== false && (
+                <button
+                  className="rag-btn rag-btn-sm"
+                  onClick={handlePause}
+                  disabled={pausing}
+                >
+                  {pausing ? "Pausing…" : "⏸ Stop to edit"}
+                </button>
+              )}
+            </div>
+          )}
+
+          {activeSpace.reindex_required && editable && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "9px 12px",
+                margin: "0 0 12px",
+                borderRadius: 10,
+                fontSize: 12.5,
+                background: "rgba(245,158,11,.1)",
+                border: "1px solid rgba(245,158,11,.35)",
+                color: "#92400e",
+              }}
+            >
+              <span>⚠️</span>
+              <div style={{ flex: 1 }}>
+                <strong>Re-index needed.</strong> Chunking/embedding settings
+                changed — your documents are still indexed with the old settings,
+                so answers won't reflect the new config until you rebuild them.
+              </div>
+              <button
+                className="rag-btn rag-btn-sm"
+                onClick={handleProcessAll}
+                disabled={processing}
+              >
+                {processing ? "Re-indexing…" : "Re-index now"}
+              </button>
+            </div>
+          )}
 
           {panel === "uploads" && (
             <UploadsPanel
@@ -737,10 +1054,10 @@ const RAGSpacesPage = () => {
               handleDeleteDoc={handleDeleteDoc}
               openModal={openModal}
               counts={{ uploadingCount, loadedCount, extractedCount }}
-              chunkMode={activeSpace.chunk_mode || "FIXED_ALL"}
-              handleSetDocStrategy={handleSetDocStrategy}
               handleSetExtractImages={handleSetExtractImages}
               spaceId={activeSpace.id}
+              isOwner={activeSpace.is_owner !== false}
+              editable={editable}
             />
           )}
 
@@ -757,7 +1074,29 @@ const RAGSpacesPage = () => {
             />
           )}
 
-          {panel !== "uploads" && panel !== "flow" && panel !== "eval" && (
+          {panel === "versions" && (
+            <VersionsPanel
+              space={activeSpace}
+              versions={versions}
+              loading={loadingVersions}
+              canBuild={activeSpace.can_build !== false}
+              isOwner={activeSpace.is_owner === true}
+              editable={editable}
+              onSaveVersion={handleSaveVersion}
+              onApplyVersion={handleApplyVersion}
+              onDeployVersion={(v) =>
+                setDeployModal({ mode: "version", version: v })
+              }
+              onDeleteVersion={handleDeleteVersion}
+              onReindex={handleProcessAll}
+              reindexing={processing}
+            />
+          )}
+
+          {panel !== "uploads" &&
+            panel !== "flow" &&
+            panel !== "eval" &&
+            panel !== "versions" && (
             <ConfigPanel
               panel={panel}
               cfg={cfg}
@@ -772,11 +1111,15 @@ const RAGSpacesPage = () => {
               deptUsers={deptUsers}
               loadingDeptUsers={loadingDeptUsers}
               docs={docs}
-              handleSetDocStrategy={handleSetDocStrategy}
+              chunkCatalog={chunkCatalog}
+              handleSetDocChunking={handleSetDocChunking}
+              handleChunkModeChange={handleChunkModeChange}
               handleProcess={handleProcess}
               handleProcessAll={handleProcessAll}
               processing={processing}
               openModal={openModal}
+              canBuild={activeSpace.can_build !== false}
+              editable={editable}
             />
           )}
         </div>
@@ -805,6 +1148,17 @@ const RAGSpacesPage = () => {
         uploadingImage={uploadingImage}
         spaceId={activeSpace?.id}
       />
+
+      {deployModal && (
+        <DeployModal
+          mode={deployModal.mode}
+          version={deployModal.version}
+          nextLabel={`v${(versions[0]?.version_number || 0) + 1}`}
+          busy={deploying}
+          onConfirm={confirmDeploy}
+          onClose={() => setDeployModal(null)}
+        />
+      )}
     </div>
   );
 };

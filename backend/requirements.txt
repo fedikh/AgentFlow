@@ -20,10 +20,11 @@ pypdf==4.2.0
 tiktoken==0.7.0
 pdfplumber==0.11.0
 pgvector==0.3.0
-# ── LlamaIndex (Loaders & Parsers) ──
+# ── LlamaIndex (Loaders, Parsers & Chunking node-parsers) ──
 llama-index-core>=0.12.0
 llama-index-readers-file>=0.4.0
 llama-index>=0.12.0
+llama-index-embeddings-huggingface>=0.4.0   # embed model for SemanticSplitterNodeParser
  
 # ── Required by loaders (some may already be installed) ──
 pandas>=2.0

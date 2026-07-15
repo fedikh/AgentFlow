@@ -47,12 +47,14 @@ def get_supported_extensions() -> list[str]:
     return list(SUPPORTED_FORMATS.keys())
 
 
-def load_document(file_path: str) -> dict:
+def load_document(file_path: str, extract_images: bool = True) -> dict:
     """
     Main entry point — detect format and call the right loader.
 
     Args:
         file_path: path to the uploaded file
+        extract_images: when False, image-bearing loaders (PDF/DOCX/PPTX) skip
+            image extraction entirely (no files written, no image elements).
 
     Returns:
         Standardized dict with raw_text, metadata, etc.
@@ -70,9 +72,16 @@ def load_document(file_path: str) -> dict:
 
     # Dynamic import of the correct loader
     import importlib
+    import inspect
     loader_module = importlib.import_module(module_path)
 
-    return loader_module.load(file_path)
+    # Pass extract_images only to loaders that declare it (PDF/DOCX/PPTX);
+    # the others (txt/csv/json/…) keep their single-arg signature.
+    kwargs = {}
+    if "extract_images" in inspect.signature(loader_module.load).parameters:
+        kwargs["extract_images"] = extract_images
+
+    return loader_module.load(file_path, **kwargs)
 
 
 def load_from_url(url: str, render: bool = True) -> dict:

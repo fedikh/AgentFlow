@@ -7,6 +7,7 @@ const SIDE_STEPS = [
   { key: "llm", label: "LLM Configuration" },
   { key: "retrieval", label: "Retrieval" },
   { key: "eval", label: "Evaluation" },
+  { key: "versions", label: "Versions" },
 ];
 
 const RightSidebar = ({ panel, setPanel }) => (

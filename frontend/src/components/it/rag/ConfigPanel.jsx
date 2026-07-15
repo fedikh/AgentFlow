@@ -3,6 +3,7 @@ import LLMSourceSelector from "./LLMSourceSelector";
 import EmbeddingSourceSelector from "./EmbeddingSourceSelector";
 import SavedConfigBar from "./SavedConfigBar";
 import AccessSelector from "./AccessSelector";
+import ChunkingConfig from "./ChunkingConfig";
 
 const LABELS = {
   chunk: "Chunking",
@@ -21,19 +22,26 @@ const ConfigPanel = ({
   saveCfg,
   savingCfg,
   embedModels,
-  llmModels,
-  llmState,
-  loadingLlm,
   deptUsers = [],
   loadingDeptUsers = false,
   docs = [],
-  handleSetDocStrategy = () => {},
+  chunkCatalog = null,
+  handleSetDocChunking = () => {},
+  handleChunkModeChange = () => {},
   handleProcess = () => {},
   handleProcessAll = () => {},
   processing = false,
   openModal = () => {},
+  canBuild = true,
+  editable = true,
 }) => {
   if (!cfg) return null;
+
+  // A deployed (live) space is locked — the form is shown read-only until the
+  // owner clicks "Stop to edit".
+  const lockStyle = editable
+    ? undefined
+    : { pointerEvents: "none", opacity: 0.6, userSelect: "none" };
 
   // ── Batch 3: per-document chunking strategy + indexing (moved from Uploads) ──
   const parsedDocs = docs.filter((d) => d.has_extracted_content);
@@ -44,21 +52,47 @@ const ConfigPanel = ({
     Object.entries(patch).forEach(([k, v]) => setC(k, v));
 
   // ── Access control (Batch 1) — allow-list; [] means everyone (open) ──
-  const allowed = cfg.allowed_user_ids || [];
+  // The owner always has access, so exclude them from the member picker
+  // (listing them as toggleable is misleading — you can't lock yourself out).
+  const ownerId = space?.owner_id;
+  const allowed = (cfg.allowed_user_ids || []).filter((id) => id !== ownerId);
+  const accessUsers = deptUsers.filter((u) => u.id !== ownerId);
 
   return (
     <div className="rag-cfg-panel">
       <div className="rag-cfg-head">
         <div className="rag-cfg-title">{LABELS[panel]}</div>
-        <button
-          className="rag-btn rag-btn-sm rag-btn-dark"
-          onClick={saveCfg}
-          disabled={savingCfg}
-        >
-          {savingCfg ? "Saving…" : "Save"}
-        </button>
+        {canBuild && (
+          <button
+            className="rag-btn rag-btn-sm rag-btn-dark"
+            onClick={saveCfg}
+            disabled={savingCfg || !editable}
+            title={!editable ? "Deployed & live — Stop to edit first" : undefined}
+          >
+            {savingCfg ? "Saving…" : "Save"}
+          </button>
+        )}
       </div>
 
+      {canBuild && !editable && (
+        <div
+          className="rag-cfg-hint"
+          style={{
+            marginBottom: 10,
+            padding: "8px 11px",
+            borderRadius: 8,
+            background: "rgba(22,163,74,.08)",
+            border: "1px solid rgba(22,163,74,.3)",
+            color: "#166534",
+          }}
+        >
+          🔒 This space is <strong>deployed &amp; live</strong> — settings are
+          read-only. Click <strong>Stop to edit</strong> in the header to change
+          them.
+        </div>
+      )}
+
+      <div style={lockStyle}>
       {/* Currently-saved summary for this stage (chunk/embed/llm/retrieval) */}
       {["chunk", "embed", "llm", "retrieval"].includes(panel) && (
         <SavedConfigBar space={space} panelKey={panel} />
@@ -66,218 +100,20 @@ const ConfigPanel = ({
 
       {/* CHUNKING */}
       {panel === "chunk" && (
-        <>
-          <label className="rag-cfg-label">Chunking mode</label>
-          <div className="rag-cfg-cards">
-            {[
-              {
-                k: "FIXED_ALL",
-                n: "Single",
-                d: "One strategy for all documents",
-              },
-              {
-                k: "PER_DOCUMENT",
-                n: "Per document",
-                d: "Choose strategy per file",
-              },
-              {
-                k: "ADAPTIVE",
-                n: "Adaptive",
-                d: "Auto-pick the best per file",
-              },
-            ].map((m) => (
-              <button
-                key={m.k}
-                className={`rag-cfg-card ${(cfg.chunk_mode || "FIXED_ALL") === m.k ? "active" : ""}`}
-                onClick={() => setC("chunk_mode", m.k)}
-              >
-                <div className="rag-cfg-card-n">{m.n}</div>
-                <div className="rag-cfg-card-d">{m.d}</div>
-              </button>
-            ))}
-          </div>
-
-          {(cfg.chunk_mode || "FIXED_ALL") === "ADAPTIVE" && (
-            <div className="rag-cfg-hint">
-              Adaptive mode tries every strategy on each document and keeps the
-              best one. The winning strategy is shown on each document in the
-              Uploads panel. Note: slower, since each file is chunked multiple
-              times.
-            </div>
-          )}
-          {(cfg.chunk_mode || "FIXED_ALL") === "PER_DOCUMENT" && (
-            <div className="rag-cfg-hint">
-              Pick a strategy for each document individually in the Uploads
-              panel. The strategy below is used as the default for files you
-              haven't set.
-            </div>
-          )}
-
-          {/* Global strategy — only in Single mode. In Per-document you set the
-              strategy on each file below; in Adaptive it's auto-picked. */}
-          {(cfg.chunk_mode || "FIXED_ALL") === "FIXED_ALL" && (
-            <>
-              <label className="rag-cfg-label">
-                Strategy — applied to every document
-              </label>
-              <div className="rag-cfg-cards">
-                {[
-                  { k: "FIXED", n: "Fixed", d: "Every N characters" },
-                  { k: "SEMANTIC", n: "Semantic", d: "On topic change" },
-                  { k: "HIERARCHICAL", n: "Hierarchical", d: "Parent + child" },
-                ].map((s) => (
-                  <button
-                    key={s.k}
-                    className={`rag-cfg-card ${cfg.chunk_strategy === s.k ? "active" : ""}`}
-                    onClick={() => setC("chunk_strategy", s.k)}
-                  >
-                    <div className="rag-cfg-card-n">{s.n}</div>
-                    <div className="rag-cfg-card-d">{s.d}</div>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className="rag-cfg-grid2">
-            <div>
-              <label className="rag-cfg-label">Chunk size (chars)</label>
-              <input
-                type="number"
-                min="256"
-                max="1024"
-                step="1"
-                value={cfg.chunk_size}
-                onChange={(e) => setC("chunk_size", e.target.value)}
-                className="rag-cfg-select"
-              />
-            </div>
-            <div>
-              <label className="rag-cfg-label">Overlap (chars)</label>
-              <input
-                type="number"
-                min="0"
-                max="200"
-                step="1"
-                value={cfg.chunk_overlap}
-                onChange={(e) => setC("chunk_overlap", e.target.value)}
-                className="rag-cfg-select"
-              />
-            </div>
-          </div>
-
-          {/* ── Batch 3: per-document strategy + indexing (moved from Uploads) ── */}
-          <div
-            style={{
-              borderTop: "1px solid var(--rag-border, #e2e8f0)",
-              margin: "18px 0 12px",
-            }}
-          />
-          <div className="rag-cfg-head" style={{ marginBottom: 6 }}>
-            <label className="rag-cfg-label" style={{ margin: 0 }}>
-              {(cfg.chunk_mode || "FIXED_ALL") === "PER_DOCUMENT"
-                ? "Per-document strategy & indexing"
-                : "Documents · indexing"}
-            </label>
-            {extractedCount > 0 && (
-              <button
-                className="rag-btn rag-btn-sm rag-btn-dark"
-                onClick={handleProcessAll}
-                disabled={processing}
-              >
-                {processing ? "…" : `Process all (${extractedCount})`}
-              </button>
-            )}
-          </div>
-          <div className="rag-cfg-hint">
-            {(cfg.chunk_mode || "FIXED_ALL") === "PER_DOCUMENT"
-              ? "Choose a strategy for each document (or leave Default to use the fallback above), then Process to chunk & index it."
-              : (cfg.chunk_mode || "FIXED_ALL") === "ADAPTIVE"
-                ? "Each document is chunked with the auto-selected best strategy. Process to chunk & index it."
-                : `Every document is chunked with the “${cfg.chunk_strategy || "FIXED"}” strategy above. Process to chunk & index it.`}
-          </div>
-
-          {parsedDocs.length === 0 && (
-            <div className="rag-cfg-hint">
-              No parsed documents yet. Upload files and run Load + Parse in the
-              Uploads section first.
-            </div>
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-            {parsedDocs.map((d) => (
-              <div
-                key={d.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: 8,
-                  border: "1px solid var(--rag-border, #e2e8f0)",
-                  borderRadius: 8,
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    className="rag-cfg-model-n"
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {d.file_name}
-                  </div>
-                  <div className="rag-cfg-model-note">
-                    {d.status === "INDEXED"
-                      ? `Indexed · ${d.num_chunks || 0} chunks`
-                      : d.status === "PROCESSING"
-                        ? "Processing…"
-                        : "Parsed — not indexed"}
-                  </div>
-                </div>
-
-                {(cfg.chunk_mode || "FIXED_ALL") === "PER_DOCUMENT" ? (
-                  <select
-                    className="rag-doc-strategy-select"
-                    value={d.chunk_strategy || ""}
-                    onChange={(e) => handleSetDocStrategy(d.id, e.target.value)}
-                  >
-                    <option value="">Default</option>
-                    <option value="FIXED">Fixed</option>
-                    <option value="SEMANTIC">Semantic</option>
-                    <option value="HIERARCHICAL">Hierarchical</option>
-                  </select>
-                ) : (
-                  <span className="rag-doc-strategy-fixed">
-                    {(cfg.chunk_mode || "FIXED_ALL") === "ADAPTIVE"
-                      ? d.chunk_strategy
-                        ? `Auto · ${d.chunk_strategy}`
-                        : "Auto"
-                      : cfg.chunk_strategy || "FIXED"}
-                  </span>
-                )}
-
-                <button
-                  className="rag-btn rag-btn-xs rag-btn-dark"
-                  onClick={() => handleProcess(d.id)}
-                  disabled={processing}
-                >
-                  {d.status === "INDEXED" ? "Re-index" : "Process"}
-                </button>
-
-                {d.status === "INDEXED" && (
-                  <button
-                    className="rag-btn rag-btn-xs"
-                    onClick={() => openModal("chunks", d)}
-                  >
-                    View chunks
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </>
+        <ChunkingConfig
+          cfg={cfg}
+          setC={setC}
+          catalog={chunkCatalog}
+          parsedDocs={parsedDocs}
+          extractedCount={extractedCount}
+          handleSetDocChunking={handleSetDocChunking}
+          handleChunkModeChange={handleChunkModeChange}
+          handleProcess={handleProcess}
+          handleProcessAll={handleProcessAll}
+          processing={processing}
+          openModal={openModal}
+          canBuild={canBuild}
+        />
       )}
 
       {/* EMBEDDING */}
@@ -382,17 +218,45 @@ const ConfigPanel = ({
       {panel === "access" && (
         <>
           <label className="rag-cfg-label">Who can use this space</label>
-          <AccessSelector
-            users={deptUsers}
-            allowedIds={allowed}
-            onChange={(next) => setC("allowed_user_ids", next)}
-            loading={loadingDeptUsers}
-          />
-          <div className="rag-cfg-hint" style={{ marginTop: 10 }}>
-            Click a member to deactivate (exclude) them. Changes apply after you
-            press <strong>Save</strong>. Admin & IT always have access, so
-            restrictions only affect end-users.
-          </div>
+          {cfg.is_private ? (
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                padding: "12px 14px",
+                borderRadius: 10,
+                background: "rgba(180,83,9,.08)",
+                border: "1px solid rgba(180,83,9,.28)",
+              }}
+            >
+              <span>🔒</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#92400e" }}>
+                  Private — no end users
+                </div>
+                <div style={{ fontSize: 12.5, color: "#92400e", marginTop: 2 }}>
+                  Only you and your IT team can use this space. To let end users
+                  in, <strong>Deploy</strong> it with “Publish to end users” — then
+                  you can choose exactly who here.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <AccessSelector
+                users={accessUsers}
+                allowedIds={allowed}
+                onChange={(next) => setC("allowed_user_ids", next)}
+                loading={loadingDeptUsers}
+              />
+              <div className="rag-cfg-hint" style={{ marginTop: 10 }}>
+                Choose who in the department can use this agent — end users and IT
+                members. Click a member to exclude them. Changes apply after you
+                press <strong>Save</strong>. You (the owner) and admins always
+                have access.
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -404,6 +268,7 @@ const ConfigPanel = ({
           versions.
         </p>
       )}
+      </div>
     </div>
   );
 };

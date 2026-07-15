@@ -10,11 +10,13 @@
     "departments",
     "users",
     "user_departments",
+    "rag_space_versions",
+    "api_providers",
     "documents",
     "rag_spaces",
-    "ai_providers",
-    "api_keys",
-    "chunks"
+    "rag_space_access",
+    "chunks",
+    "rag_space_collaborators"
   ],
   "connected": true
 }

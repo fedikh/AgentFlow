@@ -14,11 +14,14 @@ from fastapi import APIRouter, Depends, Request, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from typing import Optional
 import os
 
 from app.database import get_db
 from app.schemas.rag import (
-    CreateRAGSpaceRequest, UpdateRAGSpaceRequest, QueryRequest, UpdateExtractedRequest
+    CreateRAGSpaceRequest, UpdateRAGSpaceRequest, QueryRequest, UpdateExtractedRequest,
+    SaveVersionRequest, DeployVersionRequest, DeployCurrentRequest,
+    SetPublishRequest,
 )
 from app.services import rag_service
 from app.services.auth_service import get_user_id_from_token
@@ -52,8 +55,9 @@ class DriveUploadRequest(BaseModel):
     access_token: str
     file_name: str = ""
 
-class SetStrategyRequest(BaseModel):
-    strategy: str   # "FIXED" | "SEMANTIC" | "HIERARCHICAL"
+class SetChunkingRequest(BaseModel):
+    strategy: str                       # a catalog strategy name for the doc's format
+    params: Optional[dict] = None       # that strategy's tuned parameters
 
 def _get_current_user(request: Request, db: Session) -> User:
     token = request.cookies.get("access_token")
@@ -88,19 +92,80 @@ def list_spaces(request: Request, db: Session = Depends(get_db)):
 @router.get("/spaces/{space_id}")
 def get_space(space_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
-    return rag_service.get_space(db, space_id, user.organization_id)
+    return rag_service.get_space(db, space_id, user.organization_id, user)
 
 
 @router.put("/spaces/{space_id}")
 def update_space(space_id: str, data: UpdateRAGSpaceRequest, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
-    return rag_service.update_space(db, space_id, user.organization_id, data)
+    return rag_service.update_space(db, space_id, user.organization_id, data, user)
 
 
 @router.delete("/spaces/{space_id}")
 def delete_space(space_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
-    return rag_service.delete_space(db, space_id, user.organization_id)
+    return rag_service.delete_space(db, space_id, user.organization_id, user)
+
+
+# ══════════════════════════════════════════
+# VERSIONS — save / deploy lifecycle (config snapshots)
+# ══════════════════════════════════════════
+
+@router.get("/spaces/{space_id}/versions")
+def list_versions(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return rag_service.list_versions(db, space_id, user.organization_id, user)
+
+
+@router.post("/spaces/{space_id}/versions", status_code=201)
+def save_version(space_id: str, data: SaveVersionRequest, request: Request, db: Session = Depends(get_db)):
+    """Snapshot the current working config as a new saved version (v1, v2…)."""
+    user = _get_current_user(request, db)
+    return rag_service.save_version(db, space_id, user.organization_id, user, data.label, data.notes)
+
+
+@router.post("/spaces/{space_id}/versions/{version_id}/apply")
+def apply_version(space_id: str, version_id: str, request: Request, db: Session = Depends(get_db)):
+    """Load a saved version's config into the working space (no deploy)."""
+    user = _get_current_user(request, db)
+    return rag_service.apply_version(db, space_id, user.organization_id, user, version_id)
+
+
+@router.post("/spaces/{space_id}/versions/{version_id}/deploy")
+def deploy_version(space_id: str, version_id: str, data: DeployVersionRequest,
+                   request: Request, db: Session = Depends(get_db)):
+    """Deploy a saved version → applies its config + flips the space to ACTIVE."""
+    user = _get_current_user(request, db)
+    return rag_service.deploy_version(db, space_id, user.organization_id, user, version_id, data.publish)
+
+
+@router.delete("/spaces/{space_id}/versions/{version_id}")
+def delete_version(space_id: str, version_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    return rag_service.delete_version(db, space_id, user.organization_id, user, version_id)
+
+
+@router.post("/spaces/{space_id}/deploy")
+def deploy_current(space_id: str, data: DeployCurrentRequest, request: Request, db: Session = Depends(get_db)):
+    """One-click: snapshot the current config into a new version and deploy it."""
+    user = _get_current_user(request, db)
+    return rag_service.deploy_current(
+        db, space_id, user.organization_id, user, data.label, data.notes, data.publish
+    )
+
+
+@router.put("/spaces/{space_id}/publish")
+def set_publish(space_id: str, data: SetPublishRequest, request: Request, db: Session = Depends(get_db)):
+    """Toggle end-user visibility of a deployed space (publish / unpublish)."""
+    user = _get_current_user(request, db)
+    return rag_service.set_publish(db, space_id, user.organization_id, user, data.is_private)
+
+
+@router.post("/spaces/{space_id}/pause")
+def pause_deployment(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """Take a deployed space offline for editing (end users see 'updating')."""
+    user = _get_current_user(request, db)
+    return rag_service.pause_deployment(db, space_id, user.organization_id, user)
 
 
 # ══════════════════════════════════════════
@@ -127,6 +192,7 @@ async def upload_document(
 ):
     """Upload file → LlamaIndex Loader → raw text. No parsing yet."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return await rag_service.upload_document(db, space_id, user.organization_id, file)
 
 
@@ -134,6 +200,7 @@ async def upload_document(
 async def scrape_url(space_id: str, data: ScrapeRequest, request: Request, db: Session = Depends(get_db)):
     """Scrape a single URL (Crawl4AI, JS rendering) → LOADED."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return await rag_service.upload_from_url(db, space_id, user.organization_id, data.url)
 
 
@@ -141,6 +208,7 @@ async def scrape_url(space_id: str, data: ScrapeRequest, request: Request, db: S
 def web_raw_html(space_id: str, data: RawHtmlRequest, request: Request, db: Session = Depends(get_db)):
     """Ingest pasted raw HTML → LOADED."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.ingest_raw_html(db, space_id, user.organization_id, data.html, data.name)
 
 
@@ -148,6 +216,7 @@ def web_raw_html(space_id: str, data: RawHtmlRequest, request: Request, db: Sess
 def web_crawl(space_id: str, data: CrawlRequest, request: Request, db: Session = Depends(get_db)):
     """Crawl a website (BFS, same-domain) → one document per page."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.crawl_website(db, space_id, user.organization_id, data.url,
                                      data.max_depth, data.max_pages)
 
@@ -156,6 +225,7 @@ def web_crawl(space_id: str, data: CrawlRequest, request: Request, db: Session =
 def web_sitemap(space_id: str, data: SitemapRequest, request: Request, db: Session = Depends(get_db)):
     """Ingest a sitemap.xml → one document per <loc> URL."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.ingest_sitemap(db, space_id, user.organization_id, data.url, data.max_pages)
 
 
@@ -163,6 +233,7 @@ def web_sitemap(space_id: str, data: SitemapRequest, request: Request, db: Sessi
 def web_rss(space_id: str, data: RssRequest, request: Request, db: Session = Depends(get_db)):
     """Ingest an RSS/Atom feed → one document per article."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.ingest_rss(db, space_id, user.organization_id, data.url, data.max_items)
 
 
@@ -172,9 +243,17 @@ def list_documents(space_id: str, request: Request, db: Session = Depends(get_db
     return rag_service.list_documents(db, space_id, user.organization_id)
 
 
+@router.get("/spaces/{space_id}/public-documents")
+def list_public_documents(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """End-user-facing document list for a deployed space (access-checked)."""
+    user = _get_current_user(request, db)
+    return rag_service.list_public_documents(db, space_id, user.organization_id, user)
+
+
 @router.delete("/spaces/{space_id}/documents/{doc_id}")
 def delete_document(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.delete_document(db, space_id, doc_id, user.organization_id)
 
 @router.post("/spaces/{space_id}/upload-drive")
@@ -186,6 +265,7 @@ async def upload_from_drive(
 ):
     """Upload a file from Google Drive → same pipeline as local upload."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return await rag_service.upload_from_drive(
         db, space_id, user.organization_id,
         data.file_id, data.access_token
@@ -193,18 +273,27 @@ async def upload_from_drive(
 
 
 # ══════════════════════════════════════════
-# PER-DOCUMENT STRATEGY (mode PER_DOCUMENT)
+# CHUNKING CATALOG + PER-DOCUMENT CHUNKING
 # ══════════════════════════════════════════
 
-@router.put("/spaces/{space_id}/documents/{doc_id}/strategy")
-def set_document_strategy(
-    space_id: str, doc_id: str, data: SetStrategyRequest,
+@router.get("/chunking/catalog")
+def get_chunking_catalog(file_type: str = None):
+    """Per-format strategy catalog (strategies + tunable params) for the UI.
+    With ?file_type=pdf → that format's strategies; without → the full catalog."""
+    from app.services.providers.chunking_factory import catalog_for
+    return catalog_for(file_type)
+
+
+@router.put("/spaces/{space_id}/documents/{doc_id}/chunking")
+def set_document_chunking(
+    space_id: str, doc_id: str, data: SetChunkingRequest,
     request: Request, db: Session = Depends(get_db),
 ):
-    """Set the chunking strategy of a single document (PER_DOCUMENT mode)."""
+    """Set a single document's chunking strategy + params (PER_DOCUMENT mode)."""
     user = _get_current_user(request, db)
-    return rag_service.set_document_strategy(
-        db, space_id, doc_id, data.strategy, user.organization_id
+    rag_service.require_editable(db, space_id, user.organization_id, user)
+    return rag_service.set_document_chunking(
+        db, space_id, doc_id, data.strategy, data.params, user.organization_id
     )
 
 
@@ -219,6 +308,7 @@ def set_document_extract_images(
 ):
     """Toggle image extraction for a single document (applied on next parse)."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.set_document_extract_images(
         db, space_id, doc_id, data.enabled, user.organization_id
     )
@@ -231,6 +321,7 @@ def add_document_image(
 ):
     """Upload an image to add to a document's parsed content (editor)."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.add_document_image(
         db, space_id, doc_id, user.organization_id, file
     )
@@ -255,6 +346,7 @@ def get_loaded_content(space_id: str, doc_id: str, request: Request, db: Session
 def parse_document(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
     """Parse one document: raw text → structured blocks."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.parse_document(db, space_id, doc_id, user.organization_id)
 
 
@@ -262,6 +354,7 @@ def parse_document(space_id: str, doc_id: str, request: Request, db: Session = D
 def parse_all(space_id: str, request: Request, db: Session = Depends(get_db)):
     """Parse ALL documents with status LOADED."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.parse_all_documents(db, space_id, user.organization_id)
 
 
@@ -282,6 +375,7 @@ def update_extracted_content(
 ):
     """Save IT's manual edits to the parsed ParsedDocument. Status stays EXTRACTED."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.update_extracted_content(db, space_id, doc_id, user.organization_id, data)
 
 # ══════════════════════════════════════════
@@ -292,6 +386,7 @@ def update_extracted_content(
 def process_document(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
     """Process one document: chunking + embedding → pgvector."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.process_document(db, space_id, doc_id, user.organization_id)
 
 
@@ -299,6 +394,7 @@ def process_document(space_id: str, doc_id: str, request: Request, db: Session =
 def process_all(space_id: str, request: Request, db: Session = Depends(get_db)):
     """Process ALL documents with status EXTRACTED."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.process_all_documents(db, space_id, user.organization_id)
 
 
@@ -323,6 +419,7 @@ def query_space(space_id: str, data: QueryRequest, request: Request, db: Session
 def load_and_parse(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
     """Load + Parse a single document (runs loader + cleaner + parser)."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.load_and_parse_document(db, space_id, doc_id, user.organization_id)
 
 
@@ -330,6 +427,7 @@ def load_and_parse(space_id: str, doc_id: str, request: Request, db: Session = D
 def load_and_parse_all(space_id: str, request: Request, db: Session = Depends(get_db)):
     """Load + Parse ALL documents with status UPLOADING."""
     user = _get_current_user(request, db)
+    rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.load_and_parse_all(db, space_id, user.organization_id)
 
 @router.get("/spaces/{space_id}/image")
@@ -348,7 +446,7 @@ def serve_image(space_id: str, path: str, db: Session = Depends(get_db)):
 def serve_document_file(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
     """Serve the ORIGINAL uploaded file inline (PDF opens in the browser)."""
     user = _get_current_user(request, db)
-    info = rag_service.get_document_file(db, space_id, doc_id, user.organization_id)
+    info = rag_service.get_document_file(db, space_id, doc_id, user.organization_id, user)
     return FileResponse(
         info["path"],
         filename=info["file_name"],

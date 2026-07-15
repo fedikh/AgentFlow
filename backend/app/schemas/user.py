@@ -38,3 +38,14 @@ class ActivateUserRequest(BaseModel):
 class UpdateUserRoleRequest(BaseModel):
     role:           Optional[RoleType] = None
     department_ids: Optional[list[str]] = None    # CHANGED: list instead of single ID
+
+
+# ── Delete ────────────────────────────────────────────
+class DeleteUserRequest(BaseModel):
+    # When deleting an IT who owns RAG spaces, the admin picks ONE of:
+    #   transfers     → map each department that has owned spaces → the IT user
+    #                   who inherits them. Key "" = spaces with no department.
+    #   delete_spaces → True: delete the IT AND every RAG space they own
+    #                   (documents, index and files included).
+    transfers:     Optional[dict[str, str]] = None
+    delete_spaces: bool = False

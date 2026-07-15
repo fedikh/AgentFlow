@@ -34,6 +34,8 @@ const UploadsPanel = ({
   counts,
   handleSetExtractImages = () => {},
   spaceId,
+  isOwner = true,
+  editable = true,
 }) => {
   const { uploadingCount, loadedCount, extractedCount } = counts;
 
@@ -98,6 +100,30 @@ const UploadsPanel = ({
 
   return (
     <>
+      {!isOwner && (
+        <div className="rag-cfg-hint" style={{ marginBottom: 12 }}>
+          Only the space <strong>owner</strong> can add or delete documents. You
+          can tune the configuration and test the space.
+        </div>
+      )}
+      {isOwner && !editable && (
+        <div
+          className="rag-cfg-hint"
+          style={{
+            marginBottom: 12,
+            padding: "8px 11px",
+            borderRadius: 8,
+            background: "rgba(22,163,74,.08)",
+            border: "1px solid rgba(22,163,74,.3)",
+            color: "#166534",
+          }}
+        >
+          🔒 This space is <strong>deployed &amp; live</strong> — documents are
+          locked. Click <strong>Stop to edit</strong> in the header to add or
+          remove documents.
+        </div>
+      )}
+      {isOwner && editable && (
       <div className="rag-upload-zone">
         <div className="rag-upload-zone-head">
           <div className="rag-upload-zone-title">Add documents</div>
@@ -232,8 +258,9 @@ const UploadsPanel = ({
         </div>
         )}
       </div>
+      )}
 
-      {(uploadingCount > 0 || loadedCount > 0) && (
+      {editable && (uploadingCount > 0 || loadedCount > 0) && (
         <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
           {uploadingCount > 0 && (
             <button
@@ -289,7 +316,7 @@ const UploadsPanel = ({
               {/* Chunking strategy & indexing now live in the Chunking section. */}
 
               {/* Per-document image extraction (PDF/DOCX/PPTX, before indexing) */}
-              {canImages(d) && d.status !== "INDEXED" && (
+              {editable && canImages(d) && d.status !== "INDEXED" && (
                 <label className="rag-doc-imgtoggle">
                   <input
                     type="checkbox"
@@ -317,7 +344,7 @@ const UploadsPanel = ({
                     View document
                   </button>
                 )}
-                {d.status === "UPLOADING" && (
+                {editable && d.status === "UPLOADING" && (
                   <button
                     className="rag-btn rag-btn-xs rag-btn-blue"
                     onClick={() => handleLoadParse(d.id)}
@@ -334,7 +361,7 @@ const UploadsPanel = ({
                     View loaded
                   </button>
                 )}
-                {d.status === "LOADED" && (
+                {editable && d.status === "LOADED" && (
                   <button
                     className="rag-btn rag-btn-xs rag-btn-blue"
                     onClick={() => handleParse(d.id)}
@@ -356,12 +383,14 @@ const UploadsPanel = ({
             <span className={`rag-badge ${SB[d.status] || ""}`}>
               {SL[d.status] || d.status}
             </span>
-            <button
-              className="rag-doc-del"
-              onClick={() => handleDeleteDoc(d.id)}
-            >
-              ×
-            </button>
+            {editable && (
+              <button
+                className="rag-doc-del"
+                onClick={() => handleDeleteDoc(d.id)}
+              >
+                ×
+              </button>
+            )}
           </div>
         ))}
       </div>

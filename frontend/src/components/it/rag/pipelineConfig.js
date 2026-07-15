@@ -10,19 +10,41 @@ import { getEmbeddingModels } from "../../../services/ragApi";
 
 const pct = (v) => `${Math.round((Number(v) || 0) * 100)}%`;
 
-const chunkModeLabel = (mode) =>
-  ({ FIXED_ALL: "Single", PER_DOCUMENT: "Per document", ADAPTIVE: "Adaptive" })[
-    mode || "FIXED_ALL"
-  ] || mode;
+const FT_LABEL = {
+  pdf: "PDF", docx: "Word", pptx: "PowerPoint", txt: "Text", md: "Markdown",
+  markdown: "Markdown", json: "JSON", xml: "XML", csv: "CSV", xlsx: "Excel",
+  xls: "Excel", html: "HTML", htm: "HTML", url: "Web",
+};
 
-// In Single mode one strategy applies to all; in Per-document each file has its
-// own; in Adaptive it's auto-picked. So the single space-level strategy is only
-// meaningful in Single mode.
-const chunkStrategyLabel = (space) => {
-  const mode = space.chunk_mode || "FIXED_ALL";
-  if (mode === "PER_DOCUMENT") return "Per document";
-  if (mode === "ADAPTIVE") return "Auto-selected";
-  return space.chunk_strategy || "FIXED";
+const isPerDoc = (space) =>
+  String(space.chunk_mode || "SINGLE").toUpperCase() === "PER_DOCUMENT";
+
+// Compact summary line for the chunking stage.
+const chunkSummary = (space) => {
+  if (isPerDoc(space)) return "Per document";
+  const map = space.chunk_format_map || {};
+  const n = Object.keys(map).length;
+  return n ? `Single · ${n} format${n > 1 ? "s" : ""}` : "Single";
+};
+
+// Detailed rows: Single mode lists the strategy chosen for each format;
+// Per-document defers to each file. (chunk_size/overlap chars are legacy — the
+// per-format strategies carry their own parameters now.)
+const chunkRows = (space) => {
+  if (isPerDoc(space)) {
+    return [["Mode", "Per document"], ["Strategy", "Chosen per file"]];
+  }
+  const map = space.chunk_format_map || {};
+  const entries = Object.entries(map);
+  const rows = [["Mode", "Single (per format)"]];
+  if (entries.length) {
+    for (const [ft, v] of entries) {
+      rows.push([FT_LABEL[ft] || ft.toUpperCase(), v?.strategy || "—"]);
+    }
+  } else {
+    rows.push(["Strategy", space.chunk_strategy || "recursive"]);
+  }
+  return rows;
 };
 
 function llmSource(space, providers) {
@@ -152,14 +174,9 @@ export function buildPipelineSections(space, providers = [], overrides = {}) {
       accent: "#0ea5e9",
       title: "Chunking",
       tag: "Split",
-      how: "Splits each parsed document into overlapping text chunks. Smaller chunks are more precise; larger ones keep more context.",
-      summary: `${chunkStrategyLabel(space)} · ${space.chunk_size ?? 512}`,
-      rows: [
-        ["Mode", chunkModeLabel(space.chunk_mode)],
-        ["Strategy", chunkStrategyLabel(space)],
-        ["Chunk size", `${space.chunk_size ?? 512} chars`],
-        ["Overlap", `${space.chunk_overlap ?? 50} chars`],
-      ],
+      how: "Splits each parsed document into chunks using the strategy that fits its format (headings, slides, rows, tree nodes…), preserving structure for retrieval.",
+      summary: chunkSummary(space),
+      rows: chunkRows(space),
     },
     {
       key: "embed",

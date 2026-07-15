@@ -21,16 +21,47 @@ def _key(text: str) -> str:
     return _WS.sub(" ", (text or "").strip().lower())
 
 
+def _collapse_adjacent_lines(text: str) -> tuple[str, int]:
+    """Collapse runs of identical *consecutive* lines (len > 25).
+
+    Extraction + noise removal frequently leave the same sentence twice on
+    adjacent lines (e.g. a repeated slide/page header once its page number is
+    stripped). Paragraph dedup misses these because they aren't separated by a
+    blank line. Only exact, back-to-back, long lines are collapsed, so genuine
+    short repeats (a list of "Yes") are left alone.
+    """
+    lines = text.split("\n")
+    out = []
+    removed = 0
+    prev = None
+    for ln in lines:
+        k = _key(ln)
+        if not k:
+            out.append(ln)
+            prev = None            # a blank line breaks the "adjacent" run
+            continue
+        if len(k) > 25 and k == prev:
+            removed += 1
+            continue
+        out.append(ln)
+        prev = k
+    return "\n".join(out), removed
+
+
 def dedupe_paragraphs(text: str) -> tuple[str, int]:
-    """Remove exact (normalized) duplicate paragraphs within a text block."""
+    """Remove duplicate content within a text block, at two granularities:
+    consecutive identical lines, then blank-line-separated paragraphs."""
     if not text:
         return "", 0
+
+    # 1) consecutive identical lines (survive paragraph dedup otherwise)
+    text, line_removed = _collapse_adjacent_lines(text)
+
+    # 2) blank-line-separated paragraphs
     paras = re.split(r"\n\s*\n", text)
-    if len(paras) < 2:
-        return text, 0
     seen = set()
     kept = []
-    removed = 0
+    para_removed = 0
     for p in paras:
         k = _key(p)
         if not k:
@@ -38,12 +69,15 @@ def dedupe_paragraphs(text: str) -> tuple[str, int]:
         # Only dedupe paragraphs long enough to matter (avoid nuking short
         # legitimate repeats like "Yes" / a shared label).
         if len(k) > 25 and k in seen:
-            removed += 1
+            para_removed += 1
             continue
         seen.add(k)
         kept.append(p)
+
+    removed = line_removed + para_removed
     if removed:
-        logger.info(f"[DEDUP] removed {removed} duplicate paragraph(s)")
+        logger.info(f"[DEDUP] removed {para_removed} duplicate paragraph(s), "
+                    f"{line_removed} duplicate line(s)")
     return "\n\n".join(kept), removed
 
 

@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException, Body
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas.user import InviteUserRequest, ActivateUserRequest, UpdateUserRoleRequest, CreateDepartmentRequest
+from app.schemas.user import (
+    InviteUserRequest, ActivateUserRequest, UpdateUserRoleRequest,
+    CreateDepartmentRequest, DeleteUserRequest,
+)
 from app.services import user_service
 from app.services.auth_service import get_user_id_from_token
 from app.models.user import User
@@ -63,15 +66,26 @@ def list_users(request: Request, db: Session = Depends(get_db)):
 # DYNAMIC {user_id} ROUTES LAST
 # ══════════════════════════════════════════════════════
 
+@router.get("/{user_id}/transfer-info")
+def user_transfer_info(user_id: str, request: Request, db: Session = Depends(get_db)):
+    """Preview a user's owned RAG spaces + eligible IT targets before deletion."""
+    admin = _get_current_user(request, db)
+    return user_service.get_user_transfer_info(db, user_id, admin.organization_id, admin)
+
 @router.put("/{user_id}")
 def update_user(user_id: str, data: UpdateUserRoleRequest, request: Request, db: Session = Depends(get_db)):
     admin = _get_current_user(request, db)
     return user_service.update_user(db, user_id, admin.organization_id, data, admin)
 
 @router.delete("/{user_id}")
-def delete_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+def delete_user(user_id: str, request: Request, db: Session = Depends(get_db),
+                data: DeleteUserRequest = Body(default=None)):
     admin = _get_current_user(request, db)
-    return user_service.delete_user(db, user_id, admin.organization_id, admin)
+    transfers = data.transfers if data else None
+    delete_spaces = bool(data.delete_spaces) if data else False
+    return user_service.delete_user(
+        db, user_id, admin.organization_id, admin, transfers, delete_spaces
+    )
 
 @router.post("/{user_id}/resend")
 async def resend_invite(user_id: str, request: Request, db: Session = Depends(get_db)):

@@ -94,7 +94,7 @@ def _get_converter():
     return _converter
 
 
-def load(file_path: str) -> dict:
+def load(file_path: str, extract_images: bool = True) -> dict:
     from app.config import settings
 
     # ── FAST path: PyMuPDF text extraction (no ML) — ~40× faster on CPU ──
@@ -102,7 +102,8 @@ def load(file_path: str) -> dict:
         logger.info(f"[PDF_LOADER] FAST mode (PyMuPDF): {os.path.basename(file_path)}")
         return _load_fast(file_path)
 
-    logger.info(f"[PDF_LOADER] Loading with Docling: {os.path.basename(file_path)}")
+    logger.info(f"[PDF_LOADER] Loading with Docling: {os.path.basename(file_path)}"
+                f"{'' if extract_images else ' (images OFF)'}")
 
     # Count pages first (fast, no ML)
     import fitz
@@ -114,10 +115,10 @@ def load(file_path: str) -> dict:
 
     if num_pages <= BATCH_SIZE:
         logger.info(f"[PDF_LOADER] {num_pages} pages → direct")
-        return _load_single(converter, file_path, num_pages)
+        return _load_single(converter, file_path, num_pages, extract_images)
     else:
         logger.info(f"[PDF_LOADER] {num_pages} pages → batched ({BATCH_SIZE}/batch)")
-        return _load_batched(converter, file_path, num_pages)
+        return _load_batched(converter, file_path, num_pages, extract_images)
 
 
 def _load_fast(file_path: str) -> dict:
@@ -183,7 +184,7 @@ def _load_fast(file_path: str) -> dict:
     }
 
 
-def _load_single(converter, file_path, num_pages):
+def _load_single(converter, file_path, num_pages, extract_images=True):
     """Load a small PDF in one shot."""
     from app.services.providers.parsers._docling import docling_to_parsed_document
 
@@ -203,6 +204,7 @@ def _load_single(converter, file_path, num_pages):
         file_type="PDF",
         category="document",
         metadata=metadata,
+        extract_images=extract_images,
     )
 
     if not raw_text.strip():
@@ -226,7 +228,7 @@ def _load_single(converter, file_path, num_pages):
     }
 
 
-def _load_batched(converter, file_path, num_pages):
+def _load_batched(converter, file_path, num_pages, extract_images=True):
     """Load a large PDF in batches."""
     import fitz
     from app.services.providers.parsers._docling import docling_to_parsed_document
@@ -272,6 +274,7 @@ def _load_batched(converter, file_path, num_pages):
             batch_doc = docling_to_parsed_document(
                 result=result, file_type="PDF", category="document", metadata=metadata,
                 ro_start=ro_start, heading_stack=heading_stack,
+                extract_images=extract_images,
             )
 
             # Fix page numbers

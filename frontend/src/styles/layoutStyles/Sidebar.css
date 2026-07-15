@@ -99,6 +99,66 @@
 
 .sidebar-link svg { flex-shrink: 0; }
 
+/* ── Collapsible nav group (parent + sub-links) ── */
+.sidebar-parent {
+  width: 100%;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.sidebar-parent .sidebar-caret {
+  margin-left: auto;
+  transition: transform 0.15s;
+  opacity: 0.55;
+}
+.sidebar-parent .sidebar-caret.open {
+  transform: rotate(180deg);
+}
+.sidebar-parent.active-parent {
+  color: rgba(255, 255, 255, 0.9);
+}
+.sidebar-subnav {
+  margin: 1px 0 3px 14px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sidebar-sublink {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  text-decoration: none;
+  transition: all 0.12s;
+}
+.sidebar-sublink:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+}
+.sidebar-sublink .sidebar-subdot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.sidebar-sublink.active {
+  background: #1d4ed8;
+  color: #fff;
+}
+.sidebar-sublink.active .sidebar-subdot {
+  opacity: 1;
+}
+
 .sidebar-divider {
   height: 1px;
   background: rgba(255,255,255,0.07);

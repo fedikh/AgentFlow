@@ -41,6 +41,22 @@ mail_conf = ConnectionConfig(
     USE_CREDENTIALS=True,
 )
 
+
+async def send_mail_safe(message: MessageSchema) -> bool:
+    """Send an email, returning False instead of raising on SMTP failures
+    (bad credentials, server down…). Callers decide how to degrade — a mail
+    outage must never 500 an API request whose DB work already succeeded.
+    Gmail note: with 2FA the MAIL_PASSWORD must be an App Password
+    (https://myaccount.google.com/apppasswords), not the account password."""
+    try:
+        fm = FastMail(mail_conf)
+        await fm.send_message(message)
+        return True
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"[MAIL] send failed: {e}")
+        return False
+
 # ── Password ──────────────────────────────────────────
 def hash_password(password: str) -> str:
     return pwd_context.hash(password[:72])
@@ -215,8 +231,11 @@ async def forgot_password(db: Session, data: ForgotPasswordRequest) -> dict:
         subtype="html",
     )
 
-    fm = FastMail(mail_conf)
-    await fm.send_message(message)
+    if not await send_mail_safe(message):
+        otp_store.pop(data.email, None)   # code can't reach the user — invalidate it
+        raise HTTPException(
+            502, "Could not send the reset email — the mail service is not configured correctly."
+        )
 
     return {"message": "If this email exists, a reset code has been sent"}
 

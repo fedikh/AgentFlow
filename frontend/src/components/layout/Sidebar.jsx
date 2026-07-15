@@ -1,5 +1,5 @@
 import React from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { getUser, clearSession, logout } from "../../services/authApi";
 import "../../styles/layoutStyles/Sidebar.css";
 
@@ -111,10 +111,13 @@ const NAV = {
       section: "BUILD",
       items: [
         {
-          to: "/it/rag",
           label: "RAG Spaces",
           icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
           icon2: "M14 2v6h6",
+          children: [
+            { to: "/it/rag", label: "Workspace" },
+            { to: "/it/agents", label: "Deployed Agents" },
+          ],
         },
         {
           to: "/it/data-agent",
@@ -202,6 +205,60 @@ const NAV = {
   ],
 };
 
+// Collapsible parent with sub-links (e.g. RAG Spaces → Workspace / Deployed Agents)
+const NavGroup = ({ item }) => {
+  const location = useLocation();
+  const childActive = item.children.some(
+    (c) => location.pathname === c.to || location.pathname.startsWith(c.to + "/"),
+  );
+  const [open, setOpen] = React.useState(childActive);
+  React.useEffect(() => {
+    if (childActive) setOpen(true);
+  }, [childActive]);
+
+  return (
+    <div className="sidebar-group">
+      <button
+        type="button"
+        className={`sidebar-link sidebar-parent ${childActive ? "active-parent" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon d={item.icon} d2={item.icon2} d3={item.d3} />
+        <span>{item.label}</span>
+        <svg
+          className={`sidebar-caret ${open ? "open" : ""}`}
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="sidebar-subnav">
+          {item.children.map((c) => (
+            <NavLink
+              key={c.to}
+              to={c.to}
+              className={({ isActive }) =>
+                `sidebar-sublink ${isActive ? "active" : ""}`
+              }
+            >
+              <span className="sidebar-subdot" />
+              <span>{c.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ══════════════════════════════════════════════════════
 // SIDEBAR COMPONENT
 // ══════════════════════════════════════════════════════
@@ -269,23 +326,27 @@ const Sidebar = () => {
         {sections.map((sec, si) => (
           <div key={si}>
             <div className="sidebar-section-label">{sec.section}</div>
-            {sec.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={
-                  item.to === "/admin" ||
-                  item.to === "/it" ||
-                  item.to === "/user"
-                }
-                className={({ isActive }) =>
-                  `sidebar-link ${isActive ? "active" : ""}`
-                }
-              >
-                <Icon d={item.icon} d2={item.icon2} d3={item.d3} />
-                <span>{item.label}</span>
-              </NavLink>
-            ))}
+            {sec.items.map((item) =>
+              item.children ? (
+                <NavGroup key={item.label} item={item} />
+              ) : (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={
+                    item.to === "/admin" ||
+                    item.to === "/it" ||
+                    item.to === "/user"
+                  }
+                  className={({ isActive }) =>
+                    `sidebar-link ${isActive ? "active" : ""}`
+                  }
+                >
+                  <Icon d={item.icon} d2={item.icon2} d3={item.d3} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ),
+            )}
             {si < sections.length - 1 && <div className="sidebar-divider" />}
           </div>
         ))}

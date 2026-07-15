@@ -5,7 +5,7 @@ Fixes:
   1. Replacement chars (�)
   2. Garbage sequences (%%%%%, iiiiiii)
   3. Broken hyphenated words (docu-\\nment → document)
-  4. Garbled byte sequences
+  4. True non-text noise (control characters)
   5. Spaced-out text (s p a c e d → spaced)
   6. Excessive spaces from column detection
 """
@@ -25,6 +25,13 @@ GARBAGE = [
     (r'\.{6,}',   'Repeated dots'),
 ]
 
+# Control characters only (NUL..US and DEL), except \n \r \t which carry layout.
+# IMPORTANT: we deliberately do NOT touch the 0x80-0xFF range — on a decoded
+# string those are legitimate Latin-1 letters / French punctuation (é è à ç ù
+# « » ° µ). The previous rule stripped runs of them and silently destroyed real
+# French text. Mojibake is already repaired by ftfy (encoding stage, runs first).
+_CTRL = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+')
+
 
 def fix_ocr(text: str) -> tuple[str, list[str]]:
     if not text:
@@ -33,11 +40,11 @@ def fix_ocr(text: str) -> tuple[str, list[str]]:
     fixes = []
 
     # 1. Replacement characters
-    count = text.count('\ufffd')
+    count = text.count('�')
     if count > 0:
-        text = text.replace('\ufffd', '')
+        text = text.replace('�', '')
         if count > 3:
-            fixes.append(f"Removed {count} replacement chars (�)")
+            fixes.append(f"Removed {count} replacement chars (U+FFFD)")
 
     # 2. Garbage patterns
     for pattern, desc in GARBAGE:
@@ -52,12 +59,11 @@ def fix_ocr(text: str) -> tuple[str, list[str]]:
         text = re.sub(r'(\w+)-\n(\w+)', r'\1\2', text)
         fixes.append(f"Rejoined {broken} hyphenated words")
 
-    # 4. Garbled bytes
-    garbled = re.findall(r'[\x80-\xff]{5,}', text)
-    if garbled:
-        for g in garbled:
-            text = text.replace(g, '')
-        fixes.append(f"Removed {len(garbled)} garbled sequences")
+    # 4. True non-text noise: control characters (see _CTRL).
+    ctrl = _CTRL.findall(text)
+    if ctrl:
+        text = _CTRL.sub('', text)
+        fixes.append(f"Removed {len(ctrl)} control sequence(s)")
 
     # 5. Spaced-out text: "s p a c e d" → "spaced"
     spaced = re.findall(r'(?<!\w)(\w\s){5,}\w(?!\w)', text)

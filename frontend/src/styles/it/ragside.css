@@ -206,6 +206,117 @@
 .rag-cfg-check { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--rp-ink-2); margin-top: 18px; cursor: pointer; }
 .rag-cfg-check input { accent-color: var(--rp-ink); }
 
+/* ══ Chunking config — catalog-driven strategy picker + params ══ */
+.rag-ck-group { margin-top: 6px; }
+.rag-ck-group-t {
+  font: 600 11px system-ui, sans-serif;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--rp-ink-3); margin: 12px 0 8px;
+}
+.rag-ck-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 9px;
+}
+.rag-ck-card {
+  position: relative;
+  padding: 12px 12px 11px;
+  border-radius: 11px;
+  border: 1px solid var(--rp-line);
+  background: #fff;
+  cursor: pointer; text-align: left;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.rag-ck-card:hover { border-color: #C7CDD4; box-shadow: 0 4px 14px rgba(15,27,45,.05); transform: translateY(-1px); }
+.rag-ck-card.active { border-color: var(--rp-ink); box-shadow: 0 0 0 1px var(--rp-ink), 0 8px 20px rgba(15,27,45,.08); }
+.rag-ck-card-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.rag-ck-card-n { font: 600 12.5px system-ui, sans-serif; color: var(--rp-ink); letter-spacing: -.1px; }
+.rag-ck-badge {
+  font: 600 9px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .3px;
+  color: #0a7d3c; background: #E7F6EC; border-radius: 5px; padding: 2px 5px; white-space: nowrap;
+}
+.rag-ck-card-stars { color: #E0A83B; font-size: 11px; line-height: 1; margin: 4px 0 5px; letter-spacing: 1px; }
+.rag-ck-card-d { font-size: 10.5px; color: var(--rp-ink-3); line-height: 1.35; }
+.rag-ck-card.active .rag-ck-card-d { color: var(--rp-ink-2); }
+
+/* SINGLE mode — compact one-row-per-format picker */
+.rag-ck-fmtlist {
+  margin-top: 8px; border: 1px solid var(--rp-line); border-radius: 12px;
+  overflow: hidden;
+}
+.rag-ck-fmtlist-t {
+  font: 600 11px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--rp-ink-3); padding: 10px 13px; background: #FAFBFC;
+  border-bottom: 1px solid var(--rp-line);
+}
+.rag-ck-fmtrow { padding: 11px 13px; border-bottom: 1px solid var(--rp-line); }
+.rag-ck-fmtrow:last-child { border-bottom: 0; }
+.rag-ck-fmtrow-main { display: flex; align-items: center; gap: 10px; }
+.rag-ck-fmt-chip {
+  min-width: 62px; text-align: center;
+  font: 700 10px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--rp-ink); background: #EEF1F4; border-radius: 6px; padding: 5px 8px;
+}
+.rag-ck-select {
+  flex: 1; padding: 8px 10px; border: 1px solid var(--rp-line); border-radius: 8px;
+  font: 500 13px system-ui, sans-serif; color: var(--rp-ink); background: #fff; cursor: pointer;
+}
+.rag-ck-select:focus { outline: none; border-color: var(--rp-ink); }
+.rag-ck-gear {
+  width: 34px; height: 34px; flex: none; border: 1px solid var(--rp-line);
+  border-radius: 8px; background: #fff; cursor: pointer; font-size: 14px; line-height: 1;
+  color: var(--rp-ink-2); transition: all .12s;
+}
+.rag-ck-gear:hover { border-color: #B0B0B0; }
+.rag-ck-gear.on { background: var(--rp-ink); color: #fff; border-color: var(--rp-ink); }
+.rag-ck-fmtrow-pros { font-size: 11px; color: var(--rp-ink-3); margin: 6px 0 0 72px; }
+.rag-ck-fmtrow-params { margin: 10px 0 2px 72px; }
+
+.rag-ck-parambox {
+  margin-top: 16px; padding: 14px 15px;
+  border: 1px solid var(--rp-line); border-radius: 12px;
+  background: linear-gradient(180deg, #FAFBFC, #F5F7F9);
+}
+.rag-ck-parambox-t {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; color: var(--rp-ink-2); margin-bottom: 12px;
+}
+.rag-ck-parambox-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rp-ink); display: inline-block; }
+.rag-ck-parambox-pros { font-size: 11px; color: var(--rp-ink-3); margin-left: auto; }
+.rag-ck-params { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px 14px; }
+.rag-ck-param { display: flex; flex-direction: column; gap: 4px; }
+.rag-ck-param-lbl { font-size: 11px; color: var(--rp-ink-3); }
+.rag-ck-param input[type="number"] {
+  padding: 7px 9px; border: 1px solid var(--rp-line); border-radius: 8px;
+  font: 500 13px system-ui, sans-serif; color: var(--rp-ink); background: #fff; width: 100%;
+}
+.rag-ck-param input[type="number"]:focus { outline: none; border-color: var(--rp-ink); }
+.rag-ck-param-bool { flex-direction: row; align-items: center; gap: 8px; font-size: 12px; color: var(--rp-ink-2); cursor: pointer; }
+.rag-ck-param-bool input { accent-color: var(--rp-ink); }
+.rag-ck-noparams { font-size: 12px; color: var(--rp-ink-3); }
+
+.rag-ck-doclist { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.rag-ck-doc {
+  border: 1px solid var(--rp-line); border-radius: 11px; padding: 11px 12px;
+  background: #fff; transition: border-color .12s, box-shadow .12s;
+}
+.rag-ck-doc:hover { border-color: #D7DCE1; box-shadow: 0 3px 10px rgba(15,27,45,.04); }
+.rag-ck-doc-head { display: flex; align-items: center; gap: 10px; }
+.rag-ck-doc-ft {
+  flex: none; min-width: 42px; text-align: center;
+  font: 700 9px system-ui, sans-serif; letter-spacing: .4px;
+  color: var(--rp-ink-2); background: #F1F3F5; border-radius: 6px; padding: 5px 6px;
+}
+.rag-ck-doc-info { flex: 1; min-width: 0; }
+.rag-ck-doc-name { font: 500 13px system-ui, sans-serif; color: var(--rp-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rag-ck-doc-note { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--rp-ink-3); margin-top: 3px; }
+.rag-ck-dot { width: 6px; height: 6px; border-radius: 50%; background: #CBD2D9; flex: none; }
+.rag-ck-dot.ok { background: #16a34a; }
+.rag-ck-dot.busy { background: #E0A83B; }
+/* per-document strategy dropdown — constrained so it isn't oversized */
+.rag-ck-select-doc { flex: 0 0 auto; width: 188px; padding: 7px 9px; font-size: 12.5px; }
+.rag-ck-doc-params { margin-top: 11px; padding-top: 11px; border-top: 1px dashed var(--rp-line); }
+
 /* ─── Provider list with logos (LLM selector) ─── */
 .rag-cfg-provider-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; margin-top: 6px; }
 .rag-cfg-provider { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--rp-line); border-radius: 10px; background: #fff; cursor: pointer; font-size: 13px; color: var(--rp-ink); text-align: left; width: 100%; transition: all 0.12s; }

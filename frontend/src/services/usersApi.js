@@ -25,7 +25,13 @@ export const activateUser = (token, name, password) =>
 export const listUsers = () => request("GET", "/users/");
 export const updateUser = (userId, data) =>
   request("PUT", `/users/${userId}`, data);
-export const deleteUser = (userId) => request("DELETE", `/users/${userId}`);
+// Preview a user's owned RAG spaces + eligible transfer targets before deletion
+export const getUserTransferInfo = (userId) =>
+  request("GET", `/users/${userId}/transfer-info`);
+// deleteUser optionally carries a { transfers: {deptKey: targetItId} } map.
+// Always send a JSON object ({} when no transfers) so the DELETE body parses.
+export const deleteUser = (userId, body = {}) =>
+  request("DELETE", `/users/${userId}`, body);
 export const resendInvite = (userId) =>
   request("POST", `/users/${userId}/resend`);
 

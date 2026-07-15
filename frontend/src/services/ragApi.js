@@ -28,10 +28,52 @@ export const getSpace = (id) => req("GET", `/rag/spaces/${id}`);
 export const updateSpace = (id, d) => req("PUT", `/rag/spaces/${id}`, d);
 export const deleteSpace = (id) => req("DELETE", `/rag/spaces/${id}`);
 
+// ── Versioning + deploy lifecycle ──
+export const listVersions = (id) => req("GET", `/rag/spaces/${id}/versions`);
+export const saveVersion = (id, { label, notes } = {}) =>
+  req("POST", `/rag/spaces/${id}/versions`, { label, notes });
+export const applyVersion = (id, vid) =>
+  req("POST", `/rag/spaces/${id}/versions/${vid}/apply`);
+export const deployVersion = (id, vid, publish = false) =>
+  req("POST", `/rag/spaces/${id}/versions/${vid}/deploy`, { publish });
+export const deleteVersion = (id, vid) =>
+  req("DELETE", `/rag/spaces/${id}/versions/${vid}`);
+export const deployCurrent = (id, { label, notes, publish = false } = {}) =>
+  req("POST", `/rag/spaces/${id}/deploy`, { label, notes, publish });
+export const setPublish = (id, isPrivate) =>
+  req("PUT", `/rag/spaces/${id}/publish`, { is_private: isPrivate });
+export const pauseDeployment = (id) => req("POST", `/rag/spaces/${id}/pause`);
+
 // ── Documents ──
 export const listDocuments = (s) => req("GET", `/rag/spaces/${s}/documents`);
 export const deleteDocument = (s, d) =>
   req("DELETE", `/rag/spaces/${s}/documents/${d}`);
+
+// End-user-facing (access-checked) document list for a deployed space
+export const listPublicDocuments = (s) =>
+  req("GET", `/rag/spaces/${s}/public-documents`);
+
+// Fetch the original file as a blob URL for inline viewing. The file route
+// requires the auth cookie, and a bare cross-origin <iframe src> won't send it
+// reliably — so we fetch with credentials and hand the object URL to the viewer.
+// Caller must URL.revokeObjectURL(url) when done.
+export const fetchDocumentBlobUrl = async (spaceId, docId) => {
+  const res = await fetch(
+    `${BASE}/rag/spaces/${spaceId}/documents/${docId}/file`,
+    { credentials: "include" },
+  );
+  if (!res.ok) {
+    let detail = "File load failed";
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(detail);
+  }
+  const blob = await res.blob();
+  return { url: URL.createObjectURL(blob), type: blob.type };
+};
 
 // ── Upload (multipart) ──
 export const uploadDocument = async (spaceId, file) => {
@@ -127,6 +169,10 @@ export const getEmbeddingModels = () => req("GET", "/models/embeddings");
 // Modèles d'un provider LLM (GROQ / OLLAMA / OPENAI), récupérés en direct
 export const getLLMModels = (provider) =>
   req("GET", `/models/llm/${provider}`);
-// Définir la stratégie de chunking d'un document (mode PER_DOCUMENT)
-export const setDocumentStrategy = (spaceId, docId, strategy) =>
-  req("PUT", `/rag/spaces/${spaceId}/documents/${docId}/strategy`, { strategy });
+// ── Chunking catalog (per-format strategies + tunable params) ──
+export const getChunkingCatalog = (fileType) =>
+  req("GET", `/rag/chunking/catalog${fileType ? `?file_type=${fileType}` : ""}`);
+
+// Set a document's chunking strategy + params (mode PER_DOCUMENT)
+export const setDocumentChunking = (spaceId, docId, strategy, params) =>
+  req("PUT", `/rag/spaces/${spaceId}/documents/${docId}/chunking`, { strategy, params });

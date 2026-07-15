@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     MAIL_FROM: str
     MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_PORT: int = 587
+    # Public URL of the frontend — used to build activation / reset links in
+    # emails. Read from .env (FRONTEND_URL). MUST be a real reachable URL in
+    # production (e.g. https://app.com), otherwise invites get a dead link.
+    FRONTEND_URL: str
 
     # Groq (LLM provider — key comes from an admin/own-key provider now)
     GROQ_API_KEY: str = ""
