@@ -73,7 +73,14 @@ def _caption_text(item, doc):
 
 def docling_to_parsed_document(result, file_type="PDF", category="document",
                                metadata=None, ro_start=0, heading_stack=None,
-                               extract_images=True):
+                               extract_images=True, page_offset=0):
+    """Convert a Docling result → ParsedDocument.
+
+    page_offset: added to every page number so that, when a large PDF is parsed
+    in batches, image filenames use the GLOBAL page number. Without it, each
+    batch restarts page numbering at 1 and later batches overwrite earlier
+    batches' image files (missing / duplicated images).
+    """
     doc = result.document
 
     # ── Element-based output (new schema), built in the SAME pass ──
@@ -121,6 +128,7 @@ def docling_to_parsed_document(result, file_type="PDF", category="document",
     current_lines = []
     current_page = 1
     img_counter = 0
+    seen_images = set()   # (global_page, bbox) → de-dupe pictures Docling yields twice
 
     # Determine image save directory from file_path
     file_path = (metadata or {}).get("file_path", "")
@@ -159,6 +167,9 @@ def docling_to_parsed_document(result, file_type="PDF", category="document",
                         bbox = []
                 break
 
+        # global page number (batch-local page + this batch's offset)
+        gpage = page + page_offset
+
         # ── IMAGE ──
         if class_name == "PictureItem" or label in ("picture", "figure"):
             # Image extraction disabled for this doc → skip entirely: don't save
@@ -166,6 +177,12 @@ def docling_to_parsed_document(result, file_type="PDF", category="document",
             # anyway and only dropped afterward, leaving files + elements behind).
             if not extract_images:
                 continue
+            # De-dupe: some PDFs surface the same picture twice (same page+bbox).
+            if bbox:
+                dkey = (gpage, tuple(round(x, 1) for x in bbox))
+                if dkey in seen_images:
+                    continue
+                seen_images.add(dkey)
             img_counter += 1
             caption = ""
             ocr_text = ""
@@ -194,12 +211,13 @@ def docling_to_parsed_document(result, file_type="PDF", category="document",
                 except Exception:
                     pass
 
-            # Save image to disk if possible
+            # Save image to disk if possible. Filename uses the GLOBAL page so
+            # batches never overwrite each other (was the missing/duplicate bug).
             if images_dir:
                 try:
-                    image_path = _save_image(item, doc, images_dir, page, img_counter)
+                    image_path = _save_image(item, doc, images_dir, gpage, img_counter)
                 except Exception as e:
-                    logger.warning(f"Could not save image {img_counter}: {e}")
+                    logger.warning(f"Could not save image p{gpage} #{img_counter}: {e}")
 
             # Only add if we have SOME text (caption or OCR)
             if caption or ocr_text:

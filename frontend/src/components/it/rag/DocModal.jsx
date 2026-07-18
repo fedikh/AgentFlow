@@ -16,7 +16,9 @@ const DocModal = ({
   saveEdit,
   editField,
   removeBlock,
+  moveBlock = () => {},
   addSection,
+  addTable = () => {},
   addImage = () => {},
   uploadingImage = false,
   spaceId,
@@ -25,8 +27,12 @@ const DocModal = ({
   if (!modal) return null;
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+  // Web images are external URLs → use them directly; local file paths go
+  // through the server's image endpoint.
   const imgUrl = (path) =>
-    `${API}/rag/spaces/${spaceId}/image?path=${encodeURIComponent(path || "")}`;
+    /^https?:\/\//i.test(path || "")
+      ? path
+      : `${API}/rag/spaces/${spaceId}/image?path=${encodeURIComponent(path || "")}`;
 
   return (
     <div
@@ -136,9 +142,10 @@ const DocModal = ({
               {editMode && editDoc ? (
                 <>
                   <div className="rag-edit-note">
-                    Edit sections, tables and images below. Saving keeps the
-                    document at <strong>Parsed</strong> — re-process to rebuild
-                    chunks from your changes.
+                    Edit the text, fix headings/pages, reorder with ▲▼, or add /
+                    remove blocks. Saving keeps the document at{" "}
+                    <strong>Parsed</strong> — then <strong>Process</strong> to
+                    rebuild the chunks from your edits.
                   </div>
                   <input
                     className="rag-edit-input"
@@ -158,12 +165,30 @@ const DocModal = ({
                     <div key={`es${i}`} className="rag-block">
                       <div className="rag-block-header">
                         <span className="rag-block-tag">Section {i + 1}</span>
-                        <button
-                          className="rag-btn rag-btn-xs rag-btn-red"
-                          onClick={() => removeBlock("sections", i)}
-                        >
-                          Remove
-                        </button>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button
+                            className="rag-btn rag-btn-xs"
+                            title="Move up"
+                            disabled={i === 0}
+                            onClick={() => moveBlock("sections", i, -1)}
+                          >
+                            ▲
+                          </button>
+                          <button
+                            className="rag-btn rag-btn-xs"
+                            title="Move down"
+                            disabled={i === (editDoc.parsed_document.sections?.length || 0) - 1}
+                            onClick={() => moveBlock("sections", i, 1)}
+                          >
+                            ▼
+                          </button>
+                          <button
+                            className="rag-btn rag-btn-xs rag-btn-red"
+                            onClick={() => removeBlock("sections", i)}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                       <input
                         className="rag-edit-input"
@@ -344,6 +369,9 @@ const DocModal = ({
                     <button className="rag-btn rag-btn-sm" onClick={addSection}>
                       + Add section
                     </button>
+                    <button className="rag-btn rag-btn-sm" onClick={addTable}>
+                      + Add table
+                    </button>
                     <label
                       className="rag-btn rag-btn-sm"
                       style={{ cursor: uploadingImage ? "default" : "pointer" }}
@@ -374,6 +402,8 @@ const DocModal = ({
                     {JSON.stringify(modalData.parsed_document, null, 2)}
                   </pre>
                 </div>
+              ) : modalData.parsed_document?.elements?.length ? (
+                <OrderedBlocks doc={modalData.parsed_document} imgUrl={imgUrl} />
               ) : (
                 <>
                   {modalData.parsed_document?.sections?.map((sec, i) => (
@@ -454,7 +484,7 @@ const DocModal = ({
                         }}
                       >
                         <img
-                          src={`${import.meta.env.VITE_API_URL || "http://localhost:8000/api"}/rag/spaces/${spaceId}/image?path=${encodeURIComponent(img.image_path)}`}
+                          src={imgUrl(img.image_path)}
                           alt={`Image page ${img.page}`}
                           style={{
                             width: 160,
@@ -1158,6 +1188,128 @@ function renderElementContent(el, imgUrl) {
     );
   }
   return null;
+}
+
+// Blocks view rendered from elements[] in READING ORDER, so images / tables /
+// code appear in their correct place (not dumped at the end). Consecutive text
+// is grouped under its heading into a section card.
+function OrderedBlocks({ doc, imgUrl }) {
+  const els = [...(doc?.elements || [])].sort(
+    (a, b) => (a.metadata?.reading_order || 0) - (b.metadata?.reading_order || 0),
+  );
+  const blocks = [];
+  let cur = null;
+  const flush = () => {
+    if (cur && (cur.heading || cur.lines.length)) {
+      blocks.push({ kind: "section", ...cur, content: cur.lines.join("\n") });
+    }
+    cur = null;
+  };
+  for (const el of els) {
+    const t = el.type;
+    const c = el.content || {};
+    const page = el.location?.page;
+    if (t === "heading") {
+      flush();
+      cur = { heading: c.text || "", level: el.level || 1, page, lines: [] };
+    } else if (t === "paragraph" || t === "list_item" || t === "quote") {
+      if (!cur) cur = { heading: "", level: 1, page, lines: [] };
+      cur.lines.push((t === "list_item" ? "• " : "") + (c.text || ""));
+    } else if (t === "table") {
+      flush();
+      blocks.push({ kind: "table", el, page });
+    } else if (t === "image") {
+      flush();
+      blocks.push({ kind: "image", el, page });
+    } else if (t === "code") {
+      flush();
+      blocks.push({ kind: "code", el, page });
+    }
+  }
+  flush();
+
+  return blocks.map((b, i) => {
+    if (b.kind === "table") {
+      return (
+        <div key={i} className="rag-block rag-block-table">
+          <div className="rag-block-header">
+            <span className="rag-block-tag" style={{ background: "#FEF3C7", color: "#92400E" }}>
+              Table
+            </span>
+            <span className="rag-block-meta">p.{b.page}</span>
+          </div>
+          <TableBlock content={b.el.content || {}} />
+        </div>
+      );
+    }
+    if (b.kind === "code") {
+      return (
+        <div key={i} className="rag-block">
+          <div className="rag-block-header">
+            <span className="rag-block-tag" style={{ background: "#CCFBF1", color: "#0F766E" }}>
+              Code
+            </span>
+            <span className="rag-block-meta">p.{b.page}</span>
+          </div>
+          {renderElementContent(b.el, imgUrl)}
+        </div>
+      );
+    }
+    if (b.kind === "image") {
+      const c = b.el.content || {};
+      return (
+        <div key={i} className="rag-block">
+          <div className="rag-block-header">
+            <span className="rag-block-tag" style={{ background: "#F3E8FF", color: "#7C3AED" }}>
+              Image
+            </span>
+            <span className="rag-block-meta">p.{b.page}</span>
+          </div>
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+            <img
+              src={c.src || imgUrl(c.image_path)}
+              alt={c.caption || "image"}
+              style={{
+                width: 160, height: 160, objectFit: "contain", borderRadius: 8,
+                background: "#F8FAFC", border: "1px solid #F1F1F1", flexShrink: 0,
+              }}
+              onError={(e) => { e.target.style.opacity = 0.2; }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {c.text_for_embedding ? (
+                <div style={{ fontSize: 13, lineHeight: 1.6 }}>{c.text_for_embedding}</div>
+              ) : c.caption ? (
+                <div style={{ fontSize: 13 }}>{c.caption}</div>
+              ) : (
+                <div style={{ fontSize: 13, color: "#9CA3AF" }}>No description</div>
+              )}
+              {c.ocr_text && (
+                <div style={{ fontSize: 12, color: "#525252", marginTop: 6 }}>OCR: {c.ocr_text}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // section (grouped text under a heading)
+    return (
+      <div key={i} className="rag-block">
+        <div className="rag-block-header">
+          <div className="rag-heading-tag">
+            <span className="rag-block-tag">Section</span>
+            {b.heading && (
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{b.heading}</span>
+            )}
+            {b.level ? <span className="rag-h-level">H{b.level}</span> : null}
+          </div>
+          <span className="rag-block-meta">
+            p.{b.page} · {b.content.length}c
+          </span>
+        </div>
+        <pre className="rag-block-content">{b.content}</pre>
+      </div>
+    );
+  });
 }
 
 function LoadedView({ data }) {

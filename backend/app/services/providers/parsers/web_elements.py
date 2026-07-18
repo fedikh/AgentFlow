@@ -64,6 +64,42 @@ def _code_lang(node):
     return ""
 
 
+def _srcset_best(v):
+    """Largest candidate from a srcset ('u1 320w, u2 640w' | 'u1 1x, u2 2x')."""
+    if not v:
+        return ""
+    cands = [p.strip().split()[0] for p in v.split(",") if p.strip()]
+    return cands[-1] if cands else ""
+
+
+def _img_src(img):
+    """Best REAL image URL — lazy-load aware. Modern pages put the real URL in
+    srcset / data-src / data-original while `src` is a 1x1 or data: placeholder.
+    Prefer a genuine http(s)/relative URL over any data: placeholder."""
+    candidates = [
+        img.get("src"), img.get("data-src"), img.get("data-lazy-src"),
+        img.get("data-original"), img.get("data-lazy"),
+        _srcset_best(img.get("srcset")), _srcset_best(img.get("data-srcset")),
+    ]
+    real = [c.strip() for c in candidates if c and c.strip()]
+    for c in real:
+        if not c.lower().startswith("data:"):
+            return c
+    return ""
+
+
+def _img_is_tiny(img):
+    """True if width/height attributes mark this as an icon/tracking pixel."""
+    for attr in ("width", "height"):
+        v = img.get(attr)
+        try:
+            if v and int(str(v).lower().replace("px", "").strip()) <= 32:
+                return True
+        except (ValueError, TypeError):
+            pass
+    return False
+
+
 def build_web_elements(html, base_url=None):
     """Return (elements, images, links, metadata, text_repr)."""
     from bs4 import BeautifulSoup
@@ -78,6 +114,7 @@ def build_web_elements(html, base_url=None):
 
     elements, images, links, text_lines = [], [], [], []
     seen_links = set()
+    seen_srcs = set()
     ro = {"n": 0}
 
     def emit(etype, content, level=None, list_level=None):
@@ -104,10 +141,13 @@ def build_web_elements(html, base_url=None):
                 links.append({"text": text, "url": href})
 
     def emit_image(img, caption=""):
-        src = img.get("src") or img.get("data-src") or ""
-        if not src:
+        src = _img_src(img)                 # lazy-load aware (srcset/data-src/…)
+        if not src or _img_is_tiny(img):    # skip placeholders / icons / pixels
             return
-        src = urljoin(base_url or "", src.strip())
+        src = urljoin(base_url or "", src)
+        if src in seen_srcs:                 # already emitted (inline pass)
+            return
+        seen_srcs.add(src)
         alt = (img.get("alt") or "").strip()
         cap = (caption or alt or "").strip()
         emit("image", {"src": src, "alt": alt, "caption": cap,
@@ -144,6 +184,13 @@ def build_web_elements(html, base_url=None):
         emit("table", {"caption": "", "headers": headers, "rows": rows, "markdown": "\n".join(md)})
         text_lines.append("\n".join(md))
 
+    def emit_inner_images(node):
+        """Emit images nested inside a text block (p / li / table / quote) at
+        their position, so images keep their reading order instead of being
+        appended at the end."""
+        for im in node.find_all("img"):
+            emit_image(im)
+
     def emit_list(lst, depth):
         for li in lst.find_all("li", recursive=False):
             nested = li.find_all(["ul", "ol"], recursive=False)
@@ -154,6 +201,7 @@ def build_web_elements(html, base_url=None):
             if text:
                 emit("list_item", {"text": text}, list_level=depth)
                 text_lines.append(text)
+            emit_inner_images(li)
             for n in nested:
                 emit_list(n, depth + 1)
 
@@ -177,12 +225,19 @@ def build_web_elements(html, base_url=None):
                 if t:
                     emit("paragraph", {"text": t})
                     text_lines.append(t)
+                emit_inner_images(child)      # images inside <p>, in place
             elif name in ("ul", "ol"):
                 emit_list(child, 1)
             elif name == "table":
                 emit_table(child)
+                emit_inner_images(child)      # images inside table cells, in place
             elif name == "pre":
-                code = child.get_text("\n").rstrip()
+                # NO separator: a "\n" separator inserts a newline between EVERY
+                # text node, which shreds syntax-highlighted code (each token is
+                # a <span>). Empty separator preserves the source's own whitespace.
+                for br in child.find_all("br"):
+                    br.replace_with("\n")
+                code = child.get_text().rstrip()
                 if code.strip():
                     emit("code", {"text": code, "language": _code_lang(child)})
                     text_lines.append(code)
@@ -191,6 +246,7 @@ def build_web_elements(html, base_url=None):
                 if t:
                     emit("quote", {"text": t})
                     text_lines.append(t)
+                emit_inner_images(child)
             elif name == "img":
                 emit_image(child)
             elif name == "figure":
@@ -202,4 +258,11 @@ def build_web_elements(html, base_url=None):
                 walk(child)   # recurse into containers (div/section/span/…)
 
     walk(root)
+
+    # Safety net: catch any image the structural walk still missed (unusual
+    # nesting). Dedup by src keeps everything already emitted inline at its
+    # correct reading-order position; only genuinely-missed images append here.
+    for im in root.find_all("img"):
+        emit_image(im)
+
     return elements, images, links, meta, "\n\n".join(text_lines)

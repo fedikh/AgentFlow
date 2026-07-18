@@ -42,7 +42,9 @@ from app.services.providers.loaders._utils import validate_url, get_url_filename
 from app.services.providers.parsers import parse_document as li_parse_document
 
 # ── Chunking factory ──
-from app.services.providers.chunking_factory import chunk_document, resolve_config
+from app.services.providers.chunking_factory import (
+    chunk_document, resolve_config, needs_llm, inject_llm_access,
+)
 
 # ── LLM Factory (NEW) — replaces the hardcoded Groq generate_answer ──
 from app.services.llm_factory import generate_answer
@@ -276,9 +278,10 @@ def _load_json(raw):
 
 
 def _norm_chunk_mode(mode) -> str:
-    """Legacy FIXED_ALL/ADAPTIVE → SINGLE; PER_DOCUMENT preserved."""
-    m = _strval(mode) or "SINGLE"
-    m = m.upper()
+    """SINGLE (default) | PER_DOCUMENT | AGENTIC. Legacy FIXED_ALL/ADAPTIVE → SINGLE."""
+    m = (_strval(mode) or "SINGLE").upper()
+    if m == "AGENTIC":
+        return "AGENTIC"
     return "PER_DOCUMENT" if m in ("PER_DOCUMENT", "PER_DOC") else "SINGLE"
 
 
@@ -294,7 +297,9 @@ def _space_dict(db, space, user=None):
         "owner_id": getattr(space, "owner_id", None),
         "is_private": bool(getattr(space, "is_private", False)),
         "deployed_version_id": getattr(space, "deployed_version_id", None),
-        "reindex_required": bool(getattr(space, "reindex_required", False)),
+        # Only meaningful when there IS an index to be stale — never surface the
+        # "re-index needed" banner on a space with nothing indexed yet.
+        "reindex_required": bool(getattr(space, "reindex_required", False)) and num_chunks > 0,
         "version_count": db.query(RAGSpaceVersion).filter(
             RAGSpaceVersion.rag_space_id == space.id
         ).count(),
@@ -377,17 +382,35 @@ _INDEX_COLUMNS = [
 ]
 
 
+def _canon(v) -> str:
+    """Canonical string for fingerprint comparison. JSON fields are compared by
+    VALUE (key order / whitespace ignored) and empty forms are unified, so that
+    re-saving the SAME config (which re-serializes the JSON in a possibly
+    different order) is not mistaken for a real change."""
+    if v is None:
+        return ""
+    s = str(v).strip()
+    if s in ("", "{}", "[]", "null", "None"):
+        return ""
+    if s[:1] in ("{", "["):          # a JSON blob → normalize key order
+        try:
+            return json.dumps(json.loads(s), sort_keys=True, separators=(",", ":"))
+        except Exception:
+            return s
+    return s
+
+
 def _index_fp(space) -> tuple:
     """Fingerprint of the index-relevant config; compare before/after an edit to
     decide whether a re-index is actually required."""
-    return tuple(str(getattr(space, c, None)) for c in _INDEX_COLUMNS)
+    return tuple(_canon(getattr(space, c, None)) for c in _INDEX_COLUMNS)
 
 
 def _config_fp(space) -> tuple:
     """Fingerprint of the FULL pipeline config (index + query-time). Used to tell
     whether an edit changed the pipeline — a change is not allowed while a space
     is deployed (live); the owner must 'Stop to edit' first."""
-    return tuple(str(getattr(space, c, None)) for c in _VERSION_CONFIG_COLUMNS)
+    return tuple(_canon(getattr(space, c, None)) for c in _VERSION_CONFIG_COLUMNS)
 
 
 def _snapshot_config(space: RAGSpace) -> dict:
@@ -731,8 +754,13 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
             "This space is deployed and live. Click 'Stop to edit' before changing its configuration.",
         )
 
-    # Flag a re-index only if an index-relevant value actually changed.
-    if _index_fp(space) != _fp_before:
+    # Flag a re-index only if an index-relevant value ACTUALLY changed AND there
+    # is an index to become stale. On a space with nothing indexed there's no
+    # drift, so never raise the banner (and clear any leftover flag).
+    has_index = db.query(Chunk).filter(Chunk.rag_space_id == space.id).first() is not None
+    if not has_index:
+        space.reindex_required = False
+    elif _index_fp(space) != _fp_before:
         space.reindex_required = True
 
     db.commit()
@@ -1181,7 +1209,13 @@ def load_and_parse_document(db, space_id, doc_id, org_id):
                     from app.services.providers.parsers._docling import _get_images_dir
                     _safe_rmtree(_get_images_dir(file_path), space_id)
                 elif pd.images:
-                    n = summarize_images_in_parsed(pd)   # appelle Gemini par image
+                    # Web images are referenced by URL → opt-in URL summarizer
+                    # (WEB_IMAGE_VISION); other formats use the local-file one.
+                    if str(getattr(pd, "category", "")).lower() == "web":
+                        from app.services.providers.parsers.image_summarizer import summarize_web_images_in_parsed
+                        n = summarize_web_images_in_parsed(pd)
+                    else:
+                        n = summarize_images_in_parsed(pd)   # appelle Gemini par image
                     logger.info(f"[LOAD+PARSE] {doc.file_name}: summarized {n}/{len(pd.images)} image(s)")
                     parsed_doc_data = pd.to_dict()        # re-sérialise AVEC les résumés
             except Exception as img_err:
@@ -1231,12 +1265,12 @@ def load_and_parse_all(db, space_id, org_id):
 # ══════════════════════════════════════════════════════
 
 def _ingest_url(db: Session, space_id: str, url: str, source_type: str = "url",
-                render: bool = True) -> Document:
+                render: bool = True, extract_images: bool = True) -> Document:
     """Fetch one URL → save raw HTML → LOADED. Returns the Document (raises on error)."""
     url = validate_url(url)
     doc = Document(
         file_name=get_url_filename(url), file_type="html", file_size=0,
-        source_type=source_type, source_url=url,
+        source_type=source_type, source_url=url, extract_images=bool(extract_images),
         status=DocStatus.UPLOADING, rag_space_id=space_id,
     )
     db.add(doc)
@@ -1267,23 +1301,25 @@ def _ingest_url(db: Session, space_id: str, url: str, source_type: str = "url",
         raise
 
 
-async def upload_from_url(db: Session, space_id: str, org_id: str, url: str) -> dict:
+async def upload_from_url(db: Session, space_id: str, org_id: str, url: str,
+                          extract_images: bool = True) -> dict:
     _find_space(db, space_id, org_id)
     try:
-        doc = _ingest_url(db, space_id, url, "url", render=True)
+        doc = _ingest_url(db, space_id, url, "url", render=True, extract_images=extract_images)
     except Exception as e:
         raise HTTPException(500, f"Scraping failed: {str(e)}")
     return _doc_dict(doc)
 
 
 def _ingest_urls(db: Session, space_id: str, org_id: str, urls: list,
-                 source_type: str) -> dict:
+                 source_type: str, extract_images: bool = True) -> dict:
     """Batch-ingest a list of URLs (fast requests fetch). Returns per-URL results."""
     _find_space(db, space_id, org_id)
     results = []
     for url in urls:
         try:
-            doc = _ingest_url(db, space_id, url, source_type, render=False)
+            doc = _ingest_url(db, space_id, url, source_type, render=False,
+                              extract_images=extract_images)
             results.append({"url": url, "document_id": doc.id, "status": "LOADED"})
         except Exception as e:
             results.append({"url": url, "status": "ERROR", "error": str(e)[:200]})
@@ -1292,7 +1328,7 @@ def _ingest_urls(db: Session, space_id: str, org_id: str, urls: list,
 
 
 def ingest_raw_html(db: Session, space_id: str, org_id: str, html: str,
-                    name: str = None) -> dict:
+                    name: str = None, extract_images: bool = True) -> dict:
     """Ingest pasted raw HTML → LOADED (parsed on the Parse step)."""
     _find_space(db, space_id, org_id)
     if not html or not html.strip():
@@ -1304,6 +1340,7 @@ def ingest_raw_html(db: Session, space_id: str, org_id: str, html: str,
     fname = name or ((title[:60] + ".html") if title else "raw.html")
 
     doc = Document(file_name=fname, file_type="html", source_type="raw_html",
+                   extract_images=bool(extract_images),
                    status=DocStatus.UPLOADING, rag_space_id=space_id)
     db.add(doc)
     db.commit()
@@ -1335,33 +1372,35 @@ def ingest_raw_html(db: Session, space_id: str, org_id: str, html: str,
 
 
 def crawl_website(db: Session, space_id: str, org_id: str, url: str,
-                  max_depth: int = 2, max_pages: int = 50) -> dict:
+                  max_depth: int = 2, max_pages: int = 50,
+                  extract_images: bool = True) -> dict:
     _find_space(db, space_id, org_id)
     from app.services.providers.loaders.web.discovery import crawl_website as discover
     urls = discover(validate_url(url), max_depth=max_depth, max_pages=min(max_pages, 200))
     if not urls:
         raise HTTPException(400, "No pages discovered at that URL")
-    return _ingest_urls(db, space_id, org_id, urls, "crawl")
+    return _ingest_urls(db, space_id, org_id, urls, "crawl", extract_images=extract_images)
 
 
 def ingest_sitemap(db: Session, space_id: str, org_id: str, url: str,
-                   max_pages: int = 100) -> dict:
+                   max_pages: int = 100, extract_images: bool = True) -> dict:
     _find_space(db, space_id, org_id)
     from app.services.providers.loaders.web.discovery import discover_sitemap
     urls = discover_sitemap(validate_url(url), max_pages=min(max_pages, 500))
     if not urls:
         raise HTTPException(400, "No URLs found in sitemap")
-    return _ingest_urls(db, space_id, org_id, urls, "sitemap")
+    return _ingest_urls(db, space_id, org_id, urls, "sitemap", extract_images=extract_images)
 
 
 def ingest_rss(db: Session, space_id: str, org_id: str, url: str,
-               max_items: int = 50) -> dict:
+               max_items: int = 50, extract_images: bool = True) -> dict:
     _find_space(db, space_id, org_id)
     from app.services.providers.loaders.web.discovery import discover_rss
     articles = discover_rss(validate_url(url), max_items=min(max_items, 200))
     if not articles:
         raise HTTPException(400, "No articles found in feed")
-    res = _ingest_urls(db, space_id, org_id, [a["url"] for a in articles], "rss")
+    res = _ingest_urls(db, space_id, org_id, [a["url"] for a in articles], "rss",
+                       extract_images=extract_images)
     res["articles"] = articles
     return res
 
@@ -1474,6 +1513,95 @@ def get_extracted_content(db: Session, space_id: str, doc_id: str, org_id: str) 
         "ocr_issues": parsed_data.get("ocr_issues", []),
     }
 
+def _rebuild_elements_from_blocks(parsed) -> list:
+    """Rebuild the reading-ordered elements[] from the (edited) sections/tables/
+    images, PRESERVING the original reading order so images/tables stay in place
+    instead of being dumped at the end. Chunking consumes elements FIRST, so the
+    edits must reach it — but the order must survive too.
+
+    Strategy: replay the PRE-EDIT elements[] (which still has the true order) and,
+    as we hit each heading / table / image slot, emit the corresponding EDITED
+    block. Images match by path, tables/sections match by their sequence. Blocks
+    added during editing (with no original slot) are appended at the end.
+    """
+    from collections import deque
+
+    old = sorted(parsed.elements or [],
+                 key=lambda e: (e.get("metadata") or {}).get("reading_order", 0))
+
+    sec_q = deque(parsed.sections or [])
+    tbl_q = deque(parsed.tables or [])
+    img_q = {}
+    for im in (parsed.images or []):
+        img_q.setdefault(im.image_path or "", deque()).append(im)
+
+    els, ro, stack = [], 0, []
+
+    def emit(etype, content, page, level=None):
+        nonlocal ro
+        ro += 1
+        eid = f"e{ro}"
+        if etype == "heading":
+            lvl = level or 1
+            while stack and stack[-1][0] >= lvl:
+                stack.pop()
+            parent = stack[-1][1] if stack else None
+            stack.append((lvl, eid))
+        else:
+            parent = stack[-1][1] if stack else None
+        el = {"id": eid, "type": etype, "content": content,
+              "location": {"page": page or 1, "bbox": []},
+              "hierarchy": {"parent": parent},
+              "metadata": {"reading_order": ro}}
+        if level is not None:
+            el["level"] = level
+        els.append(el)
+
+    def emit_section(s):
+        if getattr(s, "heading", ""):
+            emit("heading", {"text": s.heading}, s.page, level=getattr(s, "level", 1) or 1)
+        if getattr(s, "content", ""):
+            emit("paragraph", {"text": s.content}, s.page)
+
+    def emit_table(t):
+        emit("table", {"markdown": t.content or "", "headers": t.headers or [], "rows": []}, t.page)
+
+    def emit_image(im):
+        emit("image", {"image_path": im.image_path or "", "caption": im.caption or "",
+                       "text_for_embedding": getattr(im, "text_for_embedding", "") or "",
+                       "ocr_text": im.ocr_text or ""}, im.page)
+
+    # Intro section (text before the first heading) has an empty heading.
+    if sec_q and not (getattr(sec_q[0], "heading", "") or "").strip():
+        emit_section(sec_q.popleft())
+
+    for el in old:
+        t = el.get("type")
+        if t == "heading":
+            if sec_q:
+                emit_section(sec_q.popleft())
+        elif t == "table":
+            if tbl_q:
+                emit_table(tbl_q.popleft())
+        elif t == "image":
+            c = el.get("content") or {}
+            src = c.get("image_path") or c.get("src") or ""
+            q = img_q.get(src)
+            if q:
+                emit_image(q.popleft())
+
+    # Anything left (blocks added during editing, or docs that had no elements[])
+    # is appended at the end, in its list order.
+    while sec_q:
+        emit_section(sec_q.popleft())
+    while tbl_q:
+        emit_table(tbl_q.popleft())
+    for q in img_q.values():
+        while q:
+            emit_image(q.popleft())
+    return els
+
+
 def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: str, data) -> dict:
     from app.services.providers.parsers.parsed_document import ParsedDocument
 
@@ -1489,12 +1617,13 @@ def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: st
     payload = data.dict(exclude_unset=True)
     if "title" in payload and payload["title"] is not None:
         existing["title"] = payload["title"]
+    blocks_edited = False
     if "sections" in payload:
-        existing["sections"] = payload["sections"]
+        existing["sections"] = payload["sections"]; blocks_edited = True
     if "tables" in payload:
-        existing["tables"] = payload["tables"]
+        existing["tables"] = payload["tables"]; blocks_edited = True
     if "images" in payload:
-        existing["images"] = payload["images"]
+        existing["images"] = payload["images"]; blocks_edited = True
     if "metadata" in payload and payload["metadata"] is not None:
         existing["metadata"] = payload["metadata"]
 
@@ -1502,6 +1631,11 @@ def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: st
         parsed_doc = ParsedDocument.from_dict(existing)
     except Exception as e:
         raise HTTPException(422, f"Invalid ParsedDocument structure: {str(e)}")
+
+    # CRITICAL: chunking reads elements[] first, so regenerate it from the edited
+    # blocks — otherwise the edits never reach the index on re-process.
+    if blocks_edited:
+        parsed_doc.elements = _rebuild_elements_from_blocks(parsed_doc)
 
     doc.extracted_content = json.dumps(parsed_doc.to_dict(), ensure_ascii=False)
     doc.status = DocStatus.EXTRACTED
@@ -1538,9 +1672,12 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
         db.query(Chunk).filter(Chunk.document_id == doc.id).delete()
         db.flush()
 
-        # Per-format chunking: pick strategy+params (SINGLE vs PER_DOCUMENT),
-        # chunk the rich element schema.
+        # Per-format chunking: pick strategy+params (SINGLE vs PER_DOCUMENT vs
+        # AGENTIC), chunk the rich element schema. LLM / agentic strategies get
+        # an OpenAI access config injected here (they degrade gracefully if none).
         cfg = resolve_config(space, doc)
+        if needs_llm(cfg):
+            inject_llm_access(db, space, cfg)
         chunks = chunk_document(parsed_doc, cfg)
         if not chunks:
             raise Exception("No chunks generated")
@@ -1581,9 +1718,18 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
 
 def process_all_documents(db: Session, space_id: str, org_id: str) -> dict:
     space = _find_space(db, space_id, org_id)
+
+    # Which documents to (re)build:
+    #   - normally, only the not-yet-indexed (EXTRACTED) documents;
+    #   - but when a re-index is required (config drift), rebuild the already-
+    #     INDEXED ones too — otherwise "Re-index now" would clear the flag without
+    #     actually rebuilding the stale index.
+    statuses = [DocStatus.EXTRACTED]
+    if getattr(space, "reindex_required", False):
+        statuses.append(DocStatus.INDEXED)
     docs = db.query(Document).filter(
         Document.rag_space_id == space_id,
-        Document.status == DocStatus.EXTRACTED,
+        Document.status.in_(statuses),
     ).all()
 
     results = []

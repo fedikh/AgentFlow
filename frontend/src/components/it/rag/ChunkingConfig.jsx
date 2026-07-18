@@ -38,7 +38,7 @@ const findStrat = (strats, name) => strats.find((s) => s.name === name);
 const defaultsOf = (strat) =>
   Object.fromEntries((strat?.params || []).map((p) => [p.key, p.default]));
 
-/* One tunable parameter input (int/float/bool) from the catalog schema. */
+/* One tunable parameter input (int/float/bool/select) from the catalog schema. */
 function ParamInput({ def, value, onChange }) {
   const v = value ?? def.default;
   if (def.type === "bool") {
@@ -46,6 +46,18 @@ function ParamInput({ def, value, onChange }) {
       <label className="rag-ck-param rag-ck-param-bool">
         <input type="checkbox" checked={!!v} onChange={(e) => onChange(e.target.checked)} />
         <span>{def.label}</span>
+      </label>
+    );
+  }
+  if (def.type === "select") {
+    return (
+      <label className="rag-ck-param">
+        <span className="rag-ck-param-lbl">{def.label}</span>
+        <select className="rag-ck-select" value={v} onChange={(e) => onChange(e.target.value)}>
+          {(def.options || []).map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </label>
     );
   }
@@ -108,7 +120,9 @@ export default function ChunkingConfig({
 }) {
   const changeMode = handleChunkModeChange || ((m) => setC("chunk_mode", m));
   const [open, setOpen] = useState({});   // which format rows have params expanded
-  const mode = (cfg.chunk_mode || "SINGLE") === "PER_DOCUMENT" ? "PER_DOCUMENT" : "SINGLE";
+  const rawMode = (cfg.chunk_mode || "SINGLE").toUpperCase();
+  const mode =
+    rawMode === "PER_DOCUMENT" ? "PER_DOCUMENT" : rawMode === "AGENTIC" ? "AGENTIC" : "SINGLE";
 
   if (!catalog) return <div className="rag-cfg-hint">Loading chunking strategies…</div>;
 
@@ -131,17 +145,30 @@ export default function ChunkingConfig({
         {[
           { k: "SINGLE", n: "Single", d: "One strategy per format" },
           { k: "PER_DOCUMENT", n: "Per document", d: "Pick a strategy per file" },
+          { k: "AGENTIC", n: "Agentic", d: "AI plans & builds the chunks", badge: "AI" },
         ].map((m) => (
           <button
             key={m.k}
             className={`rag-cfg-card ${mode === m.k ? "active" : ""}`}
             onClick={() => changeMode(m.k)}
           >
-            <div className="rag-cfg-card-n">{m.n}</div>
+            <div className="rag-cfg-card-n">
+              {m.n}
+              {m.badge && <span className="rag-cfg-card-badge">{m.badge}</span>}
+            </div>
             <div className="rag-cfg-card-d">{m.d}</div>
           </button>
         ))}
       </div>
+
+      {/* ── AGENTIC: pipeline diagram + tuning ── */}
+      {mode === "AGENTIC" && (
+        <AgenticPanel
+          catalog={catalog}
+          params={cfg.chunk_params || {}}
+          onParam={(key, val) => setC("chunk_params", { ...(cfg.chunk_params || {}), [key]: val })}
+        />
+      )}
 
       {/* ── SINGLE: one strategy per format (compact) ── */}
       {mode === "SINGLE" && (
@@ -244,6 +271,67 @@ export default function ChunkingConfig({
   );
 }
 
+/* Agentic mode panel: the pipeline diagram + its tuning parameters. */
+function AgenticPanel({ catalog, params, onParam }) {
+  const agentic = catalog?.agentic || {};
+  const stages = agentic.stages || [];
+  const paramDefs = agentic.params || [];
+
+  return (
+    <div className="ag-panel">
+      <div className="ag-panel-head">
+        <span className="ag-panel-badge">AI PIPELINE</span>
+        <span className="ag-panel-sub">
+          A team of OpenAI agents analyzes each document and builds meaning-based chunks.
+        </span>
+      </div>
+
+      {/* flow: Parser → [6 agents] → Embedding → Vector DB */}
+      <div className="ag-flow">
+        <div className="ag-io">Parser</div>
+        <div className="ag-flow-arrow">↓</div>
+        {stages.map((s, i) => (
+          <React.Fragment key={s.key}>
+            <div className="ag-stage">
+              <span className="ag-stage-num">{i + 1}</span>
+              <div className="ag-stage-body">
+                <div className="ag-stage-name">{s.label}</div>
+                <div className="ag-stage-desc">{s.desc}</div>
+              </div>
+            </div>
+            <div className="ag-flow-arrow">↓</div>
+          </React.Fragment>
+        ))}
+        <div className="ag-io ag-io-out">Embedding</div>
+        <div className="ag-flow-arrow">↓</div>
+        <div className="ag-io ag-io-out">Vector database</div>
+      </div>
+
+      {/* tuning */}
+      {paramDefs.length > 0 && (
+        <>
+          <div className="ag-tune-t">Pipeline settings</div>
+          <div className="rag-ck-params">
+            {paramDefs.map((p) => (
+              <ParamInput
+                key={p.key}
+                def={p}
+                value={params?.[p.key]}
+                onChange={(val) => onParam(p.key, val)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="ag-note">
+        Needs an OpenAI key (space LLM, company provider, or server key). Without one,
+        agentic chunking falls back to structural chunking automatically.
+      </div>
+    </div>
+  );
+}
+
 /* One parsed-document row: name/status + (per-doc) strategy select & params. */
 function DocRow({ d, catalog, mode, effLabel, onSetChunking, onProcess, processing, openModal, canBuild = true }) {
   const strats = stratsOfType(catalog, d.file_type);
@@ -289,7 +377,7 @@ function DocRow({ d, catalog, mode, effLabel, onSetChunking, onProcess, processi
           />
         ) : (
           <span className="rag-doc-strategy-fixed">
-            {perDoc ? strat?.label || active || "default" : effLabel}
+            {mode === "AGENTIC" ? "Agentic" : perDoc ? strat?.label || active || "default" : effLabel}
           </span>
         )}
 

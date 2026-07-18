@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # API key for openai/gemini (not needed for ollama — that uses OLLAMA_BASE_URL).
     VISION_API_KEY: str = ""
 
+    # ── LLM-based & agentic chunking (OpenAI) ──
+    # OpenAI key used by the "LLM" chunking strategy and the "Agentic" chunking
+    # pipeline. Optional: if empty, chunking resolves a key from the space's own
+    # OpenAI LLM config, a company OpenAI provider, or falls back to VISION_API_KEY
+    # (when VISION_PROVIDER=openai). If none is available, LLM/agentic chunking
+    # degrades gracefully to structural chunking.
+    OPENAI_API_KEY: str = ""
+    # Default OpenAI model for chunking decisions (cheap + capable).
+    CHUNK_LLM_MODEL: str = "gpt-4o-mini"
+
     # RAG defaults
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50
@@ -56,10 +66,25 @@ class Settings(BaseSettings):
     # oversubscribing (logical cores) slows it down.
     DOCLING_NUM_THREADS: int = 4
     DOCLING_TABLE_MODE: str = "fast"        # "fast" | "accurate"
+    # Pages per Docling batch. Smaller = lower peak memory → avoids std::bad_alloc
+    # (out-of-memory) on low-RAM CPUs. A batch that still OOMs is retried
+    # page-by-page so no pages are dropped. Drop to 1 or 2 if OOM persists.
+    DOCLING_BATCH_SIZE: int = 3
+    # Last-resort OCR for pages with NO text layer (scanned / image-only pages):
+    # render the page and read it with the vision model (VISION_API_KEY) so no
+    # page is skipped. Set False to disable (those pages then stay empty).
+    PDF_OCR_FALLBACK: bool = True
+    PDF_OCR_MAX_PAGES: int = 60      # cap OCR-fallback pages (cost/latency guard)
     # Warm the Docling models at startup so the first parse isn't slow.
     DOCLING_WARMUP: bool = True
     # Parallel workers for Gemini image summarization (serial before → slow).
     VISION_MAX_WORKERS: int = 6
+
+    # ── Web image vision ──
+    # Web (scraped) pages describe their images with the SAME vision model as
+    # PDF/DOCX/PPTX, controlled per-document by the "Extract images" option.
+    # This is just the safety cap on how many images are described per page.
+    WEB_IMAGE_VISION_MAX: int = 20      # cap images described per page (cost guard)
 
     # ── Cleaning pipeline toggles ──
     CLEAN_REMOVE_NOISE: bool = True         # page numbers, headers/footers, watermarks

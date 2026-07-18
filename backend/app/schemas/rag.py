@@ -56,7 +56,7 @@ class CreateRAGSpaceRequest(BaseModel):
 
     # ── Chunking ──
     # Free strings validated against the per-format catalog (chunking_factory).
-    # chunk_mode: "SINGLE" | "PER_DOCUMENT". chunk_params: strategy parameters.
+    # chunk_mode: "SINGLE" | "PER_DOCUMENT" | "AGENTIC". chunk_params: strategy parameters.
     chunk_mode:     str = "SINGLE"
     chunk_size:     int = Field(default=512, ge=100, le=6000)
     chunk_overlap:  int = Field(default=50, ge=0, le=1000)

@@ -158,6 +158,46 @@ def summarize_image(image_path: str) -> str:
         return ""
 
 
+OCR_PROMPT = (
+    "You are a precise OCR engine. Transcribe ALL text visible in this document "
+    "page image, in natural reading order (top to bottom, left to right). "
+    "Preserve headings, paragraphs, list items and any table text. Output ONLY "
+    "the transcribed text — no commentary, no markdown code fences. If the page "
+    "contains no readable text, output nothing."
+)
+
+
+def _ocr_message(provider: str, mime: str, b64: str):
+    from langchain_core.messages import HumanMessage
+    if provider == "gemini":
+        img_block = {"type": "image_url", "image_url": f"data:{mime};base64,{b64}"}
+    else:
+        img_block = {"type": "image_url",
+                     "image_url": {"url": f"data:{mime};base64,{b64}"}}
+    return HumanMessage(content=[{"type": "text", "text": OCR_PROMPT}, img_block])
+
+
+def transcribe_image(image_path: str) -> str:
+    """OCR a rendered page (or image) with the configured vision model → its
+    text, or '' on any failure (never raises). Used as the last-resort parser
+    for scanned / image-only pages that have no text layer."""
+    if not image_path or not os.path.exists(image_path):
+        return ""
+    try:
+        provider, model, api_key = _resolve_vision()
+        with open(image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        llm = _build_vision_llm(provider, model, api_key)
+        resp = llm.invoke([_ocr_message(provider, _mime_for(image_path), b64)])
+        text = (resp.content or "").strip()
+        logger.info(f"[VISION-OCR] {os.path.basename(image_path)} -> {len(text)} chars")
+        return text
+    except Exception as e:
+        logger.warning(f"[VISION-OCR] failed on "
+                       f"{os.path.basename(image_path or '')}: {e}")
+        return ""
+
+
 def _is_real_summary(img) -> bool:
     """
     True if the image already has a REAL Gemini summary (not just the caption).
@@ -269,4 +309,123 @@ def summarize_images_in_parsed(parsed_doc) -> int:
                                   "or transient error")
     logger.info(f"[VISION] Done: {count}/{len(unique_paths)} image(s) summarized "
                 f"({workers} workers)")
+    return count
+
+
+# ══════════════════════════════════════════════════════════════
+#  Web image vision (opt-in) — describe images referenced by URL
+# ══════════════════════════════════════════════════════════════
+
+# URL patterns that are almost never real content (logos, icons, sprites, ads,
+# tracking pixels). Skipped so we don't waste vision calls on them.
+_SKIP_IMG_HINTS = ("favicon", "sprite", "logo", "icon", "pixel", "spacer",
+                   "tracking", "1x1", "avatar", "emoji", "badge", "button",
+                   "/ads/", "advert", "banner-ad")
+
+
+def _looks_like_icon(url: str) -> bool:
+    u = (url or "").lower()
+    if not u.startswith(("http://", "https://")):
+        return True                      # data: URIs / relative → skip
+    if u.split("?")[0].endswith(".svg"):
+        return True                      # vector icons/logos
+    return any(k in u for k in _SKIP_IMG_HINTS)
+
+
+def _download_image(url: str, max_bytes: int = 8_000_000, timeout: int = 15):
+    """Fetch an image URL → (bytes, mime) or (None, None). http(s) + image only."""
+    import urllib.request
+    if not url.startswith(("http://", "https://")):
+        return None, None
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (AgentFlow)"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if not ctype.startswith("image/"):
+            return None, None
+        data = r.read(max_bytes + 1)
+        if not data or len(data) > max_bytes:
+            return None, None
+        return data, ctype
+
+
+def summarize_image_url(url: str) -> str:
+    """Describe an image at a URL with the vision model. '' on any failure."""
+    try:
+        data, mime = _download_image(url)
+        if not data:
+            return ""
+        b64 = base64.b64encode(data).decode("utf-8")
+        provider, model, api_key = _resolve_vision()
+        llm = _build_vision_llm(provider, model, api_key)
+        resp = llm.invoke([_image_message(provider, mime or "image/png", b64)])
+        text = (resp.content or "").strip()
+        logger.info(f"[VISION-WEB] {url[:60]} -> {len(text)} chars")
+        return text
+    except Exception as e:
+        logger.warning(f"[VISION-WEB] failed on {(url or '')[:60]}: {e}")
+        return ""
+
+
+def summarize_web_images_in_parsed(parsed_doc) -> int:
+    """Describe meaningful WEB images (referenced by URL) with the SAME vision
+    model used for PDF/DOCX/PPTX, so they become searchable. Called only when the
+    document's "Extract images" option is ON (same toggle as the other formats).
+    Skips icons/logos; capped by WEB_IMAGE_VISION_MAX. Fills text_for_embedding on
+    the Image objects AND the matching image elements. Returns count described."""
+    from app.config import settings
+
+    images = getattr(parsed_doc, "images", []) or []
+    cap = int(getattr(settings, "WEB_IMAGE_VISION_MAX", 20))
+
+    # element lookup by src / image_path so we can back-write the description
+    els_by_src = {}
+    for el in (getattr(parsed_doc, "elements", []) or []):
+        if el.get("type") == "image":
+            c = el.get("content") or {}
+            src = c.get("src") or c.get("image_path")
+            if src:
+                els_by_src.setdefault(src, []).append(el)
+
+    from concurrent.futures import ThreadPoolExecutor
+    # unique, meaningful content-image URLs
+    urls, seen = [], set()
+    for img in images:
+        u = getattr(img, "image_path", "") or ""
+        if u in seen or _looks_like_icon(u) or _is_real_summary(img):
+            continue
+        seen.add(u)
+        urls.append(u)
+    urls = urls[:cap]
+    if not urls:
+        return 0
+
+    logger.info(f"[VISION-WEB] describing {len(urls)} web image(s)…")
+    workers = min(max(1, int(getattr(settings, "VISION_MAX_WORKERS", 6))), len(urls))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        summaries = dict(zip(urls, pool.map(summarize_image_url, urls)))
+
+    def _compose(caption, summary):
+        parts = []
+        if caption:
+            parts.append(f"Caption: {caption}")
+        parts.append(f"Description: {summary}")
+        return "\n".join(parts)
+
+    count = 0
+    for img in images:
+        s = summaries.get(getattr(img, "image_path", ""), "")
+        if s:
+            img.text_for_embedding = _compose(getattr(img, "caption", ""), s)
+            count += 1
+    for url, s in summaries.items():
+        if not s:
+            continue
+        for el in els_by_src.get(url, []):
+            c = el.setdefault("content", {})
+            c["text_for_embedding"] = _compose(c.get("caption") or c.get("alt", ""), s)
+
+    meta = getattr(parsed_doc, "metadata", None)
+    if isinstance(meta, dict):
+        meta["vision"] = {"summarized": count, "total": len(urls), "web": True}
+    logger.info(f"[VISION-WEB] Done: {count}/{len(urls)} web image(s) described")
     return count

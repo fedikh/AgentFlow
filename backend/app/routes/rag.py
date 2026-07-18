@@ -32,23 +32,28 @@ router = APIRouter(prefix="/rag", tags=["RAG"])
 
 class ScrapeRequest(BaseModel):
     url: str
+    extract_images: bool = True
 
 class RawHtmlRequest(BaseModel):
     html: str
     name: str | None = None
+    extract_images: bool = True
 
 class CrawlRequest(BaseModel):
     url: str
     max_depth: int = 2
     max_pages: int = 50
+    extract_images: bool = True
 
 class SitemapRequest(BaseModel):
     url: str
     max_pages: int = 100
+    extract_images: bool = True
 
 class RssRequest(BaseModel):
     url: str
     max_items: int = 50
+    extract_images: bool = True
 
 class DriveUploadRequest(BaseModel):
     file_id: str
@@ -201,7 +206,8 @@ async def scrape_url(space_id: str, data: ScrapeRequest, request: Request, db: S
     """Scrape a single URL (Crawl4AI, JS rendering) → LOADED."""
     user = _get_current_user(request, db)
     rag_service.require_editable(db, space_id, user.organization_id, user)
-    return await rag_service.upload_from_url(db, space_id, user.organization_id, data.url)
+    return await rag_service.upload_from_url(db, space_id, user.organization_id, data.url,
+                                             extract_images=data.extract_images)
 
 
 @router.post("/spaces/{space_id}/web/html")
@@ -209,7 +215,8 @@ def web_raw_html(space_id: str, data: RawHtmlRequest, request: Request, db: Sess
     """Ingest pasted raw HTML → LOADED."""
     user = _get_current_user(request, db)
     rag_service.require_editable(db, space_id, user.organization_id, user)
-    return rag_service.ingest_raw_html(db, space_id, user.organization_id, data.html, data.name)
+    return rag_service.ingest_raw_html(db, space_id, user.organization_id, data.html, data.name,
+                                       extract_images=data.extract_images)
 
 
 @router.post("/spaces/{space_id}/web/crawl")
@@ -218,7 +225,8 @@ def web_crawl(space_id: str, data: CrawlRequest, request: Request, db: Session =
     user = _get_current_user(request, db)
     rag_service.require_editable(db, space_id, user.organization_id, user)
     return rag_service.crawl_website(db, space_id, user.organization_id, data.url,
-                                     data.max_depth, data.max_pages)
+                                     data.max_depth, data.max_pages,
+                                     extract_images=data.extract_images)
 
 
 @router.post("/spaces/{space_id}/web/sitemap")
@@ -226,7 +234,8 @@ def web_sitemap(space_id: str, data: SitemapRequest, request: Request, db: Sessi
     """Ingest a sitemap.xml → one document per <loc> URL."""
     user = _get_current_user(request, db)
     rag_service.require_editable(db, space_id, user.organization_id, user)
-    return rag_service.ingest_sitemap(db, space_id, user.organization_id, data.url, data.max_pages)
+    return rag_service.ingest_sitemap(db, space_id, user.organization_id, data.url, data.max_pages,
+                                      extract_images=data.extract_images)
 
 
 @router.post("/spaces/{space_id}/web/rss")
@@ -234,7 +243,8 @@ def web_rss(space_id: str, data: RssRequest, request: Request, db: Session = Dep
     """Ingest an RSS/Atom feed → one document per article."""
     user = _get_current_user(request, db)
     rag_service.require_editable(db, space_id, user.organization_id, user)
-    return rag_service.ingest_rss(db, space_id, user.organization_id, data.url, data.max_items)
+    return rag_service.ingest_rss(db, space_id, user.organization_id, data.url, data.max_items,
+                                  extract_images=data.extract_images)
 
 
 @router.get("/spaces/{space_id}/documents")

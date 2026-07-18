@@ -6,9 +6,44 @@ and links.
 """
 import os
 import logging
-from app.services.providers.parsers.parsed_document import ParsedDocument, Section
+from app.services.providers.parsers.parsed_document import ParsedDocument, Section, Table
 
 logger = logging.getLogger(__name__)
+
+
+def _blocks_from_elements(elements):
+    """Build the legacy sections/tables blocks from the web elements so the
+    'Blocks' view renders web pages the same way as PDF/DOCX — split per heading,
+    with tables as their own blocks — instead of one monolithic text dump."""
+    sections, tables = [], []
+    cur_heading, cur_level, cur_lines = "", 1, []
+
+    def flush():
+        nonlocal cur_lines, cur_heading, cur_level
+        content = "\n".join(cur_lines).strip()
+        if content or cur_heading:
+            sections.append(Section(heading=cur_heading, content=content,
+                                    level=cur_level or 1, page=1))
+        cur_lines = []
+
+    for el in (elements or []):
+        t = el.get("type")
+        c = el.get("content") or {}
+        if t == "heading":
+            flush()
+            cur_heading = (c.get("text") or "").strip()
+            cur_level = el.get("level") or 1
+        elif t == "table":
+            headers = c.get("headers") or []
+            rows = c.get("rows") or []
+            tables.append(Table(content=c.get("markdown") or "", headers=headers,
+                                num_rows=len(rows), num_cols=len(headers), page=1))
+        elif t in ("paragraph", "list_item", "code", "quote"):
+            txt = (c.get("text") or "").strip()
+            if txt:
+                cur_lines.append(("• " + txt) if t == "list_item" else txt)
+    flush()
+    return sections, tables
 
 
 def parse(loaded_data: dict) -> ParsedDocument:
@@ -38,9 +73,13 @@ def parse(loaded_data: dict) -> ParsedDocument:
     meta["links"] = links
     meta["parser"] = meta_in.get("engine", "beautifulsoup")
 
-    sections = [Section(heading="", content=text_repr, level=1, page=1)] if text_repr.strip() else []
+    # Build per-heading blocks (like PDF) so the Blocks view isn't one big dump.
+    sections, tables = _blocks_from_elements(elements)
+    if not sections and text_repr.strip():   # fallback: page with no structure
+        sections = [Section(heading="", content=text_repr, level=1, page=1)]
 
     return ParsedDocument(
-        title=meta.get("title") or "", sections=sections, elements=elements,
-        images=images, metadata=meta, num_pages=1, file_type="HTML", category="web",
+        title=meta.get("title") or "", sections=sections, tables=tables,
+        elements=elements, images=images, metadata=meta,
+        num_pages=1, file_type="HTML", category="web",
     )

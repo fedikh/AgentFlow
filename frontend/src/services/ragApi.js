@@ -90,10 +90,10 @@ export const uploadDocument = async (spaceId, file) => {
 };
 
 // ── Web sources ──
-export const scrapeUrl = (s, url) =>
-  req("POST", `/rag/spaces/${s}/scrape`, { url });
-export const parseRawHtml = (s, html, name) =>
-  req("POST", `/rag/spaces/${s}/web/html`, { html, name });
+export const scrapeUrl = (s, url, extractImages = true) =>
+  req("POST", `/rag/spaces/${s}/scrape`, { url, extract_images: extractImages });
+export const parseRawHtml = (s, html, name, extractImages = true) =>
+  req("POST", `/rag/spaces/${s}/web/html`, { html, name, extract_images: extractImages });
 export const crawlWebsite = (s, payload) =>
   req("POST", `/rag/spaces/${s}/web/crawl`, payload);
 export const ingestSitemap = (s, payload) =>

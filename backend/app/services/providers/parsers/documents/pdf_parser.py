@@ -29,9 +29,15 @@ def parse(loaded_data: dict) -> ParsedDocument:
     from docling.datamodel.pipeline_options import PdfPipelineOptions
     from app.services.providers.parsers._docling import docling_to_parsed_document
 
+    from app.config import settings
     opts = PdfPipelineOptions()
     opts.generate_picture_images = True   # ← match the loader
-    opts.images_scale = 2.0
+    # 2.0 renders 4× the pixels → std::bad_alloc (OOM) on CPU. Respect the
+    # configured scale (default 1.0) like the loader does.
+    try:
+        opts.images_scale = float(settings.DOCLING_IMAGES_SCALE)
+    except Exception:
+        opts.images_scale = 1.0
     opts.do_ocr = False
     converter = DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}

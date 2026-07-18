@@ -42,8 +42,47 @@ async function ensureLoaded() {
   }
 }
 
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+
+/**
+ * List every file inside a Drive folder (recursively), via the Drive API.
+ * Returns [{fileId, fileName, mimeType, accessToken}]. Sub-folders are expanded;
+ * folders themselves are not returned. Depth-capped to avoid runaway recursion.
+ */
+async function listFolderFiles(folderId, accessToken, depth = 0) {
+  if (depth > 10) return [];
+  const out = [];
+  let pageToken = "";
+  do {
+    const params = new URLSearchParams({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: "nextPageToken, files(id,name,mimeType)",
+      pageSize: "1000",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!res.ok) break;
+    const data = await res.json();
+    for (const f of data.files || []) {
+      if (f.mimeType === FOLDER_MIME) {
+        out.push(...(await listFolderFiles(f.id, accessToken, depth + 1)));
+      } else {
+        out.push({ fileId: f.id, fileName: f.name, mimeType: f.mimeType, accessToken });
+      }
+    }
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return out;
+}
+
 /**
  * Open Google Drive Picker (multi-select enabled).
+ * Folders CAN be selected — a picked folder is expanded to all files inside it.
  * Returns: array of {fileId, fileName, mimeType, accessToken} or null if cancelled.
  */
 export async function openGooglePicker() {
@@ -69,7 +108,7 @@ export async function openGooglePicker() {
           .addView(
             new window.google.picker.DocsView()
               .setIncludeFolders(true)
-              .setSelectFolderEnabled(false),
+              .setSelectFolderEnabled(true),   // allow picking a whole folder
           )
           .addView(
             new window.google.picker.DocsView(
@@ -84,13 +123,23 @@ export async function openGooglePicker() {
           .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
           .setCallback((data) => {
             if (data.action === window.google.picker.Action.PICKED) {
-              const files = data.docs.map((f) => ({
-                fileId: f.id,
-                fileName: f.name,
-                mimeType: f.mimeType,
-                accessToken: accessToken,
-              }));
-              resolve(files);
+              // Expand any picked folder into the files it contains.
+              (async () => {
+                const out = [];
+                for (const f of data.docs) {
+                  if (f.mimeType === FOLDER_MIME) {
+                    out.push(...(await listFolderFiles(f.id, accessToken)));
+                  } else {
+                    out.push({
+                      fileId: f.id,
+                      fileName: f.name,
+                      mimeType: f.mimeType,
+                      accessToken,
+                    });
+                  }
+                }
+                resolve(out);
+              })();
             } else if (data.action === window.google.picker.Action.CANCEL) {
               resolve(null);
             }

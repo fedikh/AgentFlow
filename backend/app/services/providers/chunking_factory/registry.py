@@ -91,6 +91,11 @@ STRATEGY_CATALOG = {
          "params": [{**_SIZE, "key": "child_size", "label": "Child size (chars)", "default": 400},
                     {"key": "parent_multiplier", "label": "Parent = child ×", "type": "int",
                      "default": 4, "min": 2, "max": 8, "step": 1}, _OVERLAP]},
+        {"name": "llm", "module": "llm", "label": "LLM-based (OpenAI)", "stars": 5,
+         "best_for": ["mixed topics", "narrative", "no headings"],
+         "pros": "An OpenAI model finds meaning-based boundaries — one idea per chunk, never mid-sentence",
+         "cons": "Needs an OpenAI key; slower + costs tokens (falls back to recursive without one)",
+         "params": [{**_MAXCHARS, "key": "max_chars", "label": "Target size (chars)", "default": 1200}]},
     ],
     "semi_structured": [
         {"name": "node", "module": "node", "label": "Tree node", "stars": 5,
@@ -145,8 +150,44 @@ STRATEGY_CATALOG = {
         {"name": "fixed", "module": "fixed", "label": "Fixed-size", "stars": 3,
          "best_for": ["html"], "pros": "Deterministic", "cons": "Can cut mid-sentence",
          "params": [_SIZE, _OVERLAP]},
+        {"name": "llm", "module": "llm", "label": "LLM-based (OpenAI)", "stars": 5,
+         "best_for": ["articles", "mixed topics"],
+         "pros": "An OpenAI model finds meaning-based boundaries — one idea per chunk",
+         "cons": "Needs an OpenAI key; slower + costs tokens (falls back to recursive without one)",
+         "params": [{**_MAXCHARS, "key": "max_chars", "label": "Target size (chars)", "default": 1200}]},
     ],
 }
+
+
+# Agentic chunking is a MODE (not a per-format strategy) — its tunable params
+# for the config UI. It runs the multi-agent OpenAI pipeline over any document.
+AGENTIC_PARAMS = [
+    {"key": "granularity", "label": "Granularity", "type": "select",
+     "default": "balanced",
+     "options": [{"value": "fine", "label": "Fine (smaller chunks)"},
+                 {"value": "balanced", "label": "Balanced"},
+                 {"value": "coarse", "label": "Coarse (larger chunks)"}]},
+    {"key": "target_chars", "label": "Target size (chars)", "type": "int",
+     "default": 1200, "min": 400, "max": 2500, "step": 50},
+    {"key": "generate_metadata", "label": "Generate titles & keywords per chunk",
+     "type": "bool", "default": True},
+]
+
+# The visual stages of the agentic pipeline (for the config UI diagram).
+AGENTIC_STAGES = [
+    {"key": "analyzer", "label": "Document Analyzer",
+     "desc": "Understands the document — type, topics, structure"},
+    {"key": "planner", "label": "Planning Agent",
+     "desc": "Turns that into a concrete chunking plan"},
+    {"key": "boundary", "label": "Semantic Boundary Detector",
+     "desc": "Finds meaning-based split points"},
+    {"key": "builder", "label": "Chunk Builder",
+     "desc": "Assembles structure-preserving chunks"},
+    {"key": "metadata", "label": "Metadata Generator",
+     "desc": "Adds a title & keywords to each chunk"},
+    {"key": "reviewer", "label": "Quality Reviewer",
+     "desc": "Merges tiny chunks, splits oversized, cleans up"},
+]
 
 
 # Which strategies actually make sense per FILE TYPE (a subset of its category,
@@ -154,13 +195,13 @@ STRATEGY_CATALOG = {
 # "sheet". Order = the order shown in the UI.
 ALLOWED_STRATEGIES = {
     # documents
-    "pdf":      ["recursive", "fixed", "sentence", "paragraph", "heading", "page", "element", "semantic", "hierarchical"],
-    "docx":     ["heading", "recursive", "fixed", "sentence", "paragraph", "element", "semantic", "hierarchical"],
-    "pptx":     ["slide", "recursive", "fixed", "paragraph", "element", "semantic"],
-    "txt":      ["recursive", "fixed", "sentence", "paragraph", "element", "semantic"],
+    "pdf":      ["recursive", "fixed", "sentence", "paragraph", "heading", "page", "element", "semantic", "llm", "hierarchical"],
+    "docx":     ["heading", "recursive", "fixed", "sentence", "paragraph", "element", "semantic", "llm", "hierarchical"],
+    "pptx":     ["slide", "recursive", "fixed", "paragraph", "element", "semantic", "llm"],
+    "txt":      ["recursive", "fixed", "sentence", "paragraph", "element", "semantic", "llm"],
     # Markdown, in ranked order (element/structure is the best fit for .md).
-    "md":       ["element", "heading", "semantic", "recursive", "paragraph", "sentence", "fixed"],
-    "markdown": ["element", "heading", "semantic", "recursive", "paragraph", "sentence", "fixed"],
+    "md":       ["element", "heading", "semantic", "llm", "recursive", "paragraph", "sentence", "fixed"],
+    "markdown": ["element", "heading", "semantic", "llm", "recursive", "paragraph", "sentence", "fixed"],
     # semi-structured
     "json": ["node", "subtree", "recursive", "fixed"],
     "xml":  ["node", "subtree", "recursive", "fixed"],
@@ -169,9 +210,9 @@ ALLOWED_STRATEGIES = {
     "xlsx": ["row", "row_batch", "table", "sheet"],
     "xls":  ["row", "row_batch", "table", "sheet"],
     # web
-    "html": ["section", "element", "recursive", "fixed"],
-    "htm":  ["section", "element", "recursive", "fixed"],
-    "url":  ["section", "element", "recursive", "fixed"],
+    "html": ["section", "element", "recursive", "llm", "fixed"],
+    "htm":  ["section", "element", "recursive", "llm", "fixed"],
+    "url":  ["section", "element", "recursive", "llm", "fixed"],
 }
 
 # The recommended default per file type (badge + fallback).

@@ -16,13 +16,49 @@ const SB = {
   ERROR: "rag-badge-error",
 };
 
+// Group the uploads list by document FORMAT so PDFs, Word, PowerPoint, etc. show
+// under their own category header (ordered; empty categories are omitted).
+const _ft = (d) => (d.file_type || "").toLowerCase();
+const DOC_CATS = [
+  { key: "pdf", label: "PDF", match: (d) => _ft(d) === "pdf" },
+  { key: "word", label: "Word", match: (d) => ["docx", "doc"].includes(_ft(d)) },
+  { key: "ppt", label: "PowerPoint", match: (d) => ["pptx", "ppt"].includes(_ft(d)) },
+  { key: "text", label: "Text", match: (d) => ["txt", "md", "markdown"].includes(_ft(d)) },
+  { key: "sheet", label: "Spreadsheets", match: (d) => ["csv", "xlsx", "xls"].includes(_ft(d)) },
+  { key: "data", label: "Data (JSON / XML)", match: (d) => ["json", "xml"].includes(_ft(d)) },
+  {
+    key: "web",
+    label: "Web pages",
+    match: (d) =>
+      d.source_type === "url" ||
+      d.source_type === "raw_html" ||
+      ["html", "htm", "url", "web"].includes(_ft(d)),
+  },
+];
+
+function groupDocsByFormat(list) {
+  const buckets = new Map();
+  for (const d of list || []) {
+    const cat = DOC_CATS.find((c) => c.match(d)) || { key: "other", label: "Other" };
+    if (!buckets.has(cat.key))
+      buckets.set(cat.key, { key: cat.key, label: cat.label, items: [] });
+    buckets.get(cat.key).items.push(d);
+  }
+  const order = [...DOC_CATS.map((c) => c.key), "other"];
+  return [...buckets.values()].sort(
+    (a, b) => order.indexOf(a.key) - order.indexOf(b.key),
+  );
+}
+
 const UploadsPanel = ({
   docs,
   fileRef,
+  folderRef,
   uploading,
   scraping,
   parsing,
   handleUpload,
+  handleFolderUpload = () => {},
   handleDriveUpload,
   handleWebIngest = () => {},
   handleLoadParse,
@@ -46,6 +82,19 @@ const UploadsPanel = ({
   const [maxDepth, setMaxDepth] = React.useState(2);
   const [maxPages, setMaxPages] = React.useState(50);
   const [webOpen, setWebOpen] = React.useState(false);
+  const [webExtractImages, setWebExtractImages] = React.useState(true);
+  const [uploadMenu, setUploadMenu] = React.useState(false);
+  const uploadWrapRef = React.useRef(null);
+  // close the file/folder menu when clicking outside it
+  React.useEffect(() => {
+    if (!uploadMenu) return;
+    const onDoc = (e) => {
+      if (uploadWrapRef.current && !uploadWrapRef.current.contains(e.target))
+        setUploadMenu(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [uploadMenu]);
 
   const WEB_MODES = [
     ["url", "🔗", "Single URL"],
@@ -74,12 +123,13 @@ const UploadsPanel = ({
   };
 
   const submitWeb = async () => {
+    const ei = webExtractImages;   // extract images before scraping (same as PDF)
     const payloads = {
-      url: { url: webUrl },
-      html: { html: rawHtml },
-      crawl: { url: webUrl, max_depth: maxDepth, max_pages: maxPages },
-      sitemap: { url: webUrl, max_pages: maxPages },
-      rss: { url: webUrl, max_items: maxPages },
+      url: { url: webUrl, extract_images: ei },
+      html: { html: rawHtml, extract_images: ei },
+      crawl: { url: webUrl, max_depth: maxDepth, max_pages: maxPages, extract_images: ei },
+      sitemap: { url: webUrl, max_pages: maxPages, extract_images: ei },
+      rss: { url: webUrl, max_items: maxPages, extract_images: ei },
     };
     await handleWebIngest(webMode, payloads[webMode]);
     setWebUrl("");
@@ -88,6 +138,9 @@ const UploadsPanel = ({
   const webDisabled =
     scraping || (webMode === "html" ? !rawHtml.trim() : !webUrl.trim());
 
+  // Uploaded files (PDF/DOCX/PPTX) decide "extract images" on the card — they
+  // have no pre-ingest form. Web/URL docs decide it in the scrape form instead,
+  // so the card toggle is intentionally NOT shown for them.
   const canImages = (d) =>
     ["pdf", "docx", "pptx"].includes((d.file_type || "").toLowerCase());
   const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
@@ -139,20 +192,54 @@ const UploadsPanel = ({
           accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.html,.htm,.json,.xml,.pptx"
           multiple
         />
+        {/* Folder picker: webkitdirectory makes the dialog select a folder and
+            return every file inside it. Set imperatively so it's reliable. */}
+        <input
+          type="file"
+          ref={(el) => {
+            if (el) {
+              el.setAttribute("webkitdirectory", "");
+              el.setAttribute("directory", "");
+              el.setAttribute("mozdirectory", "");
+              if (folderRef) folderRef.current = el;
+            }
+          }}
+          onChange={handleFolderUpload}
+          style={{ display: "none" }}
+          multiple
+        />
         <div className="rag-src-tiles">
-          <button
-            className="rag-src-tile"
-            onClick={() => fileRef.current.click()}
-            disabled={uploading}
-          >
-            <span className="rag-src-icon rag-src-icon-file">📁</span>
-            <span className="rag-src-text">
-              <span className="rag-src-title">
-                {uploading ? "Uploading…" : "Upload a file"}
+          <div className="rag-src-tile-wrap" ref={uploadWrapRef}>
+            <button
+              className="rag-src-tile"
+              onClick={() => setUploadMenu((v) => !v)}
+              disabled={uploading}
+            >
+              <span className="rag-src-icon rag-src-icon-file">📁</span>
+              <span className="rag-src-text">
+                <span className="rag-src-title">
+                  {uploading ? "Uploading…" : "Upload"}
+                </span>
+                <span className="rag-src-sub">File or folder ▾</span>
               </span>
-              <span className="rag-src-sub">PDF, DOCX, CSV, XLSX…</span>
-            </span>
-          </button>
+            </button>
+            {uploadMenu && (
+              <div className="rag-upload-menu">
+                <button
+                  className="rag-upload-menu-item"
+                  onClick={() => { setUploadMenu(false); fileRef.current?.click(); }}
+                >
+                  📄 Choose files
+                </button>
+                <button
+                  className="rag-upload-menu-item"
+                  onClick={() => { setUploadMenu(false); folderRef?.current?.click(); }}
+                >
+                  📁 Choose a folder
+                </button>
+              </div>
+            )}
+          </div>
           <button
             className="rag-src-tile"
             onClick={handleDriveUpload}
@@ -240,6 +327,21 @@ const UploadsPanel = ({
             </div>
           )}
 
+          {/* Extract images option — decided BEFORE scraping (same vision model
+              as PDF/DOCX/PPTX). Describes meaningful page images so they're
+              searchable; skip it for text-only, faster/cheaper scraping. */}
+          <label className="rag-doc-imgtoggle" style={{ marginTop: 4 }}>
+            <input
+              type="checkbox"
+              checked={webExtractImages}
+              onChange={(e) => setWebExtractImages(e.target.checked)}
+            />
+            Extract images
+            <span className="rag-doc-imgtoggle-hint">
+              · describe page images with the vision model (slower)
+            </span>
+          </label>
+
           <div className="rag-web-actions">
             <button
               className="rag-upload-scrape-btn"
@@ -296,7 +398,14 @@ const UploadsPanel = ({
             No documents yet — upload a file, import from Drive, or scrape a URL
           </div>
         )}
-        {docs.map((d) => (
+        {groupDocsByFormat(docs).map((g) => (
+          <React.Fragment key={g.key}>
+            <div className="rag-docs-cat">
+              <span className="rag-docs-cat-name">{g.label}</span>
+              <span className="rag-docs-cat-count">{g.items.length}</span>
+              <span className="rag-docs-cat-rule" />
+            </div>
+            {g.items.map((d) => (
           <div key={d.id} className="rag-doc-card">
             <div className="rag-doc-icon">
               {d.source_type === "url"
@@ -315,7 +424,8 @@ const UploadsPanel = ({
 
               {/* Chunking strategy & indexing now live in the Chunking section. */}
 
-              {/* Per-document image extraction (PDF/DOCX/PPTX, before indexing) */}
+              {/* Per-document image extraction (PDF/DOCX/PPTX, before indexing).
+                  Web/URL docs choose this in the scrape form instead. */}
               {editable && canImages(d) && d.status !== "INDEXED" && (
                 <label className="rag-doc-imgtoggle">
                   <input
@@ -392,6 +502,8 @@ const UploadsPanel = ({
               </button>
             )}
           </div>
+            ))}
+          </React.Fragment>
         ))}
       </div>
     </>

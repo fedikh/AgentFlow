@@ -99,6 +99,7 @@ const RAGSpacesPage = () => {
   const [scraping, setScraping] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const fileRef = useRef(null);
+  const folderRef = useRef(null);
   const [modal, setModal] = useState(null);
   const [modalData, setModalData] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -472,6 +473,46 @@ const RAGSpacesPage = () => {
       fileRef.current.value = "";
     }
   };
+  // Upload every SUPPORTED file inside a chosen folder (recursively). The folder
+  // input returns all files; we skip anything that isn't an indexable document.
+  const SUPPORTED_UPLOAD_EXTS = [
+    "pdf", "docx", "doc", "pptx", "ppt", "txt", "md", "markdown",
+    "csv", "xlsx", "xls", "json", "xml", "html", "htm",
+  ];
+  const handleFolderUpload = async (e) => {
+    const all = Array.from(e.target.files || []);
+    const files = all.filter((f) =>
+      SUPPORTED_UPLOAD_EXTS.includes((f.name.split(".").pop() || "").toLowerCase()),
+    );
+    if (folderRef.current) folderRef.current.value = "";
+    if (!activeSpace) return;
+    if (!files.length) {
+      setError("No supported documents found in that folder.");
+      return;
+    }
+    setUploading(true);
+    setError("");
+    try {
+      let ok = 0;
+      for (const f of files) {
+        try {
+          await uploadDocument(activeSpace.id, f);
+          ok++;
+        } catch (err) {
+          console.warn("upload failed", f.name, err);
+        }
+      }
+      setSuccess(
+        `${ok}/${files.length} file(s) uploaded from folder` +
+          (all.length > files.length ? ` (${all.length - files.length} unsupported skipped)` : ""),
+      );
+      await refreshDocs();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
   const handleDriveUpload = async () => {
     const files = await openGooglePicker();
     if (!files || !files.length) return;
@@ -508,10 +549,10 @@ const RAGSpacesPage = () => {
     setError("");
     try {
       if (mode === "url") {
-        await scrapeUrl(activeSpace.id, payload.url);
+        await scrapeUrl(activeSpace.id, payload.url, payload.extract_images);
         setSuccess("Scraped");
       } else if (mode === "html") {
-        await parseRawHtml(activeSpace.id, payload.html, payload.name);
+        await parseRawHtml(activeSpace.id, payload.html, payload.name, payload.extract_images);
         setSuccess("HTML added");
       } else if (mode === "crawl") {
         const r = await crawlWebsite(activeSpace.id, payload);
@@ -766,6 +807,27 @@ const RAGSpacesPage = () => {
         { heading: "", content: "", level: 1, page: 1, font_size: null },
       ];
       return next;
+    });
+  };
+  const addTable = () => {
+    setEditDoc((prev) => {
+      const next = { ...prev, parsed_document: { ...prev.parsed_document } };
+      next.parsed_document.tables = [
+        ...(next.parsed_document.tables || []),
+        { content: "", headers: [], rows: [], num_rows: 0, num_cols: 0, page: 1 },
+      ];
+      return next;
+    });
+  };
+  // Reorder a block within its list (dir = -1 up, +1 down). Fixes wrong parse
+  // order without retyping — the block's content moves with it.
+  const moveBlock = (kind, i, dir) => {
+    setEditDoc((prev) => {
+      const arr = [...(prev.parsed_document[kind] || [])];
+      const j = i + dir;
+      if (j < 0 || j >= arr.length) return prev;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      return { ...prev, parsed_document: { ...prev.parsed_document, [kind]: arr } };
     });
   };
   // Upload an image file, then append it as a new image block in the editor.
@@ -1042,6 +1104,8 @@ const RAGSpacesPage = () => {
               urlInput={urlInput}
               setUrlInput={setUrlInput}
               handleUpload={handleUpload}
+              handleFolderUpload={handleFolderUpload}
+              folderRef={folderRef}
               handleDriveUpload={handleDriveUpload}
               handleScrape={handleScrape}
               handleWebIngest={handleWebIngest}
@@ -1143,7 +1207,9 @@ const RAGSpacesPage = () => {
         saveEdit={saveEdit}
         editField={editField}
         removeBlock={removeBlock}
+        moveBlock={moveBlock}
         addSection={addSection}
+        addTable={addTable}
         addImage={addImage}
         uploadingImage={uploadingImage}
         spaceId={activeSpace?.id}
