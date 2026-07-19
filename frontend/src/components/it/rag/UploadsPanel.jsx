@@ -50,6 +50,67 @@ function groupDocsByFormat(list) {
   );
 }
 
+// ── Search / filter helpers (normalized, multi-term, ranked) ──
+// normalize: strip diacritics + case so "Résumé" matches "resume".
+function _norm(s) {
+  return (s || "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+const _catOf = (d) => DOC_CATS.find((c) => c.match(d)) || { key: "other", label: "Other" };
+// everything a query can match against: name, url, extension, format label, source
+function _haystack(d) {
+  const cat = _catOf(d);
+  return _norm([d.file_name, d.source_url, d.file_type, cat.label, d.source_type].filter(Boolean).join(" "));
+}
+// relevance score for a doc against query terms (lower = better → sorts first)
+function _score(d, terms) {
+  const name = _norm(d.file_name);
+  let s = 0;
+  for (const t of terms) {
+    if (name.startsWith(t)) s += 3;      // name prefix — strongest
+    else if (name.includes(t)) s += 2;   // name substring
+    else s += 1;                         // matched elsewhere (url / format)
+  }
+  return -s;
+}
+// filter by active format categories + AND-match of every query term, then group
+// by format and rank each group by relevance.
+function searchDocs(docs, terms, cats) {
+  let list = docs || [];
+  if (cats && cats.size) list = list.filter((d) => cats.has(_catOf(d).key));
+  if (terms.length) {
+    list = list.filter((d) => {
+      const hay = _haystack(d);
+      return terms.every((t) => hay.includes(t));
+    });
+  }
+  const grouped = groupDocsByFormat(list);
+  if (terms.length) {
+    for (const g of grouped)
+      g.items.sort((a, b) => _score(a, terms) - _score(b, terms) || _norm(a.file_name).localeCompare(_norm(b.file_name)));
+  }
+  return grouped;
+}
+// split a matched name into {t, hit} segments so hits can be highlighted
+function _highlight(text, terms) {
+  const esc = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).filter(Boolean);
+  if (!esc.length) return [{ t: text, hit: false }];
+  const re = new RegExp(`(${esc.join("|")})`, "gi");
+  const out = [];
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push({ t: text.slice(last, m.index), hit: false });
+    out.push({ t: m[0], hit: true });
+    last = m.index + m[0].length;
+    if (m.index === re.lastIndex) re.lastIndex++;
+  }
+  if (last < text.length) out.push({ t: text.slice(last), hit: false });
+  return out;
+}
+
 const UploadsPanel = ({
   docs,
   fileRef,
@@ -85,6 +146,35 @@ const UploadsPanel = ({
   const [webExtractImages, setWebExtractImages] = React.useState(true);
   const [uploadMenu, setUploadMenu] = React.useState(false);
   const uploadWrapRef = React.useRef(null);
+
+  // ── Search + format filter ──
+  const [search, setSearch] = React.useState("");   // raw input
+  const [query, setQuery] = React.useState("");      // debounced
+  const [cats, setCats] = React.useState(() => new Set());
+  const searchRef = React.useRef(null);
+  React.useEffect(() => {
+    const id = setTimeout(() => setQuery(search), 150);   // debounce
+    return () => clearTimeout(id);
+  }, [search]);
+  const terms = React.useMemo(() => _norm(query).split(/\s+/).filter(Boolean), [query]);
+  // format chips available in the current doc set, with counts
+  const availableCats = React.useMemo(() => {
+    const m = new Map();
+    for (const d of docs || []) {
+      const c = _catOf(d);
+      const prev = m.get(c.key);
+      m.set(c.key, { key: c.key, label: c.label, count: (prev?.count || 0) + 1 });
+    }
+    const order = [...DOC_CATS.map((c) => c.key), "other"];
+    return [...m.values()].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  }, [docs]);
+  const toggleCat = (k) =>
+    setCats((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const grouped = React.useMemo(() => searchDocs(docs, terms, cats), [docs, terms, cats]);
+  const shownCount = grouped.reduce((a, g) => a + g.items.length, 0);
+  const totalCount = (docs || []).length;
+  const filtering = terms.length > 0 || cats.size > 0;
+  const clearFilters = () => { setSearch(""); setQuery(""); setCats(new Set()); };
   // close the file/folder menu when clicking outside it
   React.useEffect(() => {
     if (!uploadMenu) return;
@@ -392,13 +482,60 @@ const UploadsPanel = ({
         </div>
       )}
 
+      {totalCount > 0 && (
+        <div className="rag-docs-toolbar">
+          <div className="rag-docs-search">
+            <span className="rag-docs-search-icon">🔍</span>
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") clearFilters(); }}
+              placeholder="Search documents by name, URL or format…"
+              aria-label="Search documents"
+            />
+            {search && (
+              <button className="rag-docs-search-clear" title="Clear" onClick={() => setSearch("")}>×</button>
+            )}
+          </div>
+          <div className="rag-docs-chips">
+            {availableCats.map((c) => (
+              <button
+                key={c.key}
+                className={`rag-docs-chip ${cats.has(c.key) ? "on" : ""}`}
+                onClick={() => toggleCat(c.key)}
+                title={`Filter: ${c.label}`}
+              >
+                {c.label}<span className="rag-docs-chip-n">{c.count}</span>
+              </button>
+            ))}
+            {filtering && (
+              <button className="rag-docs-chip rag-docs-chip-clear" onClick={clearFilters}>
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="rag-docs-count">
+            {filtering ? `${shownCount} of ${totalCount}` : `${totalCount} document${totalCount > 1 ? "s" : ""}`}
+          </div>
+        </div>
+      )}
+
       <div className="rag-docs-list">
         {docs.length === 0 && (
           <div className="rag-empty-state">
             No documents yet — upload a file, import from Drive, or scrape a URL
           </div>
         )}
-        {groupDocsByFormat(docs).map((g) => (
+        {totalCount > 0 && shownCount === 0 && (
+          <div className="rag-empty-state">
+            No documents match your search.
+            <button className="rag-btn rag-btn-xs" style={{ marginLeft: 8 }} onClick={clearFilters}>
+              Clear filters
+            </button>
+          </div>
+        )}
+        {grouped.map((g) => (
           <React.Fragment key={g.key}>
             <div className="rag-docs-cat">
               <span className="rag-docs-cat-name">{g.label}</span>
@@ -415,7 +552,13 @@ const UploadsPanel = ({
                   : (d.file_type || "?").toUpperCase()}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="rag-doc-name">{d.file_name}</div>
+              <div className="rag-doc-name">
+                {terms.length
+                  ? _highlight(d.file_name || "", terms).map((p, i) =>
+                      p.hit ? <mark key={i} className="rag-hl">{p.t}</mark> : <span key={i}>{p.t}</span>,
+                    )
+                  : d.file_name}
+              </div>
               <div className="rag-doc-meta">
                 {d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : ""}
                 {d.num_chunks > 0 && ` · ${d.num_chunks} chunks`}

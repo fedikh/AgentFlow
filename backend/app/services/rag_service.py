@@ -1436,6 +1436,32 @@ def get_loaded_content(db: Session, space_id: str, doc_id: str, org_id: str) -> 
 # STEP 2: PARSE
 # ══════════════════════════════════════════════════════
 
+def _apply_image_vision(doc, parsed_doc) -> int:
+    """Fill text_for_embedding on parsed images with the SAME vision model used
+    across formats, gated by the document's "Extract images" option. Web images
+    (referenced by URL) use the URL summarizer; file formats use the local-file
+    one. Off → drop images. Never raises (image vision must not block parsing)."""
+    try:
+        if not bool(getattr(doc, "extract_images", True)):
+            parsed_doc.images = []
+            parsed_doc.elements = [e for e in (parsed_doc.elements or []) if e.get("type") != "image"]
+            return 0
+        if not getattr(parsed_doc, "images", None):
+            return 0
+        cat = str(getattr(parsed_doc, "category", "")).lower()
+        if cat == "web":
+            from app.services.providers.parsers.image_summarizer import summarize_web_images_in_parsed
+            n = summarize_web_images_in_parsed(parsed_doc)
+        else:
+            from app.services.providers.parsers.image_summarizer import summarize_images_in_parsed
+            n = summarize_images_in_parsed(parsed_doc)
+        logger.info(f"[PARSE] {getattr(doc, 'file_name', '')}: summarized {n}/{len(parsed_doc.images)} image(s)")
+        return n
+    except Exception as e:
+        logger.warning(f"[PARSE] image summary skipped: {e}")
+        return 0
+
+
 def parse_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
     _find_space(db, space_id, org_id)
     doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
@@ -1455,6 +1481,10 @@ def parse_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict
 
         parsed_doc.document_id = doc.id
         parsed_doc.document = _document_identity(doc, org_id)
+        # Describe images (web URLs / local files) with the vision model — same
+        # "Extract images" toggle as PDF/DOCX/PPTX. Web docs parse HERE, so this
+        # is where their image descriptions get generated.
+        _apply_image_vision(doc, parsed_doc)
         doc.extracted_content = parsed_doc.to_json()
         doc.status = DocStatus.EXTRACTED
         db.commit()
@@ -1602,6 +1632,158 @@ def _rebuild_elements_from_blocks(parsed) -> list:
     return els
 
 
+def _normalize_elements(raw: list) -> list:
+    """Re-number reading order and rebuild heading parent links for an edited,
+    reading-ordered element list (the list order IS the reading order)."""
+    els, ro, stack = [], 0, []
+    for el in (raw or []):
+        t = el.get("type") or "paragraph"
+        c = el.get("content") or {}
+        loc = el.get("location") or {}
+        page = loc.get("page", 1) or 1
+        level = el.get("level")
+        ro += 1
+        eid = f"e{ro}"
+        if t == "heading":
+            lvl = level or 1
+            while stack and stack[-1][0] >= lvl:
+                stack.pop()
+            parent = stack[-1][1] if stack else None
+            stack.append((lvl, eid))
+        else:
+            parent = stack[-1][1] if stack else None
+        ne = {"id": eid, "type": t, "content": c,
+              "location": {"page": page, "bbox": loc.get("bbox", [])},
+              "hierarchy": {"parent": parent},
+              "metadata": {"reading_order": ro}}
+        if level is not None:
+            ne["level"] = level
+        ll = (el.get("metadata") or {}).get("list_level")
+        if ll:
+            ne["metadata"]["list_level"] = ll
+        els.append(ne)
+    return els
+
+
+def _derive_blocks_from_elements(elements):
+    """Derive the legacy sections/tables/images lists from the reading-ordered
+    elements (for backward-compat + the Blocks-view fallback). Consecutive text
+    is grouped under its heading; tables/images become their own blocks."""
+    from app.services.providers.parsers.parsed_document import Section, Table, Image
+    sections, tables, images = [], [], []
+    cur = {"heading": "", "level": 1, "page": 1, "lines": []}
+
+    def flush():
+        content = "\n".join(cur["lines"]).strip()
+        if content or cur["heading"]:
+            sections.append(Section(heading=cur["heading"], content=content,
+                                    level=cur["level"] or 1, page=cur["page"]))
+        cur["lines"] = []
+
+    for el in sorted(elements or [], key=lambda e: (e.get("metadata") or {}).get("reading_order", 0)):
+        t = el.get("type")
+        c = el.get("content") or {}
+        page = (el.get("location") or {}).get("page", 1) or 1
+        if t == "heading":
+            flush()
+            cur.update(heading=(c.get("text") or "").strip(), level=el.get("level") or 1, page=page)
+        elif t in ("paragraph", "list_item", "quote", "code"):
+            if not cur["lines"]:
+                cur["page"] = page
+            txt = (c.get("text") or "").strip()
+            if txt:
+                cur["lines"].append(("• " + txt) if t == "list_item" else txt)
+        elif t == "table":
+            tables.append(Table(content=c.get("markdown") or c.get("text") or "",
+                                headers=c.get("headers") or [], rows=[],
+                                num_rows=len(c.get("rows") or []),
+                                num_cols=len(c.get("headers") or []), page=page))
+        elif t == "image":
+            images.append(Image(caption=c.get("caption") or "", ocr_text=c.get("ocr_text") or "",
+                                image_path=c.get("image_path") or c.get("src") or "",
+                                page=page, text_for_embedding=c.get("text_for_embedding") or ""))
+    flush()
+    return sections, tables, images
+
+
+# Element types that belong to tabular (CSV/Excel) or tree (JSON/XML) documents.
+# Their structure (parent_id, relationships, typed columns) must be preserved
+# verbatim — the reading-order normalizer is only for document formats.
+_STRUCTURED_TYPES = {
+    "workbook", "sheet", "formula", "merged_cell", "chart", "cell_block",
+    "json_object", "json_array", "json_key_value", "json_null", "xml_element",
+}
+
+
+def _is_doc_elements(elements: list) -> bool:
+    """True for reading-ordered DOCUMENT elements (PDF/DOCX/PPTX/web); False for
+    tabular/tree elements, which must be stored without normalization."""
+    for e in (elements or []):
+        if e.get("type") in _STRUCTURED_TYPES:
+            return False
+        if e.get("type") == "table" and isinstance((e.get("content") or {}).get("columns"), list):
+            return False
+    return True
+
+
+def _rebuild_legacy_from_structured(elements: list):
+    """From edited tabular `table` elements (columns + rows-by-name), rebuild the
+    legacy sections/tables so re-processing chunks the edited values. Returns
+    ([sections], [tables]) — empty when there are no tabular tables."""
+    from app.services.providers.parsers.parsed_document import Section, Table
+    sections, tables = [], []
+    for el in (elements or []):
+        if el.get("type") != "table":
+            continue
+        c = el.get("content") or {}
+        cols = c.get("columns")
+        if not isinstance(cols, list):
+            continue
+        names = [str(col.get("name", f"col{i+1}")) for i, col in enumerate(cols)]
+        rows = c.get("rows") or []
+        # markdown table (kept intact for table-scan lookups)
+        md = ["| " + " | ".join(names) + " |",
+              "|" + "|".join(["---"] * len(names)) + "|"]
+        for r in rows:
+            vals = r.get("values", r) if isinstance(r, dict) else {}
+            md.append("| " + " | ".join(str(vals.get(n, "")) for n in names) + " |")
+        markdown = "\n".join(md)
+        tables.append(Table(content=markdown, headers=names,
+                            rows=[[ (r.get("values", r) if isinstance(r, dict) else {}).get(n, "")
+                                    for n in names] for r in rows],
+                            num_rows=len(rows), num_cols=len(names), page=1))
+        # one section per row for precise retrieval
+        name = c.get("table_name") or (el.get("location") or {}).get("sheet") or "Table"
+        for i, r in enumerate(rows, 1):
+            vals = r.get("values", r) if isinstance(r, dict) else {}
+            line = " | ".join(f"{n}: {vals.get(n, '')}" for n in names)
+            sections.append(Section(heading=f"{name} · Row {i}", content=line, level=1, page=1))
+    return sections, tables
+
+
+def _resave_from_raw_source(db: Session, doc, space_id: str, org_id: str, raw: str) -> dict:
+    """Re-parse edited JSON/XML source text into a fresh, valid element tree and
+    store it. Keeps parsing centralized so the structure is always consistent."""
+    from app.services.providers.parsers import parse_document as li_parse_document
+    loaded = {}
+    if doc.loaded_content:
+        loaded = json.loads(doc.loaded_content)
+    loaded = dict(loaded)
+    loaded["raw_text"] = raw
+    loaded.pop("file_path", None)   # force the raw-text path, not the on-disk file
+    try:
+        parsed = li_parse_document(loaded)
+    except Exception as e:
+        raise HTTPException(422, f"Could not parse edited source: {str(e)}")
+    parsed.document_id = doc.id
+    parsed.document = _document_identity(doc, org_id)
+    doc.extracted_content = parsed.to_json()
+    doc.status = DocStatus.EXTRACTED
+    db.commit()
+    db.refresh(doc)
+    return get_extracted_content(db, space_id, doc.id, org_id)
+
+
 def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: str, data) -> dict:
     from app.services.providers.parsers.parsed_document import ParsedDocument
 
@@ -1617,25 +1799,61 @@ def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: st
     payload = data.dict(exclude_unset=True)
     if "title" in payload and payload["title"] is not None:
         existing["title"] = payload["title"]
-    blocks_edited = False
-    if "sections" in payload:
-        existing["sections"] = payload["sections"]; blocks_edited = True
-    if "tables" in payload:
-        existing["tables"] = payload["tables"]; blocks_edited = True
-    if "images" in payload:
-        existing["images"] = payload["images"]; blocks_edited = True
     if "metadata" in payload and payload["metadata"] is not None:
         existing["metadata"] = payload["metadata"]
 
-    try:
-        parsed_doc = ParsedDocument.from_dict(existing)
-    except Exception as e:
-        raise HTTPException(422, f"Invalid ParsedDocument structure: {str(e)}")
+    # ── JSON / XML: re-parse the edited raw source into a fresh, valid tree.
+    if payload.get("raw_source") is not None:
+        return _resave_from_raw_source(db, doc, space_id, org_id, payload["raw_source"])
 
-    # CRITICAL: chunking reads elements[] first, so regenerate it from the edited
-    # blocks — otherwise the edits never reach the index on re-process.
-    if blocks_edited:
-        parsed_doc.elements = _rebuild_elements_from_blocks(parsed_doc)
+    # ── Elements-based edit. Document formats normalize into the reading-ordered
+    #    schema; tabular (CSV/Excel) and tree (JSON/XML) keep their own element
+    #    structure and are stored verbatim so nothing gets mangled.
+    if isinstance(payload.get("elements"), list):
+        els = payload["elements"]
+        if not _is_doc_elements(els):
+            existing["elements"] = els
+            try:
+                parsed_doc = ParsedDocument.from_dict(existing)
+            except Exception as e:
+                raise HTTPException(422, f"Invalid ParsedDocument structure: {str(e)}")
+            parsed_doc.elements = els
+            # Rebuild the legacy sections/tables so re-processing chunks the edits.
+            secs, tbls = _rebuild_legacy_from_structured(els)
+            if secs or tbls:
+                parsed_doc.sections, parsed_doc.tables = secs, tbls
+            doc.extracted_content = json.dumps(parsed_doc.to_dict(), ensure_ascii=False)
+            doc.status = DocStatus.EXTRACTED
+            db.commit()
+            db.refresh(doc)
+            return get_extracted_content(db, space_id, doc_id, org_id)
+
+        norm = _normalize_elements(els)
+        existing["elements"] = norm
+        try:
+            parsed_doc = ParsedDocument.from_dict(existing)
+        except Exception as e:
+            raise HTTPException(422, f"Invalid ParsedDocument structure: {str(e)}")
+        parsed_doc.elements = norm
+        # keep the legacy lists in sync (chunking uses elements; these are for
+        # backward-compat + the Blocks fallback view).
+        secs, tbls, imgs = _derive_blocks_from_elements(norm)
+        parsed_doc.sections, parsed_doc.tables, parsed_doc.images = secs, tbls, imgs
+    else:
+        # ── LEGACY: sections/tables/images edit path.
+        blocks_edited = False
+        if "sections" in payload:
+            existing["sections"] = payload["sections"]; blocks_edited = True
+        if "tables" in payload:
+            existing["tables"] = payload["tables"]; blocks_edited = True
+        if "images" in payload:
+            existing["images"] = payload["images"]; blocks_edited = True
+        try:
+            parsed_doc = ParsedDocument.from_dict(existing)
+        except Exception as e:
+            raise HTTPException(422, f"Invalid ParsedDocument structure: {str(e)}")
+        if blocks_edited:
+            parsed_doc.elements = _rebuild_elements_from_blocks(parsed_doc)
 
     doc.extracted_content = json.dumps(parsed_doc.to_dict(), ensure_ascii=False)
     doc.status = DocStatus.EXTRACTED

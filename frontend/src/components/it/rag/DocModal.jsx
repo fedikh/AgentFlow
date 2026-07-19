@@ -1,4 +1,286 @@
 import React from "react";
+import {
+  cellsLayout, cellsNcols, matrixToPositional, buildMatrix,
+  tblSetText, tblMergeRight, tblMergeDown, tblSplit,
+  tblInsertRow, tblDeleteRow, tblMoveRow,
+  tblInsertCol, tblDeleteCol, tblMoveCol,
+} from "./tableModel";
+
+// Header row for an editable block: tag + move up/down + remove.
+function EditBlockHeader({ label, bg, fg, i, count, onMove, onRemove }) {
+  return (
+    <div className="rag-block-header">
+      <span
+        className="rag-block-tag"
+        style={bg ? { background: bg, color: fg } : undefined}
+      >
+        {label}
+      </span>
+      <div style={{ display: "flex", gap: 4 }}>
+        <button
+          className="rag-btn rag-btn-xs"
+          title="Move up"
+          disabled={i === 0}
+          onClick={() => onMove(i, -1)}
+        >
+          ▲
+        </button>
+        <button
+          className="rag-btn rag-btn-xs"
+          title="Move down"
+          disabled={i === count - 1}
+          onClick={() => onMove(i, 1)}
+        >
+          ▼
+        </button>
+        <button
+          className="rag-btn rag-btn-xs rag-btn-red"
+          onClick={() => onRemove(i)}
+        >
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Reusable merged-cell table editor (colspan + rowspan) ────────────────────
+// Powers document tables and CSV/Excel. Fixed columns; any cell can span columns
+// (⇥ merge right) or rows (⇩ merge down), and split back (⊟). Row/column tools
+// (insert N / move / delete) via the ⋮ menus. Two modes: visual grid or markdown.
+function gridToMd(headers, grid) {
+  const pos = matrixToPositional(buildMatrix(grid));
+  const ncols = Math.max(headers.length, ...pos.map((r) => r.length), 1);
+  const h = Array.from({ length: ncols }, (_, i) => headers[i] ?? "");
+  const lines = ["| " + h.join(" | ") + " |", "|" + Array(ncols).fill("---").join("|") + "|"];
+  for (const r of pos) lines.push("| " + Array.from({ length: ncols }, (_, i) => r[i] ?? "").join(" | ") + " |");
+  return lines.join("\n");
+}
+
+function TableGridEditor({ headers, grid, onChange }) {
+  const layout = cellsLayout(grid); // { nrows, ncols, rows:[[{r,c,t,cs,rs}]] }
+  const ncols = Math.max(headers.length, layout.ncols, 1);
+  const H = Array.from({ length: ncols }, (_, i) => headers[i] ?? "");
+
+  const [mode, setMode] = React.useState("grid");
+  const [mdText, setMdText] = React.useState("");
+  const [menu, setMenu] = React.useState(null);
+  const [count, setCount] = React.useState(1); // how many rows/cols to insert at once
+  const toggleMenu = (type, index) =>
+    setMenu((m) => (m && m.type === type && m.index === index ? null : { type, index }));
+  const enterMarkdown = () => { setMdText(gridToMd(H, grid)); setMode("markdown"); };
+  const onMdChange = (val) => {
+    setMdText(val);
+    const g = parseMarkdownTable(val);
+    onChange(g.length ? g[0] : [], g.length ? g.slice(1).map((row) => row.map((t) => ({ t, cs: 1, rs: 1 }))) : []);
+  };
+
+  const setHeader = (ci, val) => { const nh = [...H]; nh[ci] = val; onChange(nh, grid); };
+  const setText = (r, c, val) => onChange(H, tblSetText(grid, r, c, val));
+  const mergeRight = (r, c) => onChange(H, tblMergeRight(grid, r, c));
+  const mergeDown = (r, c) => onChange(H, tblMergeDown(grid, r, c));
+  const split = (r, c) => onChange(H, tblSplit(grid, r, c));
+  const insRow = (idx, n = 1) => onChange(H, tblInsertRow(grid, idx, n));
+  const delRow = (idx) => { onChange(H, tblDeleteRow(grid, idx)); setMenu(null); };
+  const mvRow = (idx, dir) => { onChange(H, tblMoveRow(grid, idx, dir)); setMenu({ type: "row", index: idx + dir }); };
+  const insCol = (idx, n = 1) => {
+    const nh = [...H];
+    for (let i = 0; i < n; i++) nh.splice(idx, 0, `Column ${nh.length + 1}`);
+    onChange(nh, tblInsertCol(grid, idx, n));
+  };
+  const delCol = (idx) => { if (ncols <= 1) return; const nh = H.filter((_, i) => i !== idx); onChange(nh, tblDeleteCol(grid, idx)); setMenu(null); };
+  const mvCol = (idx, dir) => {
+    const j = idx + dir; if (j < 0 || j >= ncols) return;
+    const nh = [...H]; [nh[idx], nh[j]] = [nh[j], nh[idx]];
+    onChange(nh, tblMoveCol(grid, idx, dir)); setMenu({ type: "col", index: j });
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <button type="button" className={`rag-btn rag-btn-xs ${mode === "grid" ? "rag-btn-dark" : ""}`} onClick={() => setMode("grid")}>Grid</button>
+        <button type="button" className={`rag-btn rag-btn-xs ${mode === "markdown" ? "rag-btn-dark" : ""}`} onClick={enterMarkdown}>Markdown</button>
+      </div>
+      {mode === "markdown" ? (
+        <>
+          <div style={{ fontSize: 11, color: "#94A3B8", margin: "0 0 4px 2px" }}>
+            Edit the raw markdown table — one row per line, cells separated by “|”.
+            (Markdown can't store merged cells; use <strong>Grid</strong> for those.)
+          </div>
+          <textarea className="rag-edit-textarea rag-block-content-mono" style={{ minHeight: 180, fontSize: 12 }}
+            spellCheck={false} value={mdText} onChange={(e) => onMdChange(e.target.value)}
+            placeholder="| Header 1 | Header 2 |&#10;|---|---|&#10;| a | b |" />
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 11, color: "#94A3B8", margin: "0 0 4px 2px" }}>
+            Hover a cell for <b>⇥ merge&nbsp;right</b>, <b>⇩ merge&nbsp;down</b>,
+            <b> ⊟ split</b>. Click a row's <b>⋮</b> or a column header's <b>⋮</b> to
+            insert / move / delete.
+          </div>
+          <div className="rag-grid-wrap">
+            <table className="rag-grid">
+              <thead>
+                <tr>
+                  <th style={{ width: 24 }} />
+                  {H.map((h, ci) => (
+                    <th key={ci}>
+                      <div className="rag-grid-hcell">
+                        <input className="rag-grid-cellinput head" value={h} placeholder={`Col ${ci + 1}`}
+                          onChange={(e) => setHeader(ci, e.target.value)} />
+                        <button className={`rag-grid-menu-btn ${menu?.type === "col" && menu.index === ci ? "on" : ""}`}
+                          title="Column tools" onClick={() => toggleMenu("col", ci)}>⋮</button>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {menu?.type === "col" && menu.index < ncols && (
+                  <tr>
+                    <td className="rag-grid-gutter" />
+                    <td className="rag-grid-toolbar-cell" colSpan={ncols}>
+                      <div className="rag-grid-toolbar">
+                        <span className="lbl">Column {menu.index + 1}</span>
+                        <button className="rag-grid-tbtn" onClick={() => insCol(menu.index, count)}>+◀ insert left</button>
+                        <button className="rag-grid-tbtn" onClick={() => insCol(menu.index + 1, count)}>insert right ▶+</button>
+                        <button className="rag-grid-tbtn" disabled={menu.index === 0} onClick={() => mvCol(menu.index, -1)}>◀ move</button>
+                        <button className="rag-grid-tbtn" disabled={menu.index === ncols - 1} onClick={() => mvCol(menu.index, 1)}>move ▶</button>
+                        <button className="rag-grid-tbtn red" disabled={ncols <= 1} onClick={() => delCol(menu.index)}>✕ delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {layout.rows.map((cellsInRow, r) => (
+                  <React.Fragment key={r}>
+                    <tr>
+                      <td className="rag-grid-gutter">
+                        <button className={`rag-grid-menu-btn ${menu?.type === "row" && menu.index === r ? "on" : ""}`}
+                          title="Row tools" onClick={() => toggleMenu("row", r)}>⋮</button>
+                      </td>
+                      {cellsInRow.map((cell) => (
+                        <td key={cell.c} colSpan={cell.cs} rowSpan={cell.rs}>
+                          <div className="rag-grid-cell">
+                            <input className="rag-grid-cellinput" value={cell.t}
+                              onChange={(e) => setText(cell.r, cell.c, e.target.value)} />
+                            <span className="rag-grid-cellbtns">
+                              {cell.c + cell.cs < ncols && (
+                                <button className="rag-grid-cbtn" title="Merge with cell on the right" onClick={() => mergeRight(cell.r, cell.c)}>⇥</button>
+                              )}
+                              {cell.r + cell.rs < layout.nrows && (
+                                <button className="rag-grid-cbtn" title="Merge with cell below" onClick={() => mergeDown(cell.r, cell.c)}>⇩</button>
+                              )}
+                              {(cell.cs > 1 || cell.rs > 1) && (
+                                <button className="rag-grid-cbtn" title="Split merged cell" onClick={() => split(cell.r, cell.c)}>⊟</button>
+                              )}
+                            </span>
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                    {menu?.type === "row" && menu.index === r && (
+                      <tr>
+                        <td className="rag-grid-gutter" />
+                        <td className="rag-grid-toolbar-cell" colSpan={ncols}>
+                          <div className="rag-grid-toolbar">
+                            <span className="lbl">Row {r + 1}</span>
+                            <button className="rag-grid-tbtn" onClick={() => insRow(r, count)}>+▲ above</button>
+                            <button className="rag-grid-tbtn" onClick={() => insRow(r + 1, count)}>+▼ below</button>
+                            <button className="rag-grid-tbtn" disabled={r === 0} onClick={() => mvRow(r, -1)}>▲ move</button>
+                            <button className="rag-grid-tbtn" disabled={r === layout.nrows - 1} onClick={() => mvRow(r, 1)}>move ▼</button>
+                            <button className="rag-grid-tbtn red" onClick={() => delRow(r)}>✕ delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+                {layout.nrows === 0 && (
+                  <tr><td colSpan={ncols + 1} style={{ padding: 10 }}>
+                    <span style={{ fontSize: 12, color: "#9CA3AF" }}>No rows yet — add one below.</span>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: "flex", gap: 8, padding: "8px 2px", flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ fontSize: 12, color: "#475569", display: "flex", alignItems: "center", gap: 4 }}>
+              count:
+              <input type="number" min={1} value={count}
+                onChange={(e) => setCount(Math.max(1, parseInt(e.target.value) || 1))}
+                style={{ width: 46, padding: "3px 5px", border: "1px solid #E2E8F0", borderRadius: 4, fontSize: 12 }} />
+            </label>
+            <button className="rag-btn rag-btn-xs" onClick={() => insRow(layout.nrows, count)}>+ {count} Row{count > 1 ? "s" : ""}</button>
+            <button className="rag-btn rag-btn-xs" onClick={() => insCol(ncols, count)}>+ {count} Column{count > 1 ? "s" : ""}</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// CSV / Excel editor — title + one grid per table element.
+function TabularEditor({ tables, title, setEditTitle, updateTable }) {
+  return (
+    <>
+      <div className="rag-edit-note">
+        Edit cells directly; add or remove rows/columns with the buttons. Saving
+        keeps the document at <strong>Parsed</strong> — then <strong>Process</strong>{" "}
+        to rebuild the chunks from your edits.
+      </div>
+      <input
+        className="rag-edit-input"
+        placeholder="Document title"
+        value={title}
+        onChange={(e) => setEditTitle(e.target.value)}
+      />
+      {tables.length === 0 && (
+        <div style={{ padding: 16, color: "#9CA3AF", fontSize: 13 }}>
+          No editable tables in this file.
+        </div>
+      )}
+      {tables.map((t, ti) => (
+        <div key={ti} className="rag-block">
+          <div className="rag-block-header">
+            <span className="rag-block-tag" style={{ background: "#FEF3C7", color: "#92400E" }}>
+              {t.name || `Table ${ti + 1}`}
+            </span>
+            <span className="rag-block-meta">
+              {t.grid.length} rows × {Math.max(t.headers.length, ...t.grid.map((r) => r.length), 0)} cols
+            </span>
+          </div>
+          <TableGridEditor
+            headers={t.headers}
+            grid={t.grid}
+            onChange={(headers, grid) => updateTable(ti, { headers, grid })}
+          />
+        </div>
+      ))}
+    </>
+  );
+}
+
+// JSON / XML editor — edit the raw source; re-parsed into a fresh tree on save.
+function TreeSourceEditor({ rawSource, sourceType, onChange }) {
+  const label = (sourceType || "source").toUpperCase();
+  return (
+    <>
+      <div className="rag-edit-note">
+        Edit the raw {label}. On save it is re-parsed into a fresh, valid
+        structure — invalid {label} is rejected. Then <strong>Process</strong> to
+        rebuild the chunks.
+      </div>
+      <textarea
+        className="rag-edit-textarea rag-block-content-mono"
+        style={{ minHeight: 420, fontSize: 12 }}
+        spellCheck={false}
+        value={rawSource}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={`Raw ${label} source`}
+      />
+    </>
+  );
+}
 
 const DocModal = ({
   modal,
@@ -9,18 +291,22 @@ const DocModal = ({
   setShowJson,
   editMode,
   editDoc,
-  setEditDoc,
+  setEditTitle = () => {},
   savingEdit,
   startEdit,
   cancelEdit,
   saveEdit,
-  editField,
+  editBlock = () => {},
+  updateBlock = () => {},
   removeBlock,
   moveBlock = () => {},
-  addSection,
+  addHeading = () => {},
+  addText = () => {},
   addTable = () => {},
   addImage = () => {},
   uploadingImage = false,
+  updateTable = () => {},
+  setRawSource = () => {},
   spaceId,
 }) => {
   const [elementsView, setElementsView] = React.useState(false);
@@ -33,6 +319,12 @@ const DocModal = ({
     /^https?:\/\//i.test(path || "")
       ? path
       : `${API}/rag/spaces/${spaceId}/image?path=${encodeURIComponent(path || "")}`;
+
+  // CSV/Excel (tabular) and JSON/XML (tree) have a single natural view, so the
+  // "Elements / Blocks" split is meaningless there — only document formats get
+  // the toggle. `parsedKind` drives that decision throughout the header + body.
+  const parsedKind = docKind(modalData?.parsed_document || {});
+  const isDocKind = parsedKind === "doc";
 
   return (
     <div
@@ -52,15 +344,17 @@ const DocModal = ({
           <div style={{ display: "flex", gap: 6 }}>
             {modal === "parsed" && !editMode && (
               <>
-                <button
-                  className={`rag-btn rag-btn-sm ${elementsView ? "rag-btn-dark" : ""}`}
-                  onClick={() => {
-                    setElementsView(!elementsView);
-                    setShowJson(false);
-                  }}
-                >
-                  {elementsView ? "Blocks" : "Elements"}
-                </button>
+                {isDocKind && (
+                  <button
+                    className={`rag-btn rag-btn-sm ${elementsView ? "rag-btn-dark" : ""}`}
+                    onClick={() => {
+                      setElementsView(!elementsView);
+                      setShowJson(false);
+                    }}
+                  >
+                    {elementsView ? "Blocks" : "Elements"}
+                  </button>
+                )}
                 <button
                   className={`rag-btn rag-btn-sm ${showJson ? "rag-btn-dark" : ""}`}
                   onClick={() => {
@@ -68,7 +362,13 @@ const DocModal = ({
                     setElementsView(false);
                   }}
                 >
-                  {showJson ? "Blocks" : "JSON"}
+                  {showJson
+                    ? isDocKind
+                      ? "Blocks"
+                      : parsedKind === "tabular"
+                        ? "Table"
+                        : "Tree"
+                    : "JSON"}
                 </button>
                 {modalData?.status !== "INDEXED" && (
                   <button className="rag-btn rag-btn-sm" onClick={startEdit}>
@@ -140,234 +440,218 @@ const DocModal = ({
               )}
 
               {editMode && editDoc ? (
+                editDoc.kind === "tree" ? (
+                  <TreeSourceEditor
+                    rawSource={editDoc.rawSource || ""}
+                    sourceType={editDoc.sourceType}
+                    onChange={setRawSource}
+                  />
+                ) : editDoc.kind === "tabular" ? (
+                  <TabularEditor
+                    tables={editDoc.tables || []}
+                    title={editDoc.title || ""}
+                    setEditTitle={setEditTitle}
+                    updateTable={updateTable}
+                  />
+                ) : (
                 <>
                   <div className="rag-edit-note">
-                    Edit the text, fix headings/pages, reorder with ▲▼, or add /
-                    remove blocks. Saving keeps the document at{" "}
-                    <strong>Parsed</strong> — then <strong>Process</strong> to
-                    rebuild the chunks from your edits.
+                    Everything is shown in reading order — edit text, fix
+                    headings/pages, reorder with ▲▼, or add / remove blocks.
+                    Saving keeps the document at <strong>Parsed</strong> — then
+                    <strong> Process</strong> to rebuild the chunks from your edits.
                   </div>
                   <input
                     className="rag-edit-input"
                     placeholder="Document title"
-                    value={editDoc.parsed_document.title || ""}
-                    onChange={(e) =>
-                      setEditDoc((prev) => ({
-                        ...prev,
-                        parsed_document: {
-                          ...prev.parsed_document,
-                          title: e.target.value,
-                        },
-                      }))
-                    }
+                    value={editDoc.title || ""}
+                    onChange={(e) => setEditTitle(e.target.value)}
                   />
-                  {editDoc.parsed_document.sections?.map((sec, i) => (
-                    <div key={`es${i}`} className="rag-block">
-                      <div className="rag-block-header">
-                        <span className="rag-block-tag">Section {i + 1}</span>
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button
-                            className="rag-btn rag-btn-xs"
-                            title="Move up"
-                            disabled={i === 0}
-                            onClick={() => moveBlock("sections", i, -1)}
-                          >
-                            ▲
-                          </button>
-                          <button
-                            className="rag-btn rag-btn-xs"
-                            title="Move down"
-                            disabled={i === (editDoc.parsed_document.sections?.length || 0) - 1}
-                            onClick={() => moveBlock("sections", i, 1)}
-                          >
-                            ▼
-                          </button>
-                          <button
-                            className="rag-btn rag-btn-xs rag-btn-red"
-                            onClick={() => removeBlock("sections", i)}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                      <input
-                        className="rag-edit-input"
-                        placeholder="Heading"
-                        value={sec.heading || ""}
-                        onChange={(e) =>
-                          editField("sections", i, "heading", e.target.value)
-                        }
-                      />
-                      <textarea
-                        className="rag-edit-textarea"
-                        rows={5}
-                        placeholder="Content"
-                        value={sec.content || ""}
-                        onChange={(e) =>
-                          editField("sections", i, "content", e.target.value)
-                        }
-                      />
-                      <div className="rag-edit-fields">
-                        <label className="rag-edit-field">
-                          Level
-                          <input
-                            type="number"
-                            min={1}
-                            max={6}
-                            value={sec.level || 1}
-                            onChange={(e) =>
-                              editField(
-                                "sections",
-                                i,
-                                "level",
-                                parseInt(e.target.value) || 1,
-                              )
-                            }
-                          />
-                        </label>
-                        <label className="rag-edit-field">
-                          Page
-                          <input
-                            type="number"
-                            min={1}
-                            value={sec.page || 1}
-                            onChange={(e) =>
-                              editField(
-                                "sections",
-                                i,
-                                "page",
-                                parseInt(e.target.value) || 1,
-                              )
-                            }
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  ))}
-                  {editDoc.parsed_document.tables?.map((tab, i) => (
-                    <div key={`et${i}`} className="rag-block rag-block-table">
-                      <div className="rag-block-header">
-                        <span
-                          className="rag-block-tag"
-                          style={{ background: "#FEF3C7", color: "#92400E" }}
-                        >
-                          Table {i + 1} — {tab.num_rows}×{tab.num_cols}
-                        </span>
-                        <button
-                          className="rag-btn rag-btn-xs rag-btn-red"
-                          onClick={() => removeBlock("tables", i)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <textarea
-                        className="rag-edit-textarea rag-block-content-mono"
-                        rows={6}
-                        placeholder="Table content (markdown)"
-                        value={tab.content || ""}
-                        onChange={(e) =>
-                          editField("tables", i, "content", e.target.value)
-                        }
-                      />
-                      <div className="rag-edit-fields">
-                        <label className="rag-edit-field">
-                          Page
-                          <input
-                            type="number"
-                            min={1}
-                            value={tab.page || 1}
-                            onChange={(e) =>
-                              editField(
-                                "tables",
-                                i,
-                                "page",
-                                parseInt(e.target.value) || 1,
-                              )
-                            }
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  ))}
-                  {editDoc.parsed_document.images?.map((img, i) => (
-                    <div key={`ei${i}`} className="rag-block">
-                      <div className="rag-block-header">
-                        <span className="rag-block-tag">Image {i + 1}</span>
-                        <button
-                          className="rag-btn rag-btn-xs rag-btn-red"
-                          onClick={() => removeBlock("images", i)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                        <img
-                          src={imgUrl(img.image_path)}
-                          alt={`Image ${i + 1}`}
-                          style={{
-                            width: 140,
-                            height: 140,
-                            objectFit: "contain",
-                            borderRadius: 8,
-                            background: "#F8FAFC",
-                            border: "1px solid #F1F1F1",
-                            flexShrink: 0,
-                          }}
-                          onError={(e) => {
-                            e.target.style.opacity = 0.2;
-                          }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <textarea
-                            className="rag-edit-textarea"
-                            rows={3}
-                            placeholder="Description (used for retrieval)"
-                            value={img.text_for_embedding || ""}
-                            onChange={(e) =>
-                              editField("images", i, "text_for_embedding", e.target.value)
-                            }
-                          />
-                          <input
-                            className="rag-edit-input"
-                            placeholder="Caption (optional)"
-                            value={img.caption || ""}
-                            onChange={(e) =>
-                              editField("images", i, "caption", e.target.value)
-                            }
-                          />
-                          <input
-                            className="rag-edit-input"
-                            placeholder="OCR text (optional)"
-                            value={img.ocr_text || ""}
-                            onChange={(e) =>
-                              editField("images", i, "ocr_text", e.target.value)
-                            }
+                  {(editDoc.blocks || []).map((b, i) => {
+                    const count = editDoc.blocks.length;
+                    if (b.kind === "table") {
+                      return (
+                        <div key={i} className="rag-block rag-block-table">
+                          <EditBlockHeader label="Table" bg="#FEF3C7" fg="#92400E"
+                            i={i} count={count} onMove={moveBlock} onRemove={removeBlock} />
+                          <TableGridEditor
+                            headers={b.headers || []}
+                            grid={b.grid || []}
+                            onChange={(headers, grid) => updateBlock(i, { headers, grid })}
                           />
                           <div className="rag-edit-fields">
                             <label className="rag-edit-field">
                               Page
-                              <input
-                                type="number"
-                                min={1}
-                                value={img.page || 1}
-                                onChange={(e) =>
-                                  editField(
-                                    "images",
-                                    i,
-                                    "page",
-                                    parseInt(e.target.value) || 1,
-                                  )
-                                }
-                              />
+                              <input type="number" min={1} value={b.page || 1}
+                                onChange={(e) => editBlock(i, "page", parseInt(e.target.value) || 1)} />
                             </label>
                           </div>
                         </div>
+                      );
+                    }
+                    if (b.kind === "code") {
+                      return (
+                        <div key={i} className="rag-block">
+                          <EditBlockHeader label="Code" bg="#CCFBF1" fg="#0F766E"
+                            i={i} count={count} onMove={moveBlock} onRemove={removeBlock} />
+                          <textarea
+                            className="rag-edit-textarea rag-block-content-mono"
+                            rows={6}
+                            placeholder="Code"
+                            value={b.text || ""}
+                            onChange={(e) => editBlock(i, "text", e.target.value)}
+                          />
+                        </div>
+                      );
+                    }
+                    if (b.kind === "image") {
+                      return (
+                        <div key={i} className="rag-block">
+                          <EditBlockHeader label="Image" bg="#F3E8FF" fg="#7C3AED"
+                            i={i} count={count} onMove={moveBlock} onRemove={removeBlock} />
+                          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                            <img
+                              src={b.src || imgUrl(b.image_path)}
+                              alt="Block"
+                              style={{
+                                width: 140, height: 140, objectFit: "contain",
+                                borderRadius: 8, background: "#F8FAFC",
+                                border: "1px solid #F1F1F1", flexShrink: 0,
+                              }}
+                              onError={(e) => { e.target.style.opacity = 0.2; }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <textarea
+                                className="rag-edit-textarea"
+                                rows={3}
+                                placeholder="Description (used for retrieval)"
+                                value={b.text_for_embedding || ""}
+                                onChange={(e) => editBlock(i, "text_for_embedding", e.target.value)}
+                              />
+                              <input
+                                className="rag-edit-input"
+                                placeholder="Caption (optional)"
+                                value={b.caption || ""}
+                                onChange={(e) => editBlock(i, "caption", e.target.value)}
+                              />
+                              <input
+                                className="rag-edit-input"
+                                placeholder="OCR text (optional)"
+                                value={b.ocr_text || ""}
+                                onChange={(e) => editBlock(i, "ocr_text", e.target.value)}
+                              />
+                              <div className="rag-edit-fields">
+                                <label className="rag-edit-field">
+                                  Page
+                                  <input type="number" min={1} value={b.page || 1}
+                                    onChange={(e) => editBlock(i, "page", parseInt(e.target.value) || 1)} />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (b.kind === "heading") {
+                      return (
+                        <div key={i} className="rag-block">
+                          <EditBlockHeader label={`Heading H${b.level || 1}`} bg="#DBEAFE" fg="#1E40AF"
+                            i={i} count={count} onMove={moveBlock} onRemove={removeBlock} />
+                          <input
+                            className="rag-edit-input"
+                            style={{ fontWeight: 600 }}
+                            placeholder="Heading text"
+                            value={b.text || ""}
+                            onChange={(e) => editBlock(i, "text", e.target.value)}
+                          />
+                          <div className="rag-edit-fields">
+                            <label className="rag-edit-field">
+                              Level
+                              <input type="number" min={1} max={6} value={b.level || 1}
+                                onChange={(e) => editBlock(i, "level", parseInt(e.target.value) || 1)} />
+                            </label>
+                            <label className="rag-edit-field">
+                              Page
+                              <input type="number" min={1} value={b.page || 1}
+                                onChange={(e) => editBlock(i, "page", parseInt(e.target.value) || 1)} />
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (b.kind === "text") {
+                      const isList = b.elType === "list_item";
+                      return (
+                        <div key={i} className="rag-block">
+                          <EditBlockHeader label={isList ? "List item" : "Text"}
+                            i={i} count={count} onMove={moveBlock} onRemove={removeBlock} />
+                          <textarea
+                            className="rag-edit-textarea"
+                            rows={4}
+                            placeholder="Text"
+                            value={b.text || ""}
+                            onChange={(e) => editBlock(i, "text", e.target.value)}
+                          />
+                          <div className="rag-edit-fields">
+                            <label className="rag-edit-field">
+                              Type
+                              <select
+                                value={b.elType || "paragraph"}
+                                onChange={(e) => editBlock(i, "elType", e.target.value)}
+                              >
+                                <option value="paragraph">Paragraph</option>
+                                <option value="list_item">List item</option>
+                                <option value="quote">Quote</option>
+                              </select>
+                            </label>
+                            <label className="rag-edit-field">
+                              Page
+                              <input type="number" min={1} value={b.page || 1}
+                                onChange={(e) => editBlock(i, "page", parseInt(e.target.value) || 1)} />
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    }
+                    // legacy "section" block (heading + grouped text)
+                    return (
+                      <div key={i} className="rag-block">
+                        <EditBlockHeader label="Section"
+                          i={i} count={count} onMove={moveBlock} onRemove={removeBlock} />
+                        <input
+                          className="rag-edit-input"
+                          placeholder="Heading"
+                          value={b.heading || ""}
+                          onChange={(e) => editBlock(i, "heading", e.target.value)}
+                        />
+                        <textarea
+                          className="rag-edit-textarea"
+                          rows={5}
+                          placeholder="Content"
+                          value={b.content || ""}
+                          onChange={(e) => editBlock(i, "content", e.target.value)}
+                        />
+                        <div className="rag-edit-fields">
+                          <label className="rag-edit-field">
+                            Level
+                            <input type="number" min={1} max={6} value={b.level || 1}
+                              onChange={(e) => editBlock(i, "level", parseInt(e.target.value) || 1)} />
+                          </label>
+                          <label className="rag-edit-field">
+                            Page
+                            <input type="number" min={1} value={b.page || 1}
+                              onChange={(e) => editBlock(i, "page", parseInt(e.target.value) || 1)} />
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <button className="rag-btn rag-btn-sm" onClick={addSection}>
-                      + Add section
+                    );
+                  })}
+                  <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                    <button className="rag-btn rag-btn-sm" onClick={addHeading}>
+                      + Add heading
+                    </button>
+                    <button className="rag-btn rag-btn-sm" onClick={addText}>
+                      + Add text
                     </button>
                     <button className="rag-btn rag-btn-sm" onClick={addTable}>
                       + Add table
@@ -391,7 +675,8 @@ const DocModal = ({
                     </label>
                   </div>
                 </>
-              ) : elementsView ? (
+                )
+              ) : elementsView && isDocKind ? (
                 <ElementsView
                   doc={modalData.parsed_document}
                   imgUrl={imgUrl}
@@ -403,7 +688,7 @@ const DocModal = ({
                   </pre>
                 </div>
               ) : modalData.parsed_document?.elements?.length ? (
-                <OrderedBlocks doc={modalData.parsed_document} imgUrl={imgUrl} />
+                <BlocksView doc={modalData.parsed_document} imgUrl={imgUrl} />
               ) : (
                 <>
                   {modalData.parsed_document?.sections?.map((sec, i) => (
@@ -605,6 +890,27 @@ const TREE_TYPES = [
   "json_null",
   "xml_element",
 ];
+
+// Decide how a parsed document should render, from its metadata + element types.
+// Shared by BOTH the Elements and the Blocks views so every format shows in both:
+//   "tabular" → CSV / Excel  → grid / workbook (TableView)
+//   "tree"    → JSON / XML    → collapsible tree (TreeView)
+//   "doc"     → PDF/DOCX/PPTX/web → reading-ordered blocks / element list
+function docKind(doc) {
+  const els = doc?.elements || [];
+  const meta = doc?.metadata || {};
+  const st = (meta.source_type || meta.file_type || "").toLowerCase();
+  if (st === "csv" || st === "xlsx" || st === "xls" ||
+      els.some((e) => e.type === "workbook" || e.type === "sheet") ||
+      // a CSV/Excel table element carries typed `columns`; a PDF/DOCX table
+      // uses plain `headers` — so `columns` reliably signals tabular data.
+      els.some((e) => e.type === "table" && Array.isArray(e.content?.columns) && e.content.columns.length))
+    return "tabular";
+  if (st === "json" || st === "xml" ||
+      els.some((e) => TREE_TYPES.includes(e.type)))
+    return "tree";
+  return "doc";
+}
 
 const JSON_VALUE_COLOR = {
   string: "#059669",
@@ -1045,16 +1351,100 @@ function TableView({ doc }) {
   );
 }
 
+// Parse a markdown table into a grid of string cells. Tolerates leading/trailing
+// pipes and skips separator rows (|---|:--:|). Returns [] if nothing table-like.
+function parseMarkdownTable(md) {
+  const out = [];
+  for (const raw of (md || "").split("\n")) {
+    const line = raw.trim();
+    if (!line || line.indexOf("|") === -1) continue;
+    const noPipes = line.replace(/\|/g, "").trim();
+    if (noPipes && /^[:\-\s]+$/.test(noPipes)) continue; // separator row
+    let cells = line.split("|");
+    if (cells.length && cells[0].trim() === "") cells = cells.slice(1);
+    if (cells.length && cells[cells.length - 1].trim() === "")
+      cells = cells.slice(0, -1);
+    out.push(cells.map((c) => c.trim()));
+  }
+  return out;
+}
+
+// Read a cell positionally, tolerating rows shaped as arrays, index-keyed dicts
+// ("0".."n"), or (legacy) header-keyed dicts.
+function cellAt(row, ci, headers) {
+  if (Array.isArray(row)) return row[ci] ?? "";
+  if (row && typeof row === "object") {
+    if (Object.prototype.hasOwnProperty.call(row, String(ci)))
+      return row[String(ci)] ?? "";
+    const h = headers[ci];
+    if (h != null && Object.prototype.hasOwnProperty.call(row, h))
+      return row[h] ?? "";
+    return Object.values(row)[ci] ?? "";
+  }
+  return "";
+}
+
+const _tblTh = { border: "1px solid #E5E7EB", padding: "4px 8px", background: "#F9FAFB", textAlign: "left" };
+const _tblTd = { border: "1px solid #E5E7EB", padding: "4px 8px" };
+
 function TableBlock({ content }) {
-  const headers = content.headers || [];
-  const rows = content.rows || [];
-  if (!headers.length && !rows.length) {
+  // Rich cell model with colspan + rowspan (from the editor) → real merged cells.
+  if (Array.isArray(content.cells) && content.cells.length) {
+    const span = (c) => Math.max(1, c.cs || c.s || 1);
+    const ncols = Math.max(
+      (content.headers || []).length,
+      ...content.cells.map((r) => r.reduce((a, c) => a + span(c), 0)),
+      1,
+    );
+    const head = content.headers || [];
+    const hasHead = head.some((h) => (h ?? "").toString().trim() !== "");
+    return (
+      <div style={{ overflowX: "auto" }}>
+        {content.caption && <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{content.caption}</div>}
+        <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
+          {hasHead && (
+            <thead>
+              <tr>
+                {Array.from({ length: ncols }).map((_, i) => (
+                  <th key={i} style={_tblTh}>{head[i] ?? ""}</th>
+                ))}
+              </tr>
+            </thead>
+          )}
+          <tbody>
+            {content.cells.map((row, ri) => (
+              <tr key={ri}>
+                {row.map((cell, ci) => (
+                  <td key={ci} colSpan={span(cell)} rowSpan={Math.max(1, cell.rs || 1)} style={_tblTd}>{cell.t ?? ""}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  // Otherwise prefer the markdown grid — always complete/consistent; fall back
+  // to positional rows, then raw text.
+  const grid = parseMarkdownTable(content.markdown || "");
+  let head = [];
+  let body = [];
+  if (grid.length) {
+    head = grid[0];
+    body = grid.slice(1);
+  } else {
+    head = content.headers || [];
+    body = (content.rows || []).map((r) => head.map((_, ci) => cellAt(r, ci, head)));
+  }
+  if (!head.length && !body.length) {
     return (
       <pre className="rag-block-content rag-block-content-mono">
         {content.markdown || ""}
       </pre>
     );
   }
+  const cols = Math.max(head.length, ...body.map((r) => r.length), 0);
   return (
     <div style={{ overflowX: "auto" }}>
       {content.caption && (
@@ -1065,31 +1455,16 @@ function TableBlock({ content }) {
       <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
         <thead>
           <tr>
-            {headers.map((h, i) => (
-              <th
-                key={i}
-                style={{
-                  border: "1px solid #E5E7EB",
-                  padding: "4px 8px",
-                  background: "#F9FAFB",
-                  textAlign: "left",
-                }}
-              >
-                {h}
-              </th>
+            {Array.from({ length: cols }).map((_, i) => (
+              <th key={i} style={_tblTh}>{head[i] ?? ""}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, ri) => (
+          {body.map((r, ri) => (
             <tr key={ri}>
-              {headers.map((h, ci) => (
-                <td
-                  key={ci}
-                  style={{ border: "1px solid #E5E7EB", padding: "4px 8px" }}
-                >
-                  {r[h]}
-                </td>
+              {Array.from({ length: cols }).map((_, ci) => (
+                <td key={ci} style={_tblTd}>{r[ci] ?? ""}</td>
               ))}
             </tr>
           ))}
@@ -1188,6 +1563,17 @@ function renderElementContent(el, imgUrl) {
     );
   }
   return null;
+}
+
+// Blocks view entry point. Tabular (CSV/Excel) and structured (JSON/XML) docs
+// have no "reading order" of prose blocks, so they render with the SAME
+// specialized views as the Elements tab; document-style content uses the
+// reading-ordered block layout below.
+function BlocksView({ doc, imgUrl }) {
+  const kind = docKind(doc);
+  if (kind === "tabular") return <TableView doc={doc} />;
+  if (kind === "tree") return <TreeView doc={doc} />;
+  return <OrderedBlocks doc={doc} imgUrl={imgUrl} />;
 }
 
 // Blocks view rendered from elements[] in READING ORDER, so images / tables /
@@ -1390,20 +1776,12 @@ function ElementsView({ doc, imgUrl }) {
   const meta = doc?.metadata || {};
 
   // Tabular data (CSV / Excel) → table grid / workbook view.
-  if (
-    meta.source_type === "csv" ||
-    meta.source_type === "xlsx" ||
-    els.some((e) => e.type === "workbook" || e.type === "sheet")
-  ) {
+  if (docKind(doc) === "tabular") {
     return <TableView doc={doc} />;
   }
 
   // Structured data (JSON / XML) → collapsible tree instead of the flat list.
-  if (
-    meta.source_type === "json" ||
-    meta.source_type === "xml" ||
-    els.some((e) => TREE_TYPES.includes(e.type))
-  ) {
+  if (docKind(doc) === "tree") {
     return <TreeView doc={doc} />;
   }
 

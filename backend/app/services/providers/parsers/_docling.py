@@ -32,7 +32,11 @@ def _looks_like_heading(text: str) -> bool:
     # Numbered headings: "1. Title", "2) Title", "3.1 Title"
     if re.match(r"^\d+(?:\.\d+)*[.)]?\s+\S", t):
         return True
-    # Short, title-like line that isn't a full sentence
+    # A heading starts like one — a capital letter or digit. Lines that start
+    # lowercase are body text or list fragments ("first item"), never headings.
+    if not (t[:1].isupper() or t[:1].isdigit()):
+        return False
+    # Short, title-like line that isn't a full sentence.
     words = t.split()
     if len(words) <= 8 and not t.endswith((".", ":", ";", ",", "!", "?")):
         return True
@@ -40,8 +44,12 @@ def _looks_like_heading(text: str) -> bool:
 
 
 def _table_structured(item, doc):
-    """Return (headers, rows) for a docling TableItem. rows = list of dicts keyed
-    by header. Falls back to ([], []) if the table can't be structured."""
+    """Return (headers, rows) for a docling TableItem. rows are keyed by COLUMN
+    POSITION ("0".."N-1"), never by header text: Docling frequently emits
+    duplicate or empty header names (a merged title cell repeated across every
+    column, blank first columns, "0..6" placeholders), and keying rows by those
+    names collapses several columns into one and loses data. Positional keys are
+    always unique, so every cell survives. Falls back to ([], []) on failure."""
     try:
         df = item.export_to_dataframe(doc)
     except Exception:
@@ -51,10 +59,9 @@ def _table_structured(item, doc):
             return [], []
     try:
         headers = [str(c) for c in df.columns]
-        rows = [
-            {str(k): ("" if v is None else str(v)) for k, v in rec.items()}
-            for rec in df.to_dict(orient="records")
-        ]
+        rows = []
+        for rec in df.itertuples(index=False, name=None):
+            rows.append({str(i): ("" if v is None else str(v)) for i, v in enumerate(rec)})
         return headers, rows
     except Exception:
         return [], []
@@ -367,6 +374,168 @@ def docling_to_parsed_document(result, file_type="PDF", category="document",
                 f"{len(elements)} elements")
 
     return parsed
+
+
+def _md_cols(content: dict) -> int:
+    """Column count of a table content dict — from headers, else the first
+    markdown row."""
+    hs = content.get("headers") or []
+    if hs:
+        return len(hs)
+    md = (content.get("markdown") or "").strip()
+    if not md:
+        return 0
+    first = md.split("\n", 1)[0]
+    return len([x for x in first.split("|") if x.strip()])
+
+
+def _row_values(row):
+    """Ordered cell values of a table row (dict -> values in insertion order)."""
+    if isinstance(row, dict):
+        return list(row.values())
+    if isinstance(row, (list, tuple)):
+        return list(row)
+    return [row]
+
+
+def _row_is_blank(row) -> bool:
+    return all(not str(v).strip() for v in _row_values(row))
+
+
+def _remap_row(row, ncols):
+    """Re-key a row onto POSITIONAL keys "0".."ncols-1". Rows can arrive keyed by
+    a half's own header names or by position; normalizing everything to column
+    index makes merged halves line up column-for-column and never collide."""
+    vals = _row_values(row)
+    return {str(i): (vals[i] if i < len(vals) else "") for i in range(ncols)}
+
+
+def _last_page(el) -> int:
+    """Page of the LAST merged half (so a 3+ page table keeps chaining), falling
+    back to the element's own page."""
+    tp = el.get("_merge_tail_page")
+    if tp:
+        return tp
+    return (el.get("location") or {}).get("page", 0) or 0
+
+
+def _table_elements_mergeable(a, b) -> bool:
+    """True if two consecutive table elements are the two halves of ONE table
+    split across a page break. Requires matching column count. Across a page
+    break (page diff 1) the continuation half often carries different or
+    auto-generated headers (Docling emits "0..6" for one half and the real
+    header names for the other), so a matching column count alone is enough
+    there. On the SAME page we require identical headers, so two genuinely
+    distinct stacked tables are not glued together."""
+    ca, cb = a.get("content") or {}, b.get("content") or {}
+    pa = _last_page(a)
+    pb = (b.get("location") or {}).get("page", 0) or 0
+    dp = pb - pa
+    if dp not in (0, 1):
+        return False
+    na, nb = _md_cols(ca), _md_cols(cb)
+    if not (na and na == nb):
+        return False
+    if dp == 1:
+        return True                       # page-spanning continuation
+    ha = [str(h).strip().lower() for h in (ca.get("headers") or [])]
+    hb = [str(h).strip().lower() for h in (cb.get("headers") or [])]
+    return bool(ha) and ha == hb
+
+
+def _is_md_separator(line: str) -> bool:
+    """True for a Markdown header-separator row like '|---|---|' (only |, -, :,
+    spaces). The merged table keeps ONE such row at the top; any others coming
+    from the continuation half must be dropped or the table renders broken."""
+    s = (line or "").strip()
+    if "-" not in s:
+        return False
+    return set(s) <= set("|:- ")
+
+
+def _merge_table_content(a: dict, b: dict) -> None:
+    """Merge table-content dict b INTO a. The structured `rows` (what the grid
+    renders) are re-keyed onto a's header positions so the continuation half
+    lines up column-for-column instead of rendering blank; fully-blank rows are
+    dropped. The markdown is kept a single valid table (one separator, no
+    duplicated header)."""
+    ncols = _md_cols(a) or _md_cols(b)
+    a_rows = a.get("rows") or []
+    b_rows = b.get("rows") or []
+    if ncols:
+        a_rows = [_remap_row(r, ncols) for r in a_rows]
+        b_rows = [_remap_row(r, ncols) for r in b_rows]
+    merged = a_rows + b_rows
+    a["rows"] = [r for r in merged if not _row_is_blank(r)]
+
+    amd = (a.get("markdown") or "").rstrip()
+    blines = (b.get("markdown") or "").strip().split("\n")
+    ha = [str(h).strip().lower() for h in (a.get("headers") or [])]
+    hb = [str(h).strip().lower() for h in (b.get("headers") or [])]
+    # If the continuation repeats the same header, drop that leading header row
+    # (its separator is removed below with any other separator lines).
+    if ha and ha == hb and blines:
+        blines = blines[1:]
+    blines = [l for l in blines if l.strip() and not _is_md_separator(l)]
+    tail = "\n".join(blines)
+    a["markdown"] = (amd + ("\n" + tail if tail else "")).strip()
+    if not a.get("headers") and b.get("headers"):
+        a["headers"] = b["headers"]
+
+
+def merge_split_tables(elements: list) -> list:
+    """Merge consecutive table ELEMENTS that are halves of a page-spanning table.
+    Handles both Docling's per-page split and our page-batch boundary split, and
+    tables that run across 3+ pages (each half chains onto the previous)."""
+    out = []
+    for el in (elements or []):
+        if (el.get("type") == "table" and out and out[-1].get("type") == "table"
+                and _table_elements_mergeable(out[-1], el)):
+            _merge_table_content(out[-1].setdefault("content", {}), el.get("content") or {})
+            out[-1]["_merge_tail_page"] = (el.get("location") or {}).get("page")
+            continue
+        out.append(el)
+    for el in out:                       # strip internal bookkeeping
+        el.pop("_merge_tail_page", None)
+    return out
+
+
+def merge_split_tables_legacy(tables: list) -> list:
+    """Same merge for the legacy Table objects (content markdown + rows + page)."""
+    out = []
+    for t in tables:
+        if out:
+            prev = out[-1]
+            dp = (getattr(t, "page", 0) or 0) - (getattr(prev, "page", 0) or 0)
+            ph = [str(h).strip().lower() for h in (getattr(prev, "headers", []) or [])]
+            th = [str(h).strip().lower() for h in (getattr(t, "headers", []) or [])]
+            cols_prev = len(ph) or _md_cols({"markdown": getattr(prev, "content", "") or ""})
+            cols_t = len(th) or _md_cols({"markdown": getattr(t, "content", "") or ""})
+            cols_match = bool(cols_prev) and cols_prev == cols_t
+            # page-spanning (dp==1): column count is enough; same page (dp==0):
+            # require identical headers so distinct stacked tables stay separate.
+            mergeable = cols_match and (dp == 1 or (dp == 0 and ph and ph == th))
+            if mergeable:
+                pmd = (getattr(prev, "content", "") or "").rstrip()
+                blines = (getattr(t, "content", "") or "").strip().split("\n")
+                if ph and ph == th and blines:
+                    blines = blines[1:]
+                blines = [l for l in blines if l.strip() and not _is_md_separator(l)]
+                tail = "\n".join(blines)
+                prev.content = (pmd + ("\n" + tail if tail else "")).strip()
+                ncols = (len(ph) or _md_cols({"markdown": getattr(prev, "content", "") or ""})
+                         or len(th) or _md_cols({"markdown": getattr(t, "content", "") or ""}))
+                prev_rows = getattr(prev, "rows", []) or []
+                new_rows = getattr(t, "rows", []) or []
+                if ncols:
+                    prev_rows = [_remap_row(r, ncols) for r in prev_rows]
+                    new_rows = [_remap_row(r, ncols) for r in new_rows]
+                merged = prev_rows + new_rows
+                prev.rows = [r for r in merged if not _row_is_blank(r)]
+                prev.num_rows = len(prev.rows)
+                continue
+        out.append(t)
+    return out
 
 
 def _save_image(item, doc, images_dir, page, counter):

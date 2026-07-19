@@ -216,6 +216,13 @@ def _load_single(converter, file_path, num_pages, extract_images=True):
         extract_images=extract_images,
     )
 
+    # Merge tables split across a page break into one table.
+    from app.services.providers.parsers._docling import (
+        merge_split_tables, merge_split_tables_legacy,
+    )
+    parsed_doc.elements = merge_split_tables(parsed_doc.elements)
+    parsed_doc.tables = merge_split_tables_legacy(parsed_doc.tables)
+
     # Safety net: recover any page Docling skipped (text backfill → vision OCR).
     still_missing = _recover_pages(parsed_doc, file_path, num_pages)
     if still_missing:
@@ -566,6 +573,13 @@ def _load_batched(converter, file_path, num_pages, extract_images=True, batch_si
         elements=all_elements,
     )
     parsed_doc._next_ro = ro_start
+
+    # Merge tables split across a page break (incl. across batch boundaries).
+    from app.services.providers.parsers._docling import (
+        merge_split_tables, merge_split_tables_legacy,
+    )
+    parsed_doc.elements = merge_split_tables(parsed_doc.elements)
+    parsed_doc.tables = merge_split_tables_legacy(parsed_doc.tables)
 
     # Safety net: recover any skipped page (text backfill → vision OCR). Sets
     # ocr_quality / ocr_issues and returns pages that are STILL empty.

@@ -53,6 +53,7 @@ import EvaluationPanel from "../../components/it/rag/EvaluationPanel";
 import DocModal from "../../components/it/rag/DocModal";
 import VersionsPanel from "../../components/it/rag/VersionsPanel";
 import DeployModal from "../../components/it/rag/DeployModal";
+import { buildMatrix, matrixToCells, matrixToPositional, normCell } from "../../components/it/rag/tableModel";
 
 // Lifecycle pill: Draft / Deployed·Live / Deployed·Private / Editing
 const StatusPill = ({ space }) => {
@@ -82,6 +83,214 @@ const StatusPill = ({ space }) => {
     </span>
   );
 };
+
+// ── Which editor a parsed document needs (mirror of DocModal.docKind) ──
+const _TREE_TYPES = ["json_object", "json_array", "json_key_value", "json_null", "xml_element"];
+function kindOf(pd) {
+  const els = pd?.elements || [];
+  const st = (pd?.metadata?.source_type || pd?.metadata?.file_type || "").toLowerCase();
+  if (st === "csv" || st === "xlsx" || st === "xls" ||
+      els.some((e) => e.type === "workbook" || e.type === "sheet") ||
+      els.some((e) => e.type === "table" && Array.isArray(e.content?.columns) && e.content.columns.length))
+    return "tabular";
+  if (st === "json" || st === "xml" || els.some((e) => _TREE_TYPES.includes(e.type)))
+    return "tree";
+  return "doc";
+}
+
+// ── Table grid <-> content helpers (shared by document tables and CSV/Excel) ──
+function mdTableToGrid(md) {
+  const out = [];
+  for (const raw of (md || "").split("\n")) {
+    const line = raw.trim();
+    if (!line || line.indexOf("|") === -1) continue;
+    const noPipes = line.replace(/\|/g, "").trim();
+    if (noPipes && /^[:\-\s]+$/.test(noPipes)) continue; // separator row
+    let cells = line.split("|");
+    if (cells.length && cells[0].trim() === "") cells = cells.slice(1);
+    if (cells.length && cells[cells.length - 1].trim() === "") cells = cells.slice(0, -1);
+    out.push(cells.map((c) => c.trim()));
+  }
+  return out;
+}
+// ── Table cell model (colspan + rowspan) ─────────────────────────────────────
+// A table has a fixed column count. `grid` is an array of rows of cells
+// { t, cs, rs } (colspan, rowspan). The tableModel engine keeps everything
+// consistent; converters below persist `cells` (authoritative) plus a plain
+// positional `rows` + `markdown` for display / chunking backward-compat.
+function posToMarkdown(headers, pos) {
+  const ncols = Math.max(headers.length, ...pos.map((r) => r.length), 1);
+  const h = Array.from({ length: ncols }, (_, i) => headers[i] ?? "");
+  const lines = ["| " + h.join(" | ") + " |", "|" + Array(ncols).fill("---").join("|") + "|"];
+  for (const r of pos) lines.push("| " + Array.from({ length: ncols }, (_, i) => r[i] ?? "").join(" | ") + " |");
+  return lines.join("\n");
+}
+// element table content → editable grid of cells [{t,cs,rs}]
+function tableContentToGrid(c) {
+  const headers = (c.headers || []).map((h) => (h == null ? "" : String(h)));
+  if (Array.isArray(c.cells) && c.cells.length) {
+    return { headers, grid: c.cells.map((row) => (Array.isArray(row) ? row : []).map(normCell)) };
+  }
+  if (Array.isArray(c.rows) && c.rows.length) {
+    const grid = c.rows.map((r) => {
+      if (Array.isArray(r)) return r.map((v) => normCell({ t: v }));
+      if (r && typeof r === "object") {
+        const pk = Object.keys(r).filter((k) => /^\d+$/.test(k)).map(Number);
+        if (pk.length) { const n = Math.max(...pk) + 1; return Array.from({ length: n }, (_, i) => normCell({ t: r[String(i)] ?? "" })); }
+        return Object.values(r).map((v) => normCell({ t: v }));
+      }
+      return [normCell({ t: r })];
+    });
+    return { headers, grid };
+  }
+  const g = mdTableToGrid(c.markdown || "");
+  if (g.length) return { headers: g[0], grid: g.slice(1).map((row) => row.map((v) => normCell({ t: v }))) };
+  return { headers, grid: [] };
+}
+// editable grid of cells → element table content (cells + positional rows + md)
+function gridToTableContent(headers, grid) {
+  const M = buildMatrix(grid);
+  const cells = matrixToCells(M);
+  const pos = matrixToPositional(M);
+  const ncols = M.length ? M[0].length : Math.max(headers.length, 1);
+  const H = Array.from({ length: ncols }, (_, i) => headers[i] ?? "");
+  const rows = pos.map((r) => { const o = {}; for (let i = 0; i < ncols; i++) o[String(i)] = r[i] ?? ""; return o; });
+  return { markdown: posToMarkdown(H, pos), headers: H, cells, rows };
+}
+// CSV/Excel table element {columns, rows{index,values}} → grid of cells (span 1)
+function csvContentToGrid(c) {
+  const headers = (c.columns || []).map((col) => String(col?.name ?? ""));
+  const grid = (c.rows || []).map((r) => {
+    const vals = r && r.values ? r.values : r || {};
+    return headers.map((h) => normCell({ t: vals[h] }));
+  });
+  return { headers, grid };
+}
+// grid of cells → CSV/Excel content (flattened to columns; merges expand to the
+// first column + empties, since CSV/Excel are rectangular).
+function gridToCsvContent(prev, headers, grid) {
+  const pos = matrixToPositional(buildMatrix(grid));
+  const ncols = headers.length || (pos[0] ? pos[0].length : 1);
+  const columns = headers.map((h, i) => { const p = (prev.columns || [])[i] || {}; return { name: h, type: p.type || "string", nullable: p.nullable ?? true }; });
+  const rows = pos.map((r, ri) => ({ index: ri + 1, values: Object.fromEntries(headers.map((h, ci) => [h, r[ci] ?? ""])) }));
+  return { ...prev, columns, rows };
+}
+
+// ── Parsed-document editor: convert between the reading-ordered elements[] and
+//    the editor "blocks" — ONE block per element (no collapsing) so headings,
+//    every paragraph/list item, tables and images survive an edit round-trip
+//    intact. Losslessness is the whole point: editing must never merge or drop
+//    elements the way the old section-grouping converter did. ──
+function blocksFromElements(elements) {
+  const els = [...(elements || [])].sort(
+    (a, b) => (a.metadata?.reading_order || 0) - (b.metadata?.reading_order || 0),
+  );
+  return els.map((el) => {
+    const t = el.type;
+    const c = el.content || {};
+    const page = el.location?.page || 1;
+    if (t === "heading")
+      return { kind: "heading", text: c.text || "", level: el.level || 1, page };
+    if (t === "table") {
+      const { headers, grid } = tableContentToGrid(c);
+      return { kind: "table", page, headers, grid };
+    }
+    if (t === "image")
+      return { kind: "image", page, image_path: c.image_path || "", src: c.src || "", caption: c.caption || "", text_for_embedding: c.text_for_embedding || "", ocr_text: c.ocr_text || "" };
+    if (t === "code")
+      return { kind: "code", page, text: c.text || "", language: c.language || "" };
+    // paragraph / list_item / quote → a text block that REMEMBERS its element
+    // type + list level, so saving re-emits the same element type.
+    return { kind: "text", elType: t || "paragraph", text: c.text || "", page, listLevel: el.metadata?.list_level || null };
+  });
+}
+
+// Legacy docs (no elements[]) → one heading block + one text block per section,
+// then tables/images. Still 1:1 so nothing is collapsed on save.
+function blocksFromLegacy(pd) {
+  const blocks = [];
+  for (const s of pd.sections || []) {
+    if ((s.heading || "").trim())
+      blocks.push({ kind: "heading", text: s.heading, level: s.level || 1, page: s.page || 1 });
+    if ((s.content || "").trim())
+      blocks.push({ kind: "text", elType: "paragraph", text: s.content, page: s.page || 1, listLevel: null });
+  }
+  for (const t of pd.tables || []) {
+    const { headers, grid } = tableContentToGrid(t);
+    blocks.push({ kind: "table", page: t.page || 1, headers, grid });
+  }
+  for (const im of pd.images || [])
+    blocks.push({ kind: "image", page: im.page || 1, image_path: im.image_path || "", src: "", caption: im.caption || "", text_for_embedding: im.text_for_embedding || "", ocr_text: im.ocr_text || "" });
+  return blocks;
+}
+
+// Derive the legacy sections/tables/images from blocks — sent ALONGSIDE elements
+// so the save also works on an older backend that only understands those lists.
+// Consecutive heading/text blocks fold back into one section here (this list is
+// display-only fallback; the authoritative payload is elements[]).
+function legacyFromBlocks(blocks) {
+  const sections = [], tables = [], images = [];
+  let cur = null;
+  const flush = () => {
+    if (cur && (cur.heading || cur.content)) sections.push(cur);
+    cur = null;
+  };
+  for (const b of blocks || []) {
+    if (b.kind === "heading") {
+      flush();
+      cur = { heading: b.text || "", content: "", level: b.level || 1, page: b.page || 1, font_size: null };
+    } else if (b.kind === "text") {
+      if (!cur) cur = { heading: "", content: "", level: 1, page: b.page || 1, font_size: null };
+      cur.content += (cur.content ? "\n" : "") + (b.elType === "list_item" ? "• " : "") + (b.text || "");
+    } else if (b.kind === "code") {
+      flush();
+      sections.push({ heading: "", content: b.text || "", level: 1, page: b.page || 1, font_size: null });
+    } else if (b.kind === "table") {
+      flush();
+      const tc = gridToTableContent(b.headers || [], b.grid || []);
+      tables.push({ content: tc.markdown, headers: tc.headers, rows: tc.rows, num_rows: tc.rows.length, num_cols: tc.headers.length, page: b.page || 1 });
+    } else if (b.kind === "image") {
+      flush();
+      images.push({ caption: b.caption || "", ocr_text: b.ocr_text || "", image_path: b.image_path || "", page: b.page || 1, bbox: [], text_for_embedding: b.text_for_embedding || "" });
+    } else if (b.kind === "section") {
+      flush();
+      sections.push({ heading: b.heading || "", content: b.content || "", level: b.level || 1, page: b.page || 1, font_size: null });
+    }
+  }
+  flush();
+  return { sections, tables, images };
+}
+
+function elementsFromBlocks(blocks) {
+  const els = [];
+  let ro = 0;
+  const push = (type, content, page, opts = {}) => {
+    ro += 1;
+    const meta = { reading_order: ro };
+    if (opts.listLevel) meta.list_level = opts.listLevel;
+    const el = { id: `e${ro}`, type, content, location: { page: page || 1, bbox: [] }, metadata: meta };
+    if (opts.level != null) el.level = opts.level;
+    els.push(el);
+  };
+  for (const b of blocks || []) {
+    if (b.kind === "heading") {
+      push("heading", { text: b.text || "" }, b.page, { level: b.level || 1 });
+    } else if (b.kind === "text") {
+      push(b.elType || "paragraph", { text: b.text || "" }, b.page, { listLevel: b.listLevel });
+    } else if (b.kind === "table") {
+      push("table", gridToTableContent(b.headers || [], b.grid || []), b.page);
+    } else if (b.kind === "image") {
+      push("image", { image_path: b.image_path || "", src: b.src || "", caption: b.caption || "", text_for_embedding: b.text_for_embedding || "", ocr_text: b.ocr_text || "" }, b.page);
+    } else if (b.kind === "code") {
+      push("code", { text: b.text || "", language: b.language || "" }, b.page);
+    } else if (b.kind === "section") {
+      // legacy block shape (heading + grouped content)
+      if ((b.heading || "").trim()) push("heading", { text: b.heading }, b.page, { level: b.level || 1 });
+      if ((b.content || "").trim()) push("paragraph", { text: b.content }, b.page);
+    }
+  }
+  return els;
+}
 
 const RAGSpacesPage = () => {
   const [loading, setLoading] = useState(true);
@@ -769,11 +978,52 @@ const RAGSpacesPage = () => {
     setEditDoc(null);
   };
 
-  const startEdit = () => {
-    setEditDoc({
-      id: modalData.document_id,
-      parsed_document: JSON.parse(JSON.stringify(modalData.parsed_document)),
-    });
+  // The editor adapts to the format:
+  //   doc      → reading-ordered blocks (headings/text/tables/images inline)
+  //   tabular  → one editable grid per CSV/Excel table
+  //   tree     → raw JSON/XML source (re-parsed on save)
+  const startEdit = async () => {
+    const pd = modalData.parsed_document || {};
+    const kind = kindOf(pd);
+    if (kind === "tabular") {
+      const tables = [];
+      (pd.elements || []).forEach((el, i) => {
+        if (el.type === "table" && Array.isArray(el.content?.columns)) {
+          const { headers, grid } = csvContentToGrid(el.content || {});
+          tables.push({
+            elIndex: i,
+            name: el.content.table_name || el.location?.sheet || `Table ${tables.length + 1}`,
+            headers,
+            grid,
+          });
+        }
+      });
+      setEditDoc({ kind: "tabular", id: modalData.document_id, title: pd.title || "", elements: pd.elements || [], tables });
+      setEditMode(true);
+      setShowJson(false);
+      return;
+    }
+    if (kind === "tree") {
+      try {
+        const loaded = await getLoadedContent(activeSpace.id, modalData.document_id);
+        setEditDoc({
+          kind: "tree",
+          id: modalData.document_id,
+          rawSource: loaded.raw_text || "",
+          sourceType: (pd.metadata?.source_type || pd.metadata?.file_type || "json").toLowerCase(),
+        });
+        setEditMode(true);
+        setShowJson(false);
+      } catch (e) {
+        setError(e.message);
+      }
+      return;
+    }
+    const blocks =
+      pd.elements && pd.elements.length
+        ? blocksFromElements(pd.elements)
+        : blocksFromLegacy(pd);
+    setEditDoc({ kind: "doc", id: modalData.document_id, title: pd.title || "", blocks });
     setEditMode(true);
     setShowJson(false);
   };
@@ -781,81 +1031,74 @@ const RAGSpacesPage = () => {
     setEditMode(false);
     setEditDoc(null);
   };
-  const editField = (kind, i, field, value) => {
+  const setEditTitle = (v) => setEditDoc((prev) => ({ ...prev, title: v }));
+  const editBlock = (i, field, value) => {
     setEditDoc((prev) => {
-      const next = { ...prev, parsed_document: { ...prev.parsed_document } };
-      const arr = [...next.parsed_document[kind]];
-      arr[i] = { ...arr[i], [field]: value };
-      next.parsed_document[kind] = arr;
-      return next;
+      const blocks = [...prev.blocks];
+      blocks[i] = { ...blocks[i], [field]: value };
+      return { ...prev, blocks };
     });
   };
-  const removeBlock = (kind, i) => {
-    setEditDoc((prev) => {
-      const next = { ...prev, parsed_document: { ...prev.parsed_document } };
-      next.parsed_document[kind] = next.parsed_document[kind].filter(
-        (_, idx) => idx !== i,
-      );
-      return next;
-    });
+  const removeBlock = (i) => {
+    setEditDoc((prev) => ({ ...prev, blocks: prev.blocks.filter((_, idx) => idx !== i) }));
   };
-  const addSection = () => {
+  // Move a block up/down in the reading order (dir = -1 up, +1 down).
+  const moveBlock = (i, dir) => {
     setEditDoc((prev) => {
-      const next = { ...prev, parsed_document: { ...prev.parsed_document } };
-      next.parsed_document.sections = [
-        ...(next.parsed_document.sections || []),
-        { heading: "", content: "", level: 1, page: 1, font_size: null },
-      ];
-      return next;
-    });
-  };
-  const addTable = () => {
-    setEditDoc((prev) => {
-      const next = { ...prev, parsed_document: { ...prev.parsed_document } };
-      next.parsed_document.tables = [
-        ...(next.parsed_document.tables || []),
-        { content: "", headers: [], rows: [], num_rows: 0, num_cols: 0, page: 1 },
-      ];
-      return next;
-    });
-  };
-  // Reorder a block within its list (dir = -1 up, +1 down). Fixes wrong parse
-  // order without retyping — the block's content moves with it.
-  const moveBlock = (kind, i, dir) => {
-    setEditDoc((prev) => {
-      const arr = [...(prev.parsed_document[kind] || [])];
+      const blocks = [...prev.blocks];
       const j = i + dir;
-      if (j < 0 || j >= arr.length) return prev;
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-      return { ...prev, parsed_document: { ...prev.parsed_document, [kind]: arr } };
+      if (j < 0 || j >= blocks.length) return prev;
+      [blocks[i], blocks[j]] = [blocks[j], blocks[i]];
+      return { ...prev, blocks };
     });
   };
+  const addHeading = () =>
+    setEditDoc((prev) => ({
+      ...prev,
+      blocks: [...prev.blocks, { kind: "heading", text: "", level: 1, page: 1 }],
+    }));
+  const addText = () =>
+    setEditDoc((prev) => ({
+      ...prev,
+      blocks: [...prev.blocks, { kind: "text", elType: "paragraph", text: "", page: 1, listLevel: null }],
+    }));
+  const addTable = () =>
+    setEditDoc((prev) => ({
+      ...prev,
+      blocks: [
+        ...prev.blocks,
+        { kind: "table", page: 1, headers: ["Column 1", "Column 2"], grid: [[{ t: "", cs: 1, rs: 1 }, { t: "", cs: 1, rs: 1 }]] },
+      ],
+    }));
+  // Merge a patch into a doc block (used by the table grid editor).
+  const updateBlock = (i, patch) =>
+    setEditDoc((prev) => {
+      const blocks = [...prev.blocks];
+      blocks[i] = { ...blocks[i], ...patch };
+      return { ...prev, blocks };
+    });
+  // ── Tabular (CSV/Excel) + tree (JSON/XML) editor handlers ──
+  const updateTable = (ti, patch) =>
+    setEditDoc((prev) => {
+      const tables = [...prev.tables];
+      tables[ti] = { ...tables[ti], ...patch };
+      return { ...prev, tables };
+    });
+  const setRawSource = (v) => setEditDoc((prev) => ({ ...prev, rawSource: v }));
   // Upload an image file, then append it as a new image block in the editor.
   const [uploadingImage, setUploadingImage] = useState(false);
   const addImage = async (file) => {
     if (!file || !editDoc) return;
     setUploadingImage(true);
     try {
-      const { image_path } = await uploadDocumentImage(
-        activeSpace.id,
-        editDoc.id,
-        file,
-      );
-      setEditDoc((prev) => {
-        const next = { ...prev, parsed_document: { ...prev.parsed_document } };
-        next.parsed_document.images = [
-          ...(next.parsed_document.images || []),
-          {
-            caption: "",
-            ocr_text: "",
-            image_path,
-            page: 1,
-            bbox: [],
-            text_for_embedding: "",
-          },
-        ];
-        return next;
-      });
+      const { image_path } = await uploadDocumentImage(activeSpace.id, editDoc.id, file);
+      setEditDoc((prev) => ({
+        ...prev,
+        blocks: [
+          ...prev.blocks,
+          { kind: "image", page: 1, image_path, src: "", caption: "", text_for_embedding: "", ocr_text: "" },
+        ],
+      }));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -865,19 +1108,25 @@ const RAGSpacesPage = () => {
   const saveEdit = async () => {
     setSavingEdit(true);
     try {
-      const pd = editDoc.parsed_document;
-      const payload = {
-        title: pd.title || "",
-        sections: pd.sections || [],
-        tables: pd.tables || [],
-        images: pd.images || [],
-        metadata: pd.metadata || {},
-      };
-      const updated = await updateExtractedContent(
-        activeSpace.id,
-        editDoc.id,
-        payload,
-      );
+      let payload;
+      if (editDoc.kind === "tabular") {
+        // rebuild each edited table element's columns/rows, leave the rest as-is
+        const elements = (editDoc.elements || []).map((el, i) => {
+          const t = editDoc.tables.find((x) => x.elIndex === i);
+          if (!t) return el;
+          return { ...el, content: gridToCsvContent(el.content || {}, t.headers, t.grid) };
+        });
+        payload = { title: editDoc.title || "", elements };
+      } else if (editDoc.kind === "tree") {
+        payload = { raw_source: editDoc.rawSource || "" };
+      } else {
+        payload = {
+          title: editDoc.title || "",
+          elements: elementsFromBlocks(editDoc.blocks),
+          ...legacyFromBlocks(editDoc.blocks), // fallback for older backend
+        };
+      }
+      const updated = await updateExtractedContent(activeSpace.id, editDoc.id, payload);
       setModalData(updated);
       setEditMode(false);
       setEditDoc(null);
@@ -1200,18 +1449,22 @@ const RAGSpacesPage = () => {
         setShowJson={setShowJson}
         editMode={editMode}
         editDoc={editDoc}
-        setEditDoc={setEditDoc}
+        setEditTitle={setEditTitle}
         savingEdit={savingEdit}
         startEdit={startEdit}
         cancelEdit={cancelEdit}
         saveEdit={saveEdit}
-        editField={editField}
+        editBlock={editBlock}
+        updateBlock={updateBlock}
         removeBlock={removeBlock}
         moveBlock={moveBlock}
-        addSection={addSection}
+        addHeading={addHeading}
+        addText={addText}
         addTable={addTable}
         addImage={addImage}
         uploadingImage={uploadingImage}
+        updateTable={updateTable}
+        setRawSource={setRawSource}
         spaceId={activeSpace?.id}
       />
 

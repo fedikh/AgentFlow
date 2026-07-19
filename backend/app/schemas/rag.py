@@ -214,8 +214,10 @@ class SectionEdit(BaseModel):
 
 class TableEdit(BaseModel):
     content:  str = ""
-    headers:  list[str] = Field(default_factory=list)
-    rows:     list[list] = Field(default_factory=list)
+    headers:  list = Field(default_factory=list)
+    # Rows come from the parser as dicts ({"0": "...", "1": "..."}) OR as plain
+    # lists — accept either so the legacy save path never 422s on real tables.
+    rows:     list = Field(default_factory=list)
     num_rows: int = 0
     num_cols: int = 0
     page:     int = 1
@@ -233,8 +235,15 @@ class ImageEdit(BaseModel):
 
 
 class UpdateExtractedRequest(BaseModel):
-    """IT-edited ParsedDocument. Only the editable arrays + title/metadata."""
+    """IT-edited ParsedDocument. Document formats send reading-ordered `elements`
+    (headings/paragraphs/tables/images). Tabular (CSV/Excel) and tree (JSON/XML)
+    formats also send `elements`, but keep their own structure — the backend
+    stores those verbatim. JSON/XML instead may send `raw_source` to be re-parsed
+    into a fresh, valid structure. `sections`/`tables`/`images` remain accepted
+    for the legacy edit path."""
     title:    Optional[str] = None
+    elements: Optional[list[dict]] = None
+    raw_source: Optional[str] = None            # JSON/XML: re-parse edited source
     sections: list[SectionEdit] = Field(default_factory=list)
     tables:   list[TableEdit] = Field(default_factory=list)
     images:   list[ImageEdit] = Field(default_factory=list)
