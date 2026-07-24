@@ -29,18 +29,26 @@ def _looks_like_heading(text: str) -> bool:
     t = (text or "").strip()
     if not t or len(t) > 90:
         return False
-    # Numbered headings: "1. Title", "2) Title", "3.1 Title"
+    # 1) Numbered headings: "1. Title", "2) Title", "3.1 Title" — a strong signal.
     if re.match(r"^\d+(?:\.\d+)*[.)]?\s+\S", t):
         return True
-    # A heading starts like one — a capital letter or digit. Lines that start
-    # lowercase are body text or list fragments ("first item"), never headings.
-    if not (t[:1].isupper() or t[:1].isdigit()):
+    # 2) Short ALL-CAPS lines (a common heading/section style), e.g. "OBJECTIVE",
+    #    "ISO 9001:2015 CERTIFIED", or a single glossary letter "A".
+    #
+    # Deliberately NOTHING else. The old rule "any short line without a full stop
+    # is a heading" wrecked real documents: it turned names, addresses, phone
+    # numbers and mid-sentence fragments into hundreds of level-1 headings. If a
+    # DOCX uses real Word Heading styles, Docling labels them itself (we honour
+    # that above); mixed-case plain-bold pseudo-headings are left as paragraphs —
+    # a far safer default than mass false headings.
+    letters = [c for c in t if c.isalpha()]
+    if not letters or len(t.split()) > 8:
         return False
-    # Short, title-like line that isn't a full sentence.
-    words = t.split()
-    if len(words) <= 8 and not t.endswith((".", ":", ";", ",", "!", "?")):
-        return True
-    return False
+    if not all(c.isupper() for c in letters):
+        return False
+    # A comma usually means a list (credentials "PGDM, PGDCA", "AS 5, AS 9"),
+    # not a heading — so require no comma.
+    return "," not in t
 
 
 def _table_structured(item, doc):

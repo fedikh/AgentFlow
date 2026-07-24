@@ -60,7 +60,7 @@ function llmSource(space, providers) {
   return { label: "Local · Ollama", family: "OLLAMA" };
 }
 
-function embSource(space, providers) {
+export function embSource(space, providers) {
   if (space.embedding_has_own_key)
     return { label: "My own key", family: space.embedding_provider };
   if (space.embedding_provider_id) {
@@ -70,7 +70,9 @@ function embSource(space, providers) {
       family: p?.family || space.embedding_provider,
     };
   }
-  return { label: "Local · BGE-M3", family: "LOCAL" };
+  if ((space.embedding_provider || "").toUpperCase() === "OLLAMA")
+    return { label: "Ollama · local", family: "OLLAMA" };
+  return { label: "Local · free", family: "LOCAL" };
 }
 
 /**

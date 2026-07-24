@@ -562,6 +562,12 @@ const UploadsPanel = ({
               <div className="rag-doc-meta">
                 {d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : ""}
                 {d.num_chunks > 0 && ` · ${d.num_chunks} chunks`}
+                {d.status === "INDEXED" && d.chosen_strategy &&
+                  ` · ${
+                    d.chosen_strategy === "agentic" ? "🤖 agentic"
+                    : d.chosen_strategy === "agentic_fallback" ? "⚠ agentic (fallback)"
+                    : d.chosen_strategy
+                  }`}
                 {d.source_type === "google_drive" && " · Google Drive"}
               </div>
 

@@ -462,3 +462,133 @@ def serve_document_file(space_id: str, doc_id: str, request: Request, db: Sessio
         filename=info["file_name"],
         content_disposition_type="inline",
     )
+
+# ══════════════════════════════════════════
+# EVALUATION — dataset (upload / generate) + experiment runs
+# ══════════════════════════════════════════
+from app.services import evaluation as eval_service                    # noqa: E402
+from pydantic import BaseModel as _BM                                  # noqa: E402
+from typing import Optional as _Opt                                    # noqa: E402
+
+
+class EvalCaseIn(_BM):
+    question: str
+    expected_answer: _Opt[str] = None
+    expected_document: _Opt[str] = None
+    expected_page: _Opt[int] = None
+    category: _Opt[str] = "semantic"
+    difficulty: _Opt[str] = "medium"
+    language: _Opt[str] = None
+
+
+class EvalDatasetIn(_BM):
+    cases: list
+
+
+@router.get("/spaces/{space_id}/eval/cases")
+def eval_list_cases(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return {"cases": eval_service.list_cases(db, space_id)}
+
+
+@router.post("/spaces/{space_id}/eval/cases")
+def eval_add_case(space_id: str, data: EvalCaseIn, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.add_case(db, space_id, data.dict())
+
+
+@router.delete("/spaces/{space_id}/eval/cases/{case_id}")
+def eval_delete_case(space_id: str, case_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.delete_case(db, space_id, case_id)
+
+
+@router.delete("/spaces/{space_id}/eval/cases")
+def eval_clear_cases(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.clear_cases(db, space_id)
+
+
+@router.post("/spaces/{space_id}/eval/dataset")
+def eval_upload_dataset(space_id: str, data: EvalDatasetIn, request: Request, db: Session = Depends(get_db)):
+    """Upload an expert-written JSON dataset (flexible field names)."""
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.upload_dataset(db, space_id, data.cases)
+
+
+@router.get("/spaces/{space_id}/eval/dataset-template")
+def eval_dataset_template(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """Template file for a domain expert — includes the space's real documents."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.dataset_template(db, space)
+
+
+@router.get("/spaces/{space_id}/eval/template-excel")
+def eval_template_excel(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """Excel template with document/type dropdowns — for domain experts."""
+    import base64
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    data = eval_service.template_excel(db, space)
+    return {"filename": f"test-questions-{space.name}.xlsx".replace(" ", "-"),
+            "b64": base64.b64encode(data).decode()}
+
+
+@router.get("/spaces/{space_id}/eval/expert-form")
+def eval_expert_form(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """Self-contained HTML questionnaire the IT sends to a domain expert."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return {"filename": f"questions-{space.name}.html".replace(" ", "-"),
+            "content": eval_service.expert_form_html(db, space)}
+
+
+@router.post("/spaces/{space_id}/eval/dataset-file")
+async def eval_upload_dataset_file(space_id: str, request: Request,
+                                   file: UploadFile = File(...),
+                                   db: Session = Depends(get_db)):
+    """Upload the filled expert file — .xlsx, .csv or .json all accepted."""
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    content = await file.read()
+    cases = eval_service.parse_dataset_file(file.filename or "", content)
+    if not cases:
+        raise HTTPException(400, "No test questions found in the file — check the "
+                                 "'Question' column and remove only the EXAMPLE rows.")
+    return eval_service.upload_dataset(db, space_id, cases)
+
+
+@router.post("/spaces/{space_id}/eval/generate-cases")
+def eval_generate_cases(space_id: str, request: Request, n: int = 8, db: Session = Depends(get_db)):
+    """Generate a labeled dataset (Ragas testset generator, LLM fallback)."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.generate_cases(db, space, n=n)
+
+
+@router.post("/spaces/{space_id}/eval/run")
+def eval_run(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """Run the whole dataset against the CURRENT config → all metric families."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.run_evaluation(db, space, user.organization_id)
+
+
+@router.get("/spaces/{space_id}/eval/runs")
+def eval_runs(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return {"runs": eval_service.list_runs(db, space_id)}
+
+
+@router.get("/spaces/{space_id}/eval/runs/{run_id}")
+def eval_run_detail(space_id: str, run_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.get_run(db, space_id, run_id)

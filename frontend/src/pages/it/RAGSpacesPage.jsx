@@ -1184,11 +1184,6 @@ const RAGSpacesPage = () => {
     <div className="rag-page">
       <div className="rag-space-layout">
         <div className="rag-space-content">
-          {error && <div className="rag-toast rag-toast-error">{error}</div>}
-          {success && (
-            <div className="rag-toast rag-toast-success">{success}</div>
-          )}
-
           <div className="rag-header">
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <button className="rag-btn rag-btn-sm" onClick={goBack}>
@@ -1252,6 +1247,11 @@ const RAGSpacesPage = () => {
               )}
             </div>
           </div>
+
+          {error && <div className="rag-toast rag-toast-error">{error}</div>}
+          {success && (
+            <div className="rag-toast rag-toast-success">{success}</div>
+          )}
 
           {activeSpace.can_build === false && (
             <div
@@ -1343,7 +1343,16 @@ const RAGSpacesPage = () => {
           )}
 
           {panel === "uploads" && (
-            <UploadsPanel
+            <div className="rag-cfg-panel">
+              <div className="rag-cfg-head">
+                <div>
+                  <div className="rag-cfg-title">Uploads</div>
+                  <div className="rag-cfg-sub">
+                    Add, parse and manage the documents this space answers from.
+                  </div>
+                </div>
+              </div>
+              <UploadsPanel
               docs={docs}
               fileRef={fileRef}
               uploading={uploading}
@@ -1371,7 +1380,8 @@ const RAGSpacesPage = () => {
               spaceId={activeSpace.id}
               isOwner={activeSpace.is_owner !== false}
               editable={editable}
-            />
+              />
+            </div>
           )}
 
           {panel === "flow" && <FlowPanel space={activeSpace} />}
@@ -1384,6 +1394,9 @@ const RAGSpacesPage = () => {
               setQuestion={setQuestion}
               querying={querying}
               handleQuery={handleQuery}
+              spaceId={activeSpace.id}
+              space={activeSpace}
+              editable={activeSpace.can_build !== false}
             />
           )}
 
@@ -1412,6 +1425,7 @@ const RAGSpacesPage = () => {
             panel !== "versions" && (
             <ConfigPanel
               panel={panel}
+              setPanel={setPanel}
               cfg={cfg}
               space={activeSpace}
               setC={setC}
@@ -1437,7 +1451,12 @@ const RAGSpacesPage = () => {
           )}
         </div>
 
-        <RightSidebar panel={panel} setPanel={setPanel} />
+        <RightSidebar
+          panel={panel}
+          setPanel={setPanel}
+          space={activeSpace}
+          docsCount={docs.length}
+        />
       </div>
 
       <DocModal

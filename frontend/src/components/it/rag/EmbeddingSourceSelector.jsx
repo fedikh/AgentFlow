@@ -19,7 +19,35 @@ import CustomDropdown from "./CustomDropdown";
  * switching source is safe — but re-indexing is still required for embeddings
  * to actually be regenerated with the new provider (flagged below).
  */
-const OWN_FAMILIES = ["OPENAI", "VOYAGE"];
+const OWN_FAMILIES = ["OPENAI", "VOYAGE", "GOOGLE"];
+
+/* Curated per-family embedding models (mirror of the backend catalog).
+ * Non-1024 native dims (Gemini) are fitted to the 1024 pgvector column. */
+const OWN_MODELS = {
+  OPENAI: [
+    { id: "text-embedding-3-small", label: "text-embedding-3-small (1024)" },
+    { id: "text-embedding-3-large", label: "text-embedding-3-large (1024)" },
+  ],
+  VOYAGE: [
+    { id: "voyage-3.5", label: "voyage-3.5 (1024)" },
+    { id: "voyage-3.5-lite", label: "voyage-3.5-lite (1024)" },
+    { id: "voyage-3-large", label: "voyage-3-large (1024)" },
+    { id: "voyage-multimodal-3.5", label: "Voyage Multimodal 3.5 (1024)" },
+    { id: "voyage-code-3", label: "voyage-code-3 (code)" },
+    { id: "voyage-finance-2", label: "voyage-finance-2 (finance)" },
+    { id: "voyage-law-2", label: "voyage-law-2 (legal)" },
+  ],
+  GOOGLE: [
+    { id: "gemini-embedding-002", label: "Gemini Embedding 2 (fit 1024)" },
+    { id: "gemini-embedding-001", label: "Gemini Embedding 1 (fit 1024)" },
+  ],
+};
+
+const KEY_PLACEHOLDER = {
+  OPENAI: "sk-…",
+  VOYAGE: "pa-…",
+  GOOGLE: "AIza…",
+};
 
 const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] }) => {
   const [providers, setProviders] = useState([]);
@@ -77,7 +105,12 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
         embedding_api_key: "",
       });
     } else if (next === "company") {
-      onChange({ embedding_provider_id: providers[0]?.id || null, embedding_model: "" });
+      const first = providers[0];
+      onChange({
+        embedding_provider_id: first?.id || null,
+        embedding_model: "",
+        ...(first?.family ? { embedding_provider: first.family } : {}),
+      });
     } else if (next === "own") {
       onChange({
         embedding_provider_id: null,
@@ -110,10 +143,10 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
       {/* LOCAL */}
       {mode === "local" && (
         <>
-          <label className="rag-cfg-label">Local embedding model</label>
+          <label className="rag-cfg-label">Local &amp; Ollama embedding models</label>
           <div className="rag-cfg-models">
             {embedModels
-              .filter((m) => m.provider === "LOCAL")
+              .filter((m) => m.provider === "LOCAL" || m.provider === "OLLAMA")
               .map((m) => (
                 <label
                   key={m.id}
@@ -126,7 +159,7 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
                     onChange={() =>
                       onChange({
                         embedding_model: m.id,
-                        embedding_provider: "LOCAL",
+                        embedding_provider: m.provider,   // LOCAL or OLLAMA
                         embedding_provider_id: null,
                         embedding_api_key: "",
                       })
@@ -135,6 +168,9 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
                   <div>
                     <div className="rag-cfg-model-n">
                       {m.label} · {m.dim}d
+                      {m.provider === "OLLAMA" && (
+                        <span className="rag-config-tag" style={{ marginLeft: 6 }}>Ollama</span>
+                      )}
                     </div>
                     <div className="rag-cfg-model-note">{m.note}</div>
                   </div>
@@ -147,7 +183,9 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
           <div className="rag-cfg-hint">
             BGE-M3 (1024d) is the recommended local default — it matches the
             pgvector column, so no re-indexing is needed. No key, no data leaves
-            the machine.
+            the machine. <strong>Ollama</strong> models run on your local Ollama
+            daemon (<code>ollama serve</code>); vectors are fit to 1024 —
+            <code>mxbai-embed-large</code> is a native 1024 match.
           </div>
         </>
       )}
@@ -158,7 +196,8 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
           {providers.length === 0 ? (
             <div className="rag-cfg-hint">
               No company embedding providers yet. Ask your admin to add an
-              OpenAI or Voyage provider in “API Providers”, or use your own key.
+              OpenAI, Voyage or Google (Gemini) provider in “API Providers”,
+              or use your own key.
             </div>
           ) : (
             <>
@@ -171,9 +210,17 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
                   family: p.family,
                 }))}
                 value={value.embedding_provider_id || ""}
-                onChange={(id) =>
-                  onChange({ embedding_provider_id: id, embedding_model: "" })
-                }
+                onChange={(id) => {
+                  // Also store the provider's FAMILY so embedding_provider
+                  // reflects the real source (GOOGLE/OPENAI/VOYAGE), not a
+                  // stale "LOCAL" from a previous mode.
+                  const fam = providers.find((p) => p.id === id)?.family;
+                  onChange({
+                    embedding_provider_id: id,
+                    embedding_model: "",
+                    ...(fam ? { embedding_provider: fam } : {}),
+                  });
+                }}
                 placeholder="Select a provider…"
               />
 
@@ -221,15 +268,13 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
           />
 
           <label className="rag-cfg-label">Model</label>
-          <input
-            className="rag-cfg-select"
+          <CustomDropdown
+            options={(OWN_MODELS[value.embedding_provider] || OWN_MODELS.OPENAI).map(
+              (m) => ({ value: m.id, label: m.label }),
+            )}
             value={value.embedding_model || ""}
-            onChange={(e) => onChange({ embedding_model: e.target.value })}
-            placeholder={
-              value.embedding_provider === "VOYAGE"
-                ? "voyage-3.5"
-                : "text-embedding-3-small"
-            }
+            onChange={(id) => onChange({ embedding_model: id })}
+            placeholder="Select a model…"
           />
 
           <label className="rag-cfg-label">API key</label>
@@ -237,7 +282,11 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
             className="rag-cfg-select"
             type="password"
             onChange={(e) => onChange({ embedding_api_key: e.target.value })}
-            placeholder={hasOwnKey ? "Key saved — type to replace" : "sk-… / pa-…"}
+            placeholder={
+              hasOwnKey
+                ? "Key saved — type to replace"
+                : KEY_PLACEHOLDER[value.embedding_provider] || "sk-…"
+            }
           />
           <div className="rag-cfg-hint">Stored encrypted. Never shown again.</div>
         </>

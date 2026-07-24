@@ -154,8 +154,8 @@ def resolve_config(space, doc) -> ChunkConfig:
     file_type = (getattr(doc, "file_type", "") or "").lower()
     mode = _norm_mode(getattr(space, "chunk_mode", None))
 
-    # AGENTIC: one multi-agent pipeline for every document, tuned by the space's
-    # chunk_params (granularity / target_chars / generate_metadata).
+    # AGENTIC mode: the multi-agent pipeline for EVERY document, tuned by the
+    # space's chunk_params (granularity / target_chars / generate_metadata).
     if mode == "AGENTIC":
         params = _load_params(getattr(space, "chunk_params", None))
         return ChunkConfig(strategy="agentic", params=params, file_type=file_type)
@@ -172,6 +172,13 @@ def resolve_config(space, doc) -> ChunkConfig:
         params = entry.get("params") or {}
 
     strategy = (str(strategy).lower() if strategy else default_strategy(file_type))
+
+    # "agentic" is also a valid PER-DOCUMENT / PER-FORMAT choice (not only the
+    # global mode): it's format-agnostic, so it bypasses the per-format catalog.
+    # This lets one doc use the AI pipeline while others use manual strategies.
+    if strategy == "agentic":
+        return ChunkConfig(strategy="agentic", params=params, file_type=file_type)
+
     if not strategy_def(file_type, strategy):
         strategy = default_strategy(file_type)
 

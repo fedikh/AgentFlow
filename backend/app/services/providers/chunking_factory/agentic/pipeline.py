@@ -31,6 +31,9 @@ from ..llm_client import make_llm_split, llm_json
 logger = logging.getLogger(__name__)
 
 STRATEGY = "agentic"
+# Tag used when the AI pipeline could NOT run (no key / error) and chunks were
+# built structurally instead — so chosen_strategy / the UI stay truthful.
+FALLBACK_STRATEGY = "agentic_fallback"
 
 # Cost guards
 _ANALYZE_SAMPLE = 6000       # chars of the document sent to the Analyzer
@@ -58,13 +61,23 @@ def chunk(parsed, cfg):
         chunks = _metadata(access, chunks, plan)                   # 5
         chunks = _finalize(chunks)
         if chunks:
+            # No OpenAI access → every LLM stage degraded to structural
+            # splitting. Tag honestly so the UI doesn't claim AI built these.
+            if not access:
+                logger.warning("[AGENTIC] no LLM access — chunks are structural (fallback tag)")
+                for c in chunks:
+                    c["strategy"] = FALLBACK_STRATEGY
             logger.info("[AGENTIC] %d chunks · plan=%s", len(chunks), plan)
             return chunks
     except Exception as e:
         logger.warning("[AGENTIC] pipeline failed (%s) → structural fallback", e)
 
-    # Fallback: structure-preserving recursive chunking, tagged agentic.
-    return _fallback(elements)
+    # Fallback: structure-preserving recursive chunking — tagged as fallback so
+    # doc.chosen_strategy / the UI reflect that the AI pipeline did NOT run.
+    chunks = _fallback(elements)
+    for c in chunks:
+        c["strategy"] = FALLBACK_STRATEGY
+    return chunks
 
 
 # ══════════════════════════════════════════════════════════════

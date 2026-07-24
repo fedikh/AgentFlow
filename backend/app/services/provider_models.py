@@ -14,8 +14,12 @@ PROVIDER_MODELS = {
         {"id": "gpt-5.4",       "label": "GPT-5.4"},
         {"id": "gpt-5.4-nano",  "label": "GPT-5.4 nano (cheapest)"},
         {"id": "gpt-5.5",       "label": "GPT-5.5 (flagship)"},
-        {"id": "gpt-4o-mini",   "label": "GPT-4o mini (legacy)"},
-        {"id": "gpt-4o",        "label": "GPT-4o (legacy)"},
+        # GPT-4 family (widely used, stable)
+        {"id": "gpt-4.1",       "label": "GPT-4.1"},
+        {"id": "gpt-4.1-mini",  "label": "GPT-4.1 mini"},
+        {"id": "gpt-4o",        "label": "GPT-4o"},
+        {"id": "gpt-4o-mini",   "label": "GPT-4o mini"},
+        {"id": "gpt-4-turbo",   "label": "GPT-4 Turbo (legacy)"},
     ],
     "ANTHROPIC": [
         {"id": "claude-haiku-4-5",   "label": "Claude Haiku 4.5 (fast, cheap)"},
@@ -26,8 +30,6 @@ PROVIDER_MODELS = {
         {"id": "gemini-2.5-flash-lite",  "label": "Gemini 2.5 Flash-Lite (cheapest)"},
         {"id": "gemini-2.5-flash",       "label": "Gemini 2.5 Flash (best value)"},
         {"id": "gemini-2.5-pro",         "label": "Gemini 2.5 Pro"},
-        {"id": "gemini-3.5-flash",       "label": "Gemini 3.5 Flash"},
-        {"id": "gemini-3.1-flash-lite",  "label": "Gemini 3.1 Flash-Lite"},
         {"id": "gemini-3.1-pro",         "label": "Gemini 3.1 Pro (flagship)"},
     ],
     "GROQ": [
@@ -61,12 +63,29 @@ EMBEDDING_PROVIDER_MODELS = {
         {"id": "text-embedding-3-large", "label": "text-embedding-3-large (1024)", "dim": 1024},
     ],
     "VOYAGE": [
-        {"id": "voyage-3.5",       "label": "voyage-3.5 (1024)",       "dim": 1024},
-        {"id": "voyage-3.5-lite",  "label": "voyage-3.5-lite (1024)",  "dim": 1024},
-        {"id": "voyage-3-large",   "label": "voyage-3-large (1024)",   "dim": 1024},
+        {"id": "voyage-3.5",            "label": "voyage-3.5 (1024)",            "dim": 1024},
+        {"id": "voyage-3.5-lite",       "label": "voyage-3.5-lite (1024)",       "dim": 1024},
+        {"id": "voyage-3-large",        "label": "voyage-3-large (1024)",        "dim": 1024},
+        {"id": "voyage-multimodal-3.5", "label": "Voyage Multimodal 3.5 (1024)", "dim": 1024},
+        {"id": "voyage-code-3",         "label": "voyage-code-3 (1024, code)",   "dim": 1024},
+        {"id": "voyage-finance-2",      "label": "voyage-finance-2 (1024, finance)", "dim": 1024},
+        {"id": "voyage-law-2",          "label": "voyage-law-2 (1024, legal)",   "dim": 1024},
+    ],
+    # Gemini embeddings — native dims differ (e.g. 3072); the embedding factory
+    # fits vectors to the fixed 1024 pgvector column.
+    "GOOGLE": [
+        {"id": "gemini-embedding-002", "label": "Gemini Embedding 2 (fit 1024)", "dim": 3072},
+        {"id": "gemini-embedding-001", "label": "Gemini Embedding 1 (fit 1024)", "dim": 3072},
     ],
     "LOCAL": [
         {"id": "BAAI/bge-m3", "label": "BGE-M3 (1024, local)", "dim": 1024},
+    ],
+    # Ollama runs locally (no key). mxbai-embed-large is natively 1024 → clean
+    # match; the smaller ones are fit to 1024 to match the pgvector column.
+    "OLLAMA": [
+        {"id": "mxbai-embed-large", "label": "mxbai-embed-large (1024, local)", "dim": 1024},
+        {"id": "nomic-embed-text",  "label": "nomic-embed-text (768 → 1024)",   "dim": 768},
+        {"id": "all-minilm",        "label": "all-minilm (384 → 1024)",         "dim": 384},
     ],
 }
 

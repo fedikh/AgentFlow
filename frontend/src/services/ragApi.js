@@ -158,6 +158,31 @@ export const uploadFromDrive = (spaceId, fileId, accessToken) =>
     file_id: fileId,
     access_token: accessToken,
   });
+// ── Evaluation: dataset (upload / template / generate) + experiment runs ──
+export const evalListCases = (s) => req("GET", `/rag/spaces/${s}/eval/cases`);
+export const evalAddCase = (s, data) => req("POST", `/rag/spaces/${s}/eval/cases`, data);
+export const evalDeleteCase = (s, id) => req("DELETE", `/rag/spaces/${s}/eval/cases/${id}`);
+export const evalClearCases = (s) => req("DELETE", `/rag/spaces/${s}/eval/cases`);
+export const evalUploadDataset = (s, cases) => req("POST", `/rag/spaces/${s}/eval/dataset`, { cases });
+export const evalDatasetTemplate = (s) => req("GET", `/rag/spaces/${s}/eval/dataset-template`);
+export const evalTemplateExcel = (s) => req("GET", `/rag/spaces/${s}/eval/template-excel`);
+export const evalExpertForm = (s) => req("GET", `/rag/spaces/${s}/eval/expert-form`);
+// Multipart upload of the filled expert file (.xlsx / .csv / .json)
+export const evalUploadDatasetFile = async (s, file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${BASE}/rag/spaces/${s}/eval/dataset-file`, {
+    method: "POST", body: fd, credentials: "include",
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Upload failed");
+  return data;
+};
+export const evalGenerateCases = (s, n = 8) => req("POST", `/rag/spaces/${s}/eval/generate-cases?n=${n}`);
+export const evalRun = (s) => req("POST", `/rag/spaces/${s}/eval/run`);
+export const evalRuns = (s) => req("GET", `/rag/spaces/${s}/eval/runs`);
+export const evalRunDetail = (s, id) => req("GET", `/rag/spaces/${s}/eval/runs/${id}`);
+
 // NOTE: BASE already ends in "/api", and the models router is mounted at
 // "/api/models", so these paths must NOT repeat "/api" (else → /api/api/... 404).
 // Vue d'ensemble : tous les providers LLM + embeddings en un appel
@@ -176,3 +201,4 @@ export const getChunkingCatalog = (fileType) =>
 // Set a document's chunking strategy + params (mode PER_DOCUMENT)
 export const setDocumentChunking = (spaceId, docId, strategy, params) =>
   req("PUT", `/rag/spaces/${spaceId}/documents/${docId}/chunking`, { strategy, params });
+

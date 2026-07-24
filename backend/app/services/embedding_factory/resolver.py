@@ -27,6 +27,13 @@ def resolve_embedding_config(db: Session, space) -> dict:
     model = getattr(space, "embedding_model", "") or "BAAI/bge-m3"
     family = (getattr(space, "embedding_provider", "LOCAL") or "LOCAL").upper()
 
+    # ── Ollama: local daemon, no key — route straight to the Ollama embedder ──
+    if family == "OLLAMA":
+        import os
+        base = getattr(space, "embedding_base_url", "") or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        logger.info(f"[EMB-RESOLVER] Ollama · {model} · {base}")
+        return {"family": "OLLAMA", "model": model or "mxbai-embed-large", "api_key": "", "base_url": base}
+
     # ── 1. Space's own key ──
     own_key_enc = getattr(space, "embedding_api_key_enc", None)
     if own_key_enc:
@@ -36,7 +43,7 @@ def resolve_embedding_config(db: Session, space) -> dict:
             logger.warning(f"[EMB-RESOLVER] own key decrypt failed: {e}; using local")
             key = ""
         if key:
-            fam = family if family in ("OPENAI", "VOYAGE") else "OPENAI"
+            fam = family if family in ("OPENAI", "VOYAGE", "GOOGLE") else "OPENAI"
             logger.info(f"[EMB-RESOLVER] own key · {fam} · {model}")
             return {
                 "family": fam,

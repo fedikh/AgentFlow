@@ -62,11 +62,71 @@ def local_embedder() -> _LocalEmbedder:
     return _LocalEmbedder()
 
 
+def _fit_1024(vec, dim: int = 1024):
+    """Fit any embedding to the fixed pgvector width (1024): zero-pad if shorter,
+    truncate if longer, then L2-normalize. Padding preserves cosine similarity
+    between vectors from the SAME model, so retrieval stays consistent as long as
+    indexing and querying use the same model (they do)."""
+    import math
+    v = [float(x) for x in (vec or [])]
+    if len(v) < dim:
+        v = v + [0.0] * (dim - len(v))
+    elif len(v) > dim:
+        v = v[:dim]
+    n = math.sqrt(sum(x * x for x in v)) or 1.0
+    return [x / n for x in v]
+
+
+class _FitTo1024:
+    """Adapter that fits ANY LangChain-style embedder's output to the fixed
+    1024-d pgvector column (pad/truncate + L2-normalize). Used for providers
+    whose models don't natively emit 1024 dims (e.g. Gemini's 3072)."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def embed_documents(self, texts):
+        return [_fit_1024(v) for v in self.inner.embed_documents(texts)]
+
+    def embed_query(self, text):
+        return _fit_1024(self.inner.embed_query(text))
+
+
+class _OllamaEmbedder:
+    """Embeddings from a local Ollama daemon (mxbai-embed-large, nomic-embed-text,
+    all-minilm, …). Vectors are fit to 1024 so any model works with the fixed
+    pgvector column. No API key — Ollama runs locally."""
+
+    def __init__(self, model: str = "", base_url: str = ""):
+        import os
+        self.model = model or "mxbai-embed-large"
+        self.base = (base_url or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
+
+    def _one(self, text: str):
+        import requests
+        r = requests.post(
+            f"{self.base}/api/embeddings",
+            json={"model": self.model, "prompt": text or ""},
+            timeout=120,
+        )
+        r.raise_for_status()
+        return _fit_1024(r.json().get("embedding") or [])
+
+    def embed_documents(self, texts):
+        return [self._one(t) for t in texts]
+
+    def embed_query(self, text):
+        return self._one(text)
+
+
 def get_embedder(family: str, model: str = "", api_key: str = "", base_url: str = ""):
     """Build an embedder for the given family. Returns a LangChain-style object."""
     fam = (family or "LOCAL").upper()
 
-    if fam in ("LOCAL", "OLLAMA"):
+    if fam == "OLLAMA":
+        return _OllamaEmbedder(model=model, base_url=base_url)
+
+    if fam == "LOCAL":
         return _LocalEmbedder()
 
     if fam == "OPENAI":
@@ -86,6 +146,15 @@ def get_embedder(family: str, model: str = "", api_key: str = "", base_url: str 
             model=model or "voyage-3.5",
             voyage_api_key=api_key,
         )
+
+    if fam == "GOOGLE":
+        # Gemini embeddings (gemini-embedding-*). Native dims differ from our
+        # fixed pgvector width (e.g. 3072), so wrap with the 1024 fitter.
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        m = model or "gemini-embedding-001"
+        if not m.startswith("models/"):
+            m = f"models/{m}"
+        return _FitTo1024(GoogleGenerativeAIEmbeddings(model=m, google_api_key=api_key))
 
     # Unknown family → safe local default
     logger.warning(f"[EMB] Unknown embedding family '{family}', using local BGE-M3")

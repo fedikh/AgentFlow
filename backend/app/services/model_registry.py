@@ -57,6 +57,34 @@ EMBEDDING_MODELS = [
         "speed": 3,
         "available": True,
     },
+    # ── Ollama (local daemon, no key) — fit to 1024 to match pgvector ──
+    {
+        "id": "mxbai-embed-large",
+        "provider": "OLLAMA",
+        "dim": 1024,
+        "label": "mxbai-embed-large",
+        "note": "Ollama · local · 1024d (native match)",
+        "speed": 2,
+        "available": True,
+    },
+    {
+        "id": "nomic-embed-text",
+        "provider": "OLLAMA",
+        "dim": 768,
+        "label": "nomic-embed-text",
+        "note": "Ollama · local · 768d → fit 1024",
+        "speed": 3,
+        "available": True,
+    },
+    {
+        "id": "all-minilm",
+        "provider": "OLLAMA",
+        "dim": 384,
+        "label": "all-minilm",
+        "note": "Ollama · local · 384d → fit 1024",
+        "speed": 3,
+        "available": True,
+    },
     # ── Payant — prêt mais désactivé (pas de clé) ──
     {
         "id": "text-embedding-3-small",

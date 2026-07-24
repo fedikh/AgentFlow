@@ -1,15 +1,19 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { listProviders } from "../../../services/providersApi";
+import { embSource } from "./pipelineConfig";
 
 /*
- * Catalog-driven chunking configuration (compact).
+ * Catalog-driven chunking configuration.
  *
- *   SINGLE       — one strategy PER FORMAT: pick the strategy that fits each
- *                  format present (pdf → …, pptx → …, csv → …). Stored in
+ *   SINGLE       — one strategy PER FORMAT (pdf → …, csv → …), stored in
  *                  cfg.chunk_format_map = { file_type: {strategy, params} }.
  *   PER_DOCUMENT — each parsed document picks its own strategy + params.
+ *   AGENTIC      — the AI pipeline chunks EVERY document.
  *
- * Strategies, the per-format allow-list and their parameters all come from the
- * backend catalog (GET /rag/chunking/catalog) — nothing is hardcoded.
+ * "Agentic" is ALSO selectable as a strategy for a single format (SINGLE) or a
+ * single document (PER_DOCUMENT) — so one doc can use the AI pipeline while the
+ * rest use manual strategies. Strategies, allow-lists and parameters all come
+ * from the backend catalog (GET /rag/chunking/catalog) — nothing is hardcoded.
  */
 
 const FT_LABEL = {
@@ -21,6 +25,16 @@ const FT_LABEL = {
 const lc = (s) => (s || "").toLowerCase();
 const catOf = (catalog, ft) => catalog?.file_category?.[lc(ft)] || "documents";
 const stratsOfCat = (catalog, cat) => catalog?.categories?.[cat]?.strategies || [];
+
+/* The Agentic pipeline exposed as a selectable pseudo-strategy. Its params come
+ * from the catalog's agentic block, so ParamGrid renders them like any other. */
+const agenticStrat = (catalog) => ({
+  name: "agentic",
+  label: "Agentic — AI pipeline",
+  agentic: true,
+  params: catalog?.agentic?.params || [],
+  pros: "AI agents analyze the document and build meaning-based chunks (needs an OpenAI key).",
+});
 
 /* Strategies valid for a file type (allow-list filtered + ordered), with the
  * per-type recommended flag applied. */
@@ -37,6 +51,15 @@ const stratsOfType = (catalog, ft) => {
 const findStrat = (strats, name) => strats.find((s) => s.name === name);
 const defaultsOf = (strat) =>
   Object.fromEntries((strat?.params || []).map((p) => [p.key, p.default]));
+
+/* Pretty label for a strategy name (searches the doc's strategies + agentic). */
+const stratLabel = (catalog, ft, name) => {
+  if (!name) return "";
+  if (name === "agentic") return "Agentic (AI)";
+  if (name === "agentic_fallback") return "Agentic — fallback";
+  const s = findStrat(stratsOfType(catalog, ft), name);
+  return s?.label || name;
+};
 
 /* One tunable parameter input (int/float/bool/select) from the catalog schema. */
 function ParamInput({ def, value, onChange }) {
@@ -90,16 +113,21 @@ function ParamGrid({ strat, params, onParam }) {
   );
 }
 
-/* A compact strategy dropdown for one format/document. */
-function StrategySelect({ strats, value, onChange, allowDefault, className = "rag-ck-select" }) {
+/* A compact strategy dropdown for one format/document. The Agentic pipeline is
+ * offered at the bottom, separated from the manual strategies. */
+function StrategySelect({ strats, value, onChange, allowDefault, withAgentic, className = "rag-ck-select" }) {
   return (
     <select className={className} value={value} onChange={(e) => onChange(e.target.value)}>
       {allowDefault && <option value="">Default (space)</option>}
       {strats.map((s) => (
         <option key={s.name} value={s.name}>
-          {s.label}{s.recommended ? "  ★ recommended" : ` · ${"★".repeat(s.stars || 0)}`}
+          {s.label}
+          {s.recommended ? "  ★ recommended" : s.stars ? ` · ${"★".repeat(s.stars)}` : ""}
         </option>
       ))}
+      {withAgentic && (
+        <option value="agentic">🤖 Agentic — AI pipeline</option>
+      )}
     </select>
   );
 }
@@ -117,9 +145,21 @@ export default function ChunkingConfig({
   processing = false,
   openModal = () => {},
   canBuild = true,
+  onGoEmbed = null,
 }) {
   const changeMode = handleChunkModeChange || ((m) => setC("chunk_mode", m));
   const [open, setOpen] = useState({});   // which format rows have params expanded
+
+  // Resolve the REAL embedding source (own key → company provider → local),
+  // mirroring the backend resolver — cfg.embedding_provider alone is stale when
+  // a company provider is selected. Providers are fetched only when needed.
+  const [providers, setProviders] = useState([]);
+  useEffect(() => {
+    if (cfg?.embedding_provider_id) {
+      listProviders().then(setProviders).catch(() => setProviders([]));
+    }
+  }, [cfg?.embedding_provider_id]);
+  const embSrc = embSource(cfg || {}, providers);
   const rawMode = (cfg.chunk_mode || "SINGLE").toUpperCase();
   const mode =
     rawMode === "PER_DOCUMENT" ? "PER_DOCUMENT" : rawMode === "AGENTIC" ? "AGENTIC" : "SINGLE";
@@ -144,8 +184,8 @@ export default function ChunkingConfig({
       <div className="rag-cfg-cards">
         {[
           { k: "SINGLE", n: "Single", d: "One strategy per format" },
-          { k: "PER_DOCUMENT", n: "Per document", d: "Pick a strategy per file" },
-          { k: "AGENTIC", n: "Agentic", d: "AI plans & builds the chunks", badge: "AI" },
+          { k: "PER_DOCUMENT", n: "Per document", d: "Choose per file — manual or Agentic" },
+          { k: "AGENTIC", n: "Agentic", d: "AI pipeline for ALL documents", badge: "AI" },
         ].map((m) => (
           <button
             key={m.k}
@@ -161,7 +201,7 @@ export default function ChunkingConfig({
         ))}
       </div>
 
-      {/* ── AGENTIC: pipeline diagram + tuning ── */}
+      {/* ── AGENTIC: compact settings; pipeline behind a toggle ── */}
       {mode === "AGENTIC" && (
         <AgenticPanel
           catalog={catalog}
@@ -177,7 +217,8 @@ export default function ChunkingConfig({
           {typesToShow.map((ft) => {
             const strats = stratsOfType(catalog, ft);
             const name = effStrategy(ft);
-            const strat = findStrat(strats, name) || strats[0];
+            const strat =
+              name === "agentic" ? agenticStrat(catalog) : findStrat(strats, name) || strats[0];
             const params = fmtMap[lc(ft)]?.params || defaultsOf(strat);
             const isOpen = !!open[ft];
             return (
@@ -187,7 +228,13 @@ export default function ChunkingConfig({
                   <StrategySelect
                     strats={strats}
                     value={name}
-                    onChange={(n) => setFormat(ft, n, defaultsOf(findStrat(strats, n)))}
+                    withAgentic
+                    onChange={(n) =>
+                      setFormat(
+                        ft, n,
+                        defaultsOf(n === "agentic" ? agenticStrat(catalog) : findStrat(strats, n)),
+                      )
+                    }
                   />
                   {strat?.params?.length > 0 && (
                     <button
@@ -223,8 +270,8 @@ export default function ChunkingConfig({
 
       {mode === "PER_DOCUMENT" && (
         <div className="rag-cfg-hint">
-          Pick a strategy and tune its parameters for each document below, then
-          Process to chunk &amp; index it.
+          Pick a strategy for each document below — any manual strategy or the
+          <strong> 🤖 Agentic AI pipeline</strong> — then Process to chunk &amp; index it.
         </div>
       )}
 
@@ -237,6 +284,24 @@ export default function ChunkingConfig({
         {canBuild && extractedCount > 0 && (
           <button className="rag-btn rag-btn-sm rag-btn-dark" onClick={handleProcessAll} disabled={processing}>
             {processing ? "…" : `Process all (${extractedCount})`}
+          </button>
+        )}
+      </div>
+
+      {/* Process = chunk + EMBED + store, so make the embedding dependency
+          visible right where the button is — with a jump to change it. */}
+      <div className="rag-ck-embedbar">
+        <span className="rag-ck-embedbar-t">
+          Processing embeds chunks with{" "}
+          <strong>{cfg.embedding_model || "BAAI/bge-m3"}</strong>
+          {" · "}{embSrc.label}
+          {embSrc.family && !embSrc.label.toUpperCase().includes(embSrc.family.toUpperCase())
+            ? ` (${embSrc.family})`
+            : ""}
+        </span>
+        {onGoEmbed && (
+          <button type="button" className="rag-btn rag-btn-xs" onClick={onGoEmbed}>
+            Change — step 2 ↗
           </button>
         )}
       </div>
@@ -255,10 +320,7 @@ export default function ChunkingConfig({
             d={d}
             catalog={catalog}
             mode={mode}
-            effLabel={
-              (findStrat(stratsOfType(catalog, d.file_type), effStrategy(d.file_type)) || {}).label
-              || effStrategy(d.file_type)
-            }
+            effLabel={stratLabel(catalog, d.file_type, effStrategy(d.file_type))}
             onSetChunking={handleSetDocChunking}
             onProcess={handleProcess}
             processing={processing}
@@ -271,8 +333,10 @@ export default function ChunkingConfig({
   );
 }
 
-/* Agentic mode panel: the pipeline diagram + its tuning parameters. */
+/* Agentic mode panel — compact. The pipeline diagram is hidden behind a
+ * "View pipeline" toggle so the settings stay front and center. */
 function AgenticPanel({ catalog, params, onParam }) {
+  const [showPipeline, setShowPipeline] = useState(false);
   const agentic = catalog?.agentic || {};
   const stages = agentic.stages || [];
   const paramDefs = agentic.params || [];
@@ -284,28 +348,35 @@ function AgenticPanel({ catalog, params, onParam }) {
         <span className="ag-panel-sub">
           A team of OpenAI agents analyzes each document and builds meaning-based chunks.
         </span>
+        <button
+          type="button"
+          className={`rag-btn rag-btn-xs ${showPipeline ? "rag-btn-dark" : ""}`}
+          style={{ marginLeft: "auto", flexShrink: 0 }}
+          onClick={() => setShowPipeline((v) => !v)}
+        >
+          {showPipeline ? "Hide pipeline ▴" : "View pipeline ▾"}
+        </button>
       </div>
 
-      {/* flow: Parser → [6 agents] → Embedding → Vector DB */}
-      <div className="ag-flow">
-        <div className="ag-io">Parser</div>
-        <div className="ag-flow-arrow">↓</div>
-        {stages.map((s, i) => (
-          <React.Fragment key={s.key}>
-            <div className="ag-stage">
-              <span className="ag-stage-num">{i + 1}</span>
-              <div className="ag-stage-body">
-                <div className="ag-stage-name">{s.label}</div>
-                <div className="ag-stage-desc">{s.desc}</div>
-              </div>
-            </div>
-            <div className="ag-flow-arrow">↓</div>
-          </React.Fragment>
-        ))}
-        <div className="ag-io ag-io-out">Embedding</div>
-        <div className="ag-flow-arrow">↓</div>
-        <div className="ag-io ag-io-out">Vector database</div>
-      </div>
+      {/* compact horizontal flow: Parser → agents → Embedding → Vector DB */}
+      {showPipeline && (
+        <div className="ag-flow-h">
+          <span className="ag-chip ag-chip-io">Parser</span>
+          <span className="ag-chip-arrow">→</span>
+          {stages.map((s, i) => (
+            <React.Fragment key={s.key}>
+              <span className="ag-chip" title={s.desc}>
+                <span className="ag-chip-num">{i + 1}</span>
+                {s.label}
+              </span>
+              <span className="ag-chip-arrow">→</span>
+            </React.Fragment>
+          ))}
+          <span className="ag-chip ag-chip-io">Embedding</span>
+          <span className="ag-chip-arrow">→</span>
+          <span className="ag-chip ag-chip-io">Vector DB</span>
+        </div>
+      )}
 
       {/* tuning */}
       {paramDefs.length > 0 && (
@@ -332,19 +403,26 @@ function AgenticPanel({ catalog, params, onParam }) {
   );
 }
 
-/* One parsed-document row: name/status + (per-doc) strategy select & params. */
+/* One parsed-document row: name/status + (per-doc) strategy select & params.
+ * Indexed docs show the strategy that ACTUALLY produced their chunks. */
 function DocRow({ d, catalog, mode, effLabel, onSetChunking, onProcess, processing, openModal, canBuild = true }) {
   const strats = stratsOfType(catalog, d.file_type);
   const perDoc = mode === "PER_DOCUMENT";
   const active = d.chunk_strategy || "";
-  const strat = findStrat(strats, active);
+  const strat = active === "agentic" ? agenticStrat(catalog) : findStrat(strats, active);
   const params = d.chunk_params || {};
 
   const onStrategy = (name) =>
-    name ? onSetChunking(d.id, name, defaultsOf(findStrat(strats, name))) : onSetChunking(d.id, "", null);
+    name
+      ? onSetChunking(
+          d.id, name,
+          defaultsOf(name === "agentic" ? agenticStrat(catalog) : findStrat(strats, name)),
+        )
+      : onSetChunking(d.id, "", null);
   const onParam = (key, val) => onSetChunking(d.id, active, { ...params, [key]: val });
 
   const indexed = d.status === "INDEXED";
+  const usedLabel = indexed ? stratLabel(catalog, d.file_type, d.chosen_strategy) : "";
   return (
     <div className="rag-ck-doc">
       <div className="rag-ck-doc-head">
@@ -364,6 +442,23 @@ function DocRow({ d, catalog, mode, effLabel, onSetChunking, onProcess, processi
               : d.status === "PROCESSING"
                 ? "Processing…"
                 : "Parsed — not indexed"}
+            {usedLabel && (
+              <span
+                className={`rag-ck-used ${
+                  d.chosen_strategy === "agentic" ? "ai"
+                  : d.chosen_strategy === "agentic_fallback" ? "warn" : ""
+                }`}
+                title={
+                  d.chosen_strategy === "agentic_fallback"
+                    ? "The AI pipeline could not run (no OpenAI key / error) — structural chunking was used instead"
+                    : "Strategy that produced the current chunks"
+                }
+              >
+                {d.chosen_strategy === "agentic" ? "🤖 "
+                  : d.chosen_strategy === "agentic_fallback" ? "⚠ " : ""}
+                {usedLabel}
+              </span>
+            )}
           </div>
         </div>
 
@@ -373,6 +468,7 @@ function DocRow({ d, catalog, mode, effLabel, onSetChunking, onProcess, processi
             value={active}
             onChange={onStrategy}
             allowDefault
+            withAgentic
             className="rag-ck-select rag-ck-select-doc"
           />
         ) : (
@@ -395,6 +491,11 @@ function DocRow({ d, catalog, mode, effLabel, onSetChunking, onProcess, processi
 
       {perDoc && strat?.params?.length > 0 && (
         <div className="rag-ck-doc-params">
+          {strat.agentic && (
+            <div className="rag-ck-agentic-hint">
+              🤖 This document will be chunked by the Agentic AI pipeline.
+            </div>
+          )}
           <ParamGrid strat={strat} params={params} onParam={onParam} />
         </div>
       )}

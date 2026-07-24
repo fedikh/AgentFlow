@@ -47,9 +47,10 @@ class Document(Base):
     rag_space = relationship("RAGSpace", back_populates="documents")
     chunks    = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
     # Per-document chunking override (used in PER_DOCUMENT mode).
-    #   chunk_strategy: catalog strategy name for THIS document.
+    #   chunk_strategy: catalog strategy name for THIS document ("agentic" allowed).
     #   chunk_params:   JSON of that strategy's tuned parameters.
-    #   chosen_strategy: reserved for the Agentic (auto-select) phase.
+    #   chosen_strategy: the strategy that ACTUALLY produced the current chunks,
+    #                    recorded at indexing time (shown in the UI).
     chunk_strategy  = Column(String, nullable=True)
     chunk_params    = Column(Text, nullable=True)
     chosen_strategy = Column(String, nullable=True)

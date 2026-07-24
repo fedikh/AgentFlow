@@ -55,3 +55,7 @@ langdetect>=1.0
 
 # ── Vision image summarization (multi-vector RAG) ──
 langchain-google-genai>=1.0
+rank-bm25
+bm25s
+flashrank
+ragas

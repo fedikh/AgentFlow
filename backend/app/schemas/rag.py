@@ -134,6 +134,11 @@ class UpdateRAGSpaceRequest(BaseModel):
     search_engine:      Optional[str] = None
     semantic_weight:    Optional[float] = None
     reranking_enabled:  Optional[bool] = None
+    # Retrieval Pipeline overrides (visual pipeline UI) — dict of
+    # RetrievalConfig fields (see services/retrieval/config.py)
+    retrieval_params:   Optional[dict] = None
+    # Evaluation judge settings ({judge: gpt|claude|gemini|same, judge_model})
+    eval_params:        Optional[dict] = None
 
     system_prompt:      Optional[str] = None
 

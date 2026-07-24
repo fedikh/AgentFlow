@@ -167,8 +167,12 @@ AGENTIC_PARAMS = [
      "options": [{"value": "fine", "label": "Fine (smaller chunks)"},
                  {"value": "balanced", "label": "Balanced"},
                  {"value": "coarse", "label": "Coarse (larger chunks)"}]},
-    {"key": "target_chars", "label": "Target size (chars)", "type": "int",
-     "default": 1200, "min": 400, "max": 2500, "step": 50},
+    # 0 = auto: the Document Analyzer picks the size per document. A fixed
+    # default here would silently pin the size and disable that adaptivity
+    # (and would diverge from global AGENTIC mode, which passes params through
+    # unmerged) — so the default IS the adaptive sentinel.
+    {"key": "target_chars", "label": "Target size (chars · 0 = auto)", "type": "int",
+     "default": 0, "min": 0, "max": 2500, "step": 50},
     {"key": "generate_metadata", "label": "Generate titles & keywords per chunk",
      "type": "bool", "default": True},
 ]

@@ -133,6 +133,12 @@ class RAGSpace(Base):
     search_engine      = Column(String, default="HYBRID")
     semantic_weight    = Column(Float, default=0.7)
     reranking_enabled  = Column(Boolean, default=False)
+    # Retrieval Pipeline overrides (visual pipeline UI): JSON of RetrievalConfig
+    # fields — per-retriever toggles, BM25 k1/b, fusion weights, transforms,
+    # reranker provider/model, context/compression. See services/retrieval/config.py
+    retrieval_params   = Column(Text, nullable=True)
+    # Evaluation settings: independent judge choice (JSON: {judge, judge_model})
+    eval_params        = Column(Text, nullable=True)
 
     # ── Prompt config ──                                                           # NEW
     system_prompt   = Column(Text, nullable=True)           # null = prompt par défaut

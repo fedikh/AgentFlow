@@ -19,6 +19,9 @@ from app.models.rag_space_access import RAGSpaceAccess  # noqa: F401
 from app.models.rag_space_version import RAGSpaceVersion  # noqa: F401
 from app.models.rag_space_collaborator import RAGSpaceCollaborator  # noqa: F401
 
+# Evaluation — datasets + experiment runs (tables created by create_all)
+from app.models.evaluation import EvalCase, EvalRun  # noqa: F401
+
 # Import rag — show error if it fails
 try:
     from app.routes import rag
@@ -49,6 +52,10 @@ def _run_light_migrations():
         # New per-strategy params + chunk traceability
         "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS chunk_params TEXT",
         "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS chunk_format_map TEXT",
+        # ── Retrieval Engine: per-space pipeline overrides (visual pipeline UI) ──
+        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS retrieval_params TEXT",
+        # ── Evaluation: independent judge settings ──
+        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS eval_params TEXT",
         "ALTER TABLE documents  ADD COLUMN IF NOT EXISTS chunk_params TEXT",
         "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS strategy VARCHAR",
         "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS parent_index INTEGER",

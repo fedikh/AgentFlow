@@ -328,6 +328,8 @@ def _space_dict(db, space, user=None):
         "search_engine": getattr(space, 'search_engine', 'HYBRID') or 'HYBRID',
         "semantic_weight": getattr(space, 'semantic_weight', 0.7) if getattr(space, 'semantic_weight', None) is not None else 0.7,
         "reranking_enabled": getattr(space, 'reranking_enabled', False) or False,
+        "retrieval_params": _load_json(getattr(space, 'retrieval_params', None)),
+        "eval_params": _load_json(getattr(space, 'eval_params', None)),
         "system_prompt": getattr(space, 'system_prompt', None),
         # NEW (Batch 1): per-user access control
         "allowed_user_ids": _get_access_user_ids(db, space.id),
@@ -367,6 +369,7 @@ _VERSION_CONFIG_COLUMNS = [
     "llm_provider", "llm_model", "llm_temperature", "llm_max_tokens",
     "llm_provider_id", "llm_api_key_enc", "llm_base_url",
     "top_k", "search_engine", "semantic_weight", "reranking_enabled",
+    "retrieval_params",
     "system_prompt",
 ]
 _VERSION_SECRET_KEYS = ("llm_api_key_enc", "embedding_api_key_enc")
@@ -726,6 +729,14 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
     if "chunk_format_map" in payload:
         fm = payload.pop("chunk_format_map")
         space.chunk_format_map = json.dumps(fm) if fm else None
+    # ── Retrieval pipeline overrides (visual pipeline UI) — dict → JSON text ──
+    if "retrieval_params" in payload:
+        rp = payload.pop("retrieval_params")
+        space.retrieval_params = json.dumps(rp) if rp else None
+    # ── Evaluation judge choice (no secrets — just {judge, judge_model}) ──
+    if "eval_params" in payload:
+        ep = payload.pop("eval_params")
+        space.eval_params = json.dumps(ep) if ep else None
     if payload.get("chunk_strategy"):
         payload["chunk_strategy"] = str(payload["chunk_strategy"]).lower()
     if payload.get("chunk_mode"):
@@ -969,6 +980,13 @@ def set_document_chunking(db: Session, space_id: str, doc_id: str,
     if name in ("", "default", "none"):
         doc.chunk_strategy = None
         doc.chunk_params = None
+    elif name == "agentic":
+        # Agentic is format-agnostic (multi-agent pipeline) — valid for ANY
+        # document, so it skips the per-format catalog validation.
+        from app.services.providers.chunking_factory.registry import AGENTIC_PARAMS
+        defaults = {p["key"]: p.get("default") for p in AGENTIC_PARAMS}
+        doc.chunk_strategy = "agentic"
+        doc.chunk_params = json.dumps({**defaults, **(params or {})})
     else:
         if not strategy_def(doc.file_type, name):
             raise HTTPException(400, f"Strategy '{name}' is not valid for .{doc.file_type}")
@@ -1921,6 +1939,10 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
             db.add(db_chunk)
 
         doc.num_chunks = len(chunks)
+        # Record the strategy that ACTUALLY produced the chunks (shown in the
+        # UI on indexed docs). Read from the chunks themselves: if the agentic
+        # pipeline fell back to a structural strategy, this reflects that truth.
+        doc.chosen_strategy = (chunks[0].get("strategy") if chunks else None) or cfg.strategy
         doc.status = DocStatus.INDEXED
         db.commit()
         db.refresh(doc)
@@ -1928,6 +1950,11 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
     except Exception as e:
         doc.status = DocStatus.ERROR
         doc.error_msg = str(e)
+        # The old chunks were already deleted (and that delete is committed
+        # below) — zero the fields that described them so the API/UI never
+        # report a strategy/count for chunks that no longer exist.
+        doc.num_chunks = 0
+        doc.chosen_strategy = None
         db.commit()
         raise HTTPException(500, f"Processing failed: {str(e)}")
 
@@ -2045,27 +2072,42 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: Use
     if user is not None:
         check_space_access(db, space, user)
 
-    query_embedding = embed_query(db, space, data.question)
+    # ── Retrieval Engine (services/retrieval): query analysis → strategy →
+    #    dense/BM25/metadata/exact in parallel → fusion → optional rerank →
+    #    context builder. Falls back to the legacy dense+keyword search if the
+    #    engine fails, so querying never breaks.
+    items = []
+    try:
+        from app.services.retrieval import retrieve as engine_retrieve
+        result = engine_retrieve(db, space, data.question)
+        items = result["items"]
+    except Exception as e:
+        logger.warning(f"[QUERY] retrieval engine failed ({e}) — legacy fallback")
+        query_embedding = embed_query(db, space, data.question)
+        top_k = getattr(space, 'top_k', 5) or 5
+        legacy = hybrid_search(db, space_id, data.question, query_embedding, top_k)
+        doc_cache = {}
+        for r in legacy:
+            if r["document_id"] not in doc_cache:
+                doc = db.query(Document).filter(Document.id == r["document_id"]).first()
+                doc_cache[r["document_id"]] = doc.file_name if doc else "Unknown"
+            items.append({
+                "document": doc_cache[r["document_id"]], "page": r["page"],
+                "score": r["score"], "content": r["content"], "method": "legacy",
+                "chunk_type": r.get("chunk_type") or "text",
+                "image_path": r.get("image_path"),
+            })
 
-    top_k = getattr(space, 'top_k', 5) or 5
-    results = hybrid_search(db, space_id, data.question, query_embedding, top_k)
-
-    if not results:
+    if not items:
         return {"answer": "No relevant information found in the documents.", "sources": []}
 
     context_parts = []
     sources_info = []
-    doc_cache = {}
-
-    for i, r in enumerate(results):
-        doc_id = r["document_id"]
-        if doc_id not in doc_cache:
-            doc = db.query(Document).filter(Document.id == doc_id).first()
-            doc_cache[doc_id] = doc.file_name if doc else "Unknown"
-
-        doc_name = doc_cache[doc_id]
-        context_parts.append(f"[Source {i+1}: {doc_name}, Page {r['page']}, Score: {r['score']}]\n{r['content']}")
-        sources_info.append(f"Source {i+1}: {doc_name} (Page {r['page']}, Score: {r['score']})")
+    for i, m in enumerate(items):
+        context_parts.append(
+            f"[Source {i+1}: {m['document']}, Page {m['page']}, Score: {m['score']}]\n{m['content']}")
+        sources_info.append(
+            f"Source {i+1}: {m['document']} (Page {m['page']}, Score: {m['score']})")
 
     context = "\n\n---\n\n".join(context_parts)
     sources_text = "\n".join(sources_info)
@@ -2076,19 +2118,20 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: Use
     from urllib.parse import quote
 
     sources = []
-    for r in results:
+    for m in items:
         src = {
-            "content": r["content"][:200],
-            "document": doc_cache.get(r["document_id"], "Unknown"),
-            "page": r["page"],
-            "score": r["score"],
+            "content": m["content"][:200],
+            "document": m["document"],
+            "page": m["page"],
+            "score": m["score"],
+            "method": m.get("method", ""),
         }
         # Batch 5: if the retrieved chunk is an image, expose it so the chat can
         # render it inline. image_url is relative to the API base; the frontend
         # prepends VITE_API_URL (same pattern as the parsed-document preview).
-        if r.get("chunk_type") == "image_summary" and r.get("image_path"):
+        if m.get("chunk_type") == "image_summary" and m.get("image_path"):
             src["type"] = "image"
-            src["image_url"] = f"/rag/spaces/{space_id}/image?path={quote(r['image_path'])}"
+            src["image_url"] = f"/rag/spaces/{space_id}/image?path={quote(m['image_path'])}"
         sources.append(src)
 
     return {"answer": answer, "sources": sources}

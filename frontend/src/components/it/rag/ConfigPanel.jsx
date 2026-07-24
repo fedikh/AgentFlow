@@ -4,14 +4,23 @@ import EmbeddingSourceSelector from "./EmbeddingSourceSelector";
 import SavedConfigBar from "./SavedConfigBar";
 import AccessSelector from "./AccessSelector";
 import ChunkingConfig from "./ChunkingConfig";
+import RetrievalPipeline from "./RetrievalPipeline";
 
 const LABELS = {
-  chunk: "Chunking",
+  chunk: "Chunking & Indexing",
   embed: "Embeddings",
   llm: "LLM Configuration",
   retrieval: "Retrieval",
   access: "Access",
   eval: "Evaluation",
+};
+
+const SUBTITLES = {
+  chunk: "How documents are split, then chunked + embedded + indexed on Process.",
+  embed: "The vector model that turns chunks into searchable 1024-d vectors.",
+  llm: "The model that writes answers from the retrieved chunks.",
+  retrieval: "How relevant chunks are found for each question.",
+  access: "Who in the department can query this space.",
 };
 
 const ConfigPanel = ({
@@ -34,6 +43,7 @@ const ConfigPanel = ({
   openModal = () => {},
   canBuild = true,
   editable = true,
+  setPanel = () => {},
 }) => {
   if (!cfg) return null;
 
@@ -61,7 +71,10 @@ const ConfigPanel = ({
   return (
     <div className="rag-cfg-panel">
       <div className="rag-cfg-head">
-        <div className="rag-cfg-title">{LABELS[panel]}</div>
+        <div>
+          <div className="rag-cfg-title">{LABELS[panel]}</div>
+          {SUBTITLES[panel] && <div className="rag-cfg-sub">{SUBTITLES[panel]}</div>}
+        </div>
         {canBuild && (
           <button
             className="rag-btn rag-btn-sm rag-btn-dark"
@@ -113,6 +126,7 @@ const ConfigPanel = ({
           processing={processing}
           openModal={openModal}
           canBuild={canBuild}
+          onGoEmbed={() => setPanel("embed")}
         />
       )}
 
@@ -203,14 +217,12 @@ const ConfigPanel = ({
             onChange={(e) => setC("top_k", e.target.value)}
             className="rag-cfg-range"
           />
-          <label className="rag-cfg-check">
-            <input
-              type="checkbox"
-              checked={!!cfg.reranking_enabled}
-              onChange={(e) => setC("reranking_enabled", e.target.checked)}
-            />
-            Reranking (LLM re-ranking)
+
+          {/* The full engine, stage by stage (saved in retrieval_params). */}
+          <label className="rag-cfg-label" style={{ marginTop: 20 }}>
+            Retrieval pipeline
           </label>
+          <RetrievalPipeline cfg={cfg} setC={setC} />
         </>
       )}
 
