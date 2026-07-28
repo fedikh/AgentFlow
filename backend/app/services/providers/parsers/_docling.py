@@ -491,6 +491,56 @@ def _merge_table_content(a: dict, b: dict) -> None:
         a["headers"] = b["headers"]
 
 
+def mark_repeated_boilerplate(elements: list) -> int:
+    """Cross-page repetition detector — page furniture / boilerplate.
+
+    Form documents (letters, certificates, invoices) repeat the SAME
+    letterhead, dates and legal paragraphs on every page. The parse must stay
+    FAITHFUL (the Parsed view shows everything), but chunking should not embed
+    the same boilerplate once per page — it dilutes every chunk's meaning.
+
+    Rule: an identical normalized paragraph appearing on 2+ DIFFERENT pages at
+    roughly the same vertical position is furniture. The FIRST occurrence
+    stays normal (the information remains answerable once); every repeat is
+    tagged metadata.boilerplate=True and the chunking layer skips it.
+    Headings are exempt — a repeated heading still anchors its page's section.
+    """
+    import re as _re
+    from collections import defaultdict
+
+    groups = defaultdict(list)
+    for el in elements or []:
+        if el.get("type") != "paragraph":
+            continue
+        txt = ((el.get("content") or {}).get("text") or "").strip()
+        if len(txt) < 8:
+            continue
+        groups[_re.sub(r"\s+", " ", txt.lower())].append(el)
+
+    marked = 0
+    for key, els in groups.items():
+        pages = {(e.get("location") or {}).get("page") for e in els}
+        if len(pages) < 2:
+            continue
+
+        def _top(e):
+            bb = (e.get("location") or {}).get("bbox") or []
+            return bb[1] if len(bb) >= 2 else None
+
+        tops = [v for v in (_top(e) for e in els) if v is not None]
+        # same vertical band across pages (PDF), or short text when no bbox (DOCX)
+        if tops:
+            if max(tops) - min(tops) > 40:
+                continue
+        elif len(key) > 300:
+            continue
+        ordered_els = sorted(els, key=lambda x: (x.get("metadata") or {}).get("reading_order", 0))
+        for e in ordered_els[1:]:
+            e.setdefault("metadata", {})["boilerplate"] = True
+            marked += 1
+    return marked
+
+
 def merge_split_tables(elements: list) -> list:
     """Merge consecutive table ELEMENTS that are halves of a page-spanning table.
     Handles both Docling's per-page split and our page-batch boundary split, and

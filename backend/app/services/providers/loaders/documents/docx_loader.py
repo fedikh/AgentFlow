@@ -71,6 +71,8 @@ def load(file_path: str, extract_images: bool = True) -> dict:
                   "file_path": os.path.abspath(file_path)},
         extract_images=extract_images,
     )
+    from app.services.providers.parsers._docling import mark_repeated_boilerplate
+    mark_repeated_boilerplate(parsed_doc.elements)
 
     if not raw_text.strip():
         raise ValueError("DOCX contains no readable text")

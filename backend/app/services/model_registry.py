@@ -57,13 +57,22 @@ EMBEDDING_MODELS = [
         "speed": 3,
         "available": True,
     },
-    # ── Ollama (local daemon, no key) — fit to 1024 to match pgvector ──
+    {
+        "id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        "provider": "LOCAL",
+        "dim": 384,
+        "label": "Multilingual MiniLM",
+        "note": "Local · gratuit · rapide · multilingue (FR)",
+        "speed": 3,
+        "available": True,
+    },
+    # ── Ollama (local daemon, no key) — native dimensions ──
     {
         "id": "mxbai-embed-large",
         "provider": "OLLAMA",
         "dim": 1024,
         "label": "mxbai-embed-large",
-        "note": "Ollama · local · 1024d (native match)",
+        "note": "Ollama · local · 1024d",
         "speed": 2,
         "available": True,
     },

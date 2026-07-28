@@ -1,5 +1,9 @@
 """
-Dense Retriever — pgvector cosine search over the space's chunk embeddings.
+Dense Retriever — pgvector cosine search in the space's DIMENSION BUCKET
+(chunk_vectors_<dim>, native model dims — see pgvector_store.py).
+
+The bucket is picked from len(q.embedding): the query is embedded with the
+space's current model, so query dim == stored dim by construction.
 
 Uses the query embedding computed once by the orchestrator (q.embedding).
 Supports fetch_k over-fetch, a similarity threshold, and optional MMR
@@ -11,8 +15,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-
-from sqlalchemy import text
 
 from ..types import BaseRetriever, AnalyzedQuery, RetrievedChunk
 
@@ -33,22 +35,13 @@ class DenseRetriever(BaseRetriever):
         return q.embedding is not None
 
     def retrieve(self, q: AnalyzedQuery, k: int) -> list[RetrievedChunk]:
+        from app.services import pgvector_store
         fetch_k = max(k, int(self.cfg.fetch_k)) if (self.cfg.mmr or self.cfg.fetch_k) else k
-        vec = "[" + ",".join(str(x) for x in q.embedding) + "]"
-        cols = ("id, content, page, document_id, chunk_index, chunk_type, image_path, "
-                "parent_index, 1 - (embedding <=> :v) AS sim")
-        if self.cfg.mmr:
-            cols += ", embedding::text AS emb"
-        sql = text(f"""
-            SELECT {cols}
-            FROM chunks
-            WHERE rag_space_id = :sid AND embedding IS NOT NULL
-            ORDER BY embedding <=> :v
-            LIMIT :k
-        """)
+
         db = self.session_factory()
         try:
-            rows = db.execute(sql, {"v": vec, "sid": self.space.id, "k": fetch_k}).fetchall()
+            rows = pgvector_store.search(
+                db, self.space.id, q.embedding, fetch_k, with_emb=bool(self.cfg.mmr))
         finally:
             db.close()
 
@@ -62,7 +55,7 @@ class DenseRetriever(BaseRetriever):
         if self.cfg.mmr and len(out) > k:
             out = self._mmr(q.embedding, out, k)
         else:
-            out = out[:k if not self.cfg.mmr else k]
+            out = out[:k]
 
         return [
             RetrievedChunk(

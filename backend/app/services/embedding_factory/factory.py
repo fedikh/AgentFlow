@@ -7,15 +7,18 @@ Returns an embedder exposing the SAME interface as LangChain embeddings:
 
 Families:
     LOCAL   → BGE-M3 via sentence-transformers (free, 1024 dims, the default)
-    OPENAI  → OpenAIEmbeddings (text-embedding-3-*, forced to 1024 dims)
-    VOYAGE  → VoyageAIEmbeddings (voyage-3.5*, natively 1024 dims)
+    OPENAI  → OpenAIEmbeddings (text-embedding-3-*, native 1536/3072 dims)
+    VOYAGE  → VoyageAIEmbeddings (voyage-3.5*, native 1024 dims)
+    GOOGLE  → Gemini embeddings (native 3072 dims)
+    OLLAMA  → local Ollama daemon (mxbai 1024, nomic 768, minilm 384 …)
 
 The factory does NOT decide which key/model to use — that's resolver.py's job.
 
-IMPORTANT (Batch 6): pgvector is fixed at 1024 dimensions. The models listed
-in the embedding catalog all produce 1024-d vectors. Switching to a model with
-a different dimension requires re-embedding every chunk — a proper RAGVersion
-mechanism comes later. generate.py guards against dimension mismatch.
+DIMENSIONS: every model emits its NATIVE dimension. Vectors are stored in
+per-dimension bucket tables (chunk_vectors_<dim>, see pgvector_store.py) and
+the space records its dim (rag_spaces.embedding_dim). Switching to a model
+with a different dimension flags the space for re-indexing — the config-drift
+flow already enforces that.
 """
 import logging
 
@@ -23,25 +26,42 @@ logger = logging.getLogger(__name__)
 
 
 class _LocalEmbedder:
-    """BGE-M3 (1024-d) via sentence-transformers, cached process-wide."""
-    _model = None
+    """Local sentence-transformers models at their NATIVE dimension, cached
+    process-wide PER MODEL (dimension buckets store each dim natively):
+        BAAI/bge-m3                                   1024, multilingual ★
+        BAAI/bge-base-en-v1.5                          768, English
+        sentence-transformers/all-MiniLM-L6-v2         384, English, fastest
+        sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+                                                       384, multilingual, fast
+    """
+    _models: dict = {}
+
+    def __init__(self, model_name: str = ""):
+        self.name = (model_name or "BAAI/bge-m3").strip()
 
     def _get(self):
-        if _LocalEmbedder._model is None:
+        if self.name not in _LocalEmbedder._models:
             import os
             os.environ["TRANSFORMERS_NO_TF"] = "1"
             os.environ["USE_TF"] = "0"
             from sentence_transformers import SentenceTransformer
             try:
-                logger.info("[EMB] Loading BGE-M3 (1024d)…")
-                _LocalEmbedder._model = SentenceTransformer("BAAI/bge-m3")
+                logger.info(f"[EMB] Loading local model {self.name}…")
+                _LocalEmbedder._models[self.name] = SentenceTransformer(self.name)
             except Exception as e1:
-                logger.warning(f"[EMB] BGE-M3 failed: {e1}")
-                try:
-                    _LocalEmbedder._model = SentenceTransformer("BAAI/bge-base-en-v1.5")
-                except Exception:
-                    _LocalEmbedder._model = SentenceTransformer("all-MiniLM-L6-v2")
-        return _LocalEmbedder._model
+                logger.warning(f"[EMB] {self.name} failed ({e1}) — falling back to MiniLM")
+                _LocalEmbedder._models[self.name] = SentenceTransformer("all-MiniLM-L6-v2")
+        return _LocalEmbedder._models[self.name]
+
+    def _query_prefix(self) -> str:
+        # model-family specific query instruction (bge wants one, e5 wants
+        # "query: ", plain sentence-transformers models want none)
+        low = self.name.lower()
+        if "bge" in low:
+            return "Represent this sentence: "
+        if "e5" in low:
+            return "query: "
+        return ""
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         model = self._get()
@@ -51,7 +71,7 @@ class _LocalEmbedder:
     def embed_query(self, text: str) -> list[float]:
         model = self._get()
         vec = model.encode(
-            "Represent this sentence: " + text,
+            self._query_prefix() + text,
             show_progress_bar=False,
             normalize_embeddings=True,
         )
@@ -62,40 +82,10 @@ def local_embedder() -> _LocalEmbedder:
     return _LocalEmbedder()
 
 
-def _fit_1024(vec, dim: int = 1024):
-    """Fit any embedding to the fixed pgvector width (1024): zero-pad if shorter,
-    truncate if longer, then L2-normalize. Padding preserves cosine similarity
-    between vectors from the SAME model, so retrieval stays consistent as long as
-    indexing and querying use the same model (they do)."""
-    import math
-    v = [float(x) for x in (vec or [])]
-    if len(v) < dim:
-        v = v + [0.0] * (dim - len(v))
-    elif len(v) > dim:
-        v = v[:dim]
-    n = math.sqrt(sum(x * x for x in v)) or 1.0
-    return [x / n for x in v]
-
-
-class _FitTo1024:
-    """Adapter that fits ANY LangChain-style embedder's output to the fixed
-    1024-d pgvector column (pad/truncate + L2-normalize). Used for providers
-    whose models don't natively emit 1024 dims (e.g. Gemini's 3072)."""
-
-    def __init__(self, inner):
-        self.inner = inner
-
-    def embed_documents(self, texts):
-        return [_fit_1024(v) for v in self.inner.embed_documents(texts)]
-
-    def embed_query(self, text):
-        return _fit_1024(self.inner.embed_query(text))
-
 
 class _OllamaEmbedder:
     """Embeddings from a local Ollama daemon (mxbai-embed-large, nomic-embed-text,
-    all-minilm, …). Vectors are fit to 1024 so any model works with the fixed
-    pgvector column. No API key — Ollama runs locally."""
+    all-minilm, …) at each model's NATIVE dimension. No API key — local."""
 
     def __init__(self, model: str = "", base_url: str = ""):
         import os
@@ -110,7 +100,7 @@ class _OllamaEmbedder:
             timeout=120,
         )
         r.raise_for_status()
-        return _fit_1024(r.json().get("embedding") or [])
+        return [float(x) for x in (r.json().get("embedding") or [])]
 
     def embed_documents(self, texts):
         return [self._one(t) for t in texts]
@@ -127,14 +117,13 @@ def get_embedder(family: str, model: str = "", api_key: str = "", base_url: str 
         return _OllamaEmbedder(model=model, base_url=base_url)
 
     if fam == "LOCAL":
-        return _LocalEmbedder()
+        return _LocalEmbedder(model)   # honors the chosen local model + its native dim
 
     if fam == "OPENAI":
         from langchain_openai import OpenAIEmbeddings
         kwargs = dict(
             model=model or "text-embedding-3-small",
             api_key=api_key,
-            dimensions=1024,   # force 1024 to match the pgvector column
         )
         if base_url:
             kwargs["base_url"] = base_url
@@ -148,13 +137,12 @@ def get_embedder(family: str, model: str = "", api_key: str = "", base_url: str 
         )
 
     if fam == "GOOGLE":
-        # Gemini embeddings (gemini-embedding-*). Native dims differ from our
-        # fixed pgvector width (e.g. 3072), so wrap with the 1024 fitter.
+        # Gemini embeddings (gemini-embedding-*) at native dims (3072).
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
         m = model or "gemini-embedding-001"
         if not m.startswith("models/"):
             m = f"models/{m}"
-        return _FitTo1024(GoogleGenerativeAIEmbeddings(model=m, google_api_key=api_key))
+        return GoogleGenerativeAIEmbeddings(model=m, google_api_key=api_key)
 
     # Unknown family → safe local default
     logger.warning(f"[EMB] Unknown embedding family '{family}', using local BGE-M3")

@@ -7,11 +7,14 @@ Embedding generation — the public entry point used by the RAG pipeline.
 Both resolve the space's embedding config (own key → company → local BGE-M3),
 build the embedder, and embed.
 
-DIMENSION GUARD (Batch 6): pgvector is fixed at 1024. If the resolved embedder
-produces vectors of a different dimension (or fails), we fall back to the local
-BGE-M3 model so indexing/search never breaks or corrupts the vector column.
-Index-time and query-time both go through here with the SAME space config, so
-they stay consistent.
+DIMENSIONS: every model emits its NATIVE dimension — vectors land in
+per-dimension bucket tables (chunk_vectors_<dim>, see pgvector_store.py), so
+there is NO fixed target dimension anymore and no dimension-based fallback.
+Index-time and query-time both go through here with the SAME space config,
+so their dimensions always agree by construction. The local fallback only
+fires when the configured embedder actually FAILS (bad key, network, …) —
+and in that case indexing would store 1024-d BGE-M3 vectors, searched by the
+same fallback at query time, so the system degrades consistently.
 """
 import logging
 
@@ -19,8 +22,6 @@ from app.services.embedding_factory.factory import get_embedder, local_embedder
 from app.services.embedding_factory.resolver import resolve_embedding_config
 
 logger = logging.getLogger(__name__)
-
-PGVECTOR_DIM = 1024
 
 
 def _embedder_for(db, space):
@@ -42,15 +43,7 @@ def embed_texts(db, space, texts: list[str]) -> list[list[float]]:
         return []
     embedder, family = _embedder_for(db, space)
     try:
-        vecs = embedder.embed_documents(texts)
-        if vecs and len(vecs[0]) != PGVECTOR_DIM:
-            logger.warning(
-                f"[EMB] {family} produced {len(vecs[0])}-d vectors, expected "
-                f"{PGVECTOR_DIM}. Falling back to local BGE-M3 (re-embedding "
-                f"needed to actually switch dimension)."
-            )
-            return local_embedder().embed_documents(texts)
-        return vecs
+        return embedder.embed_documents(texts)
     except Exception as e:
         logger.warning(f"[EMB] {family} embed_documents failed ({e}); using local")
         return local_embedder().embed_documents(texts)
@@ -59,14 +52,7 @@ def embed_texts(db, space, texts: list[str]) -> list[list[float]]:
 def embed_query(db, space, text: str) -> list[float]:
     embedder, family = _embedder_for(db, space)
     try:
-        vec = embedder.embed_query(text)
-        if len(vec) != PGVECTOR_DIM:
-            logger.warning(
-                f"[EMB] {family} query vector is {len(vec)}-d, expected "
-                f"{PGVECTOR_DIM}; using local BGE-M3"
-            )
-            return local_embedder().embed_query(text)
-        return vec
+        return embedder.embed_query(text)
     except Exception as e:
         logger.warning(f"[EMB] {family} embed_query failed ({e}); using local")
         return local_embedder().embed_query(text)

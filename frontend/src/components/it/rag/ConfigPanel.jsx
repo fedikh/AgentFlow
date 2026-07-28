@@ -17,7 +17,7 @@ const LABELS = {
 
 const SUBTITLES = {
   chunk: "How documents are split, then chunked + embedded + indexed on Process.",
-  embed: "The vector model that turns chunks into searchable 1024-d vectors.",
+  embed: "The vector model that turns chunks into searchable vectors, at each model's native dimension.",
   llm: "The model that writes answers from the retrieved chunks.",
   retrieval: "How relevant chunks are found for each question.",
   access: "Who in the department can query this space.",

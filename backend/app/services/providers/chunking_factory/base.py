@@ -16,7 +16,8 @@ image_path_of) are the single choke point, so no strategy hard-codes a family.
 
 A chunk is the dict persisted by rag_service.process_document:
     {content, page, chunk_index, type("text"|"table"|"image_summary"),
-     strategy, optional: image_path, chunk_level, parent_index}
+     strategy, optional: image_path, chunk_level, parent_index,
+     section (heading breadcrumb, e.g. "3. Conges > 3.2 Conges annuels")}
 """
 from dataclasses import dataclass, field
 
@@ -136,13 +137,19 @@ def ordered(elements) -> list:
 def elements_of(parsed) -> list:
     """The parsed document's flat element list (dicts), reading-ordered.
 
+    Repeated page furniture (letterheads, dates, legal boilerplate that the
+    parser tagged metadata.boilerplate — same text on 2+ pages) is EXCLUDED:
+    the first occurrence stays, so the information is embedded exactly once
+    instead of polluting every page's chunks.
+
     Fallback: some documents carry only the legacy sections/tables/images (the
     fast PyMuPDF PDF path, or docs parsed before the element schema existed). For
     those we synthesize equivalent elements so every strategy still works.
     """
     els = getattr(parsed, "elements", None) or []
     if els:
-        return ordered(els)
+        return ordered([e for e in els
+                        if not (e.get("metadata") or {}).get("boilerplate")])
     return _sections_to_elements(parsed)
 
 
@@ -190,7 +197,8 @@ def table_chunk(el, idx, strategy, heading=""):
     its section breadcrumb so the table is self-describing for retrieval."""
     body = f"[TABLE]\n{table_text(el)}"
     content = f"{heading}\n{body}" if heading else body
-    return mk_chunk(content, page_of(el), idx, strategy, ctype="table")
+    return mk_chunk(content, page_of(el), idx, strategy, ctype="table",
+                    section=heading or None)
 
 
 def image_chunk(el, idx, strategy, heading=""):
@@ -199,7 +207,8 @@ def image_chunk(el, idx, strategy, heading=""):
     txt = text_of(el)
     content = f"{heading}\n{txt}" if heading and txt else txt
     return mk_chunk(content, page_of(el), idx, strategy,
-                    ctype="image_summary", image_path=image_path_of(el))
+                    ctype="image_summary", image_path=image_path_of(el),
+                    section=heading or None)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -263,10 +272,18 @@ _SEMANTIC_PARSER = {}
 
 
 def _embed_model():
+    """Sentence embedder for the semantic splitter. MULTILINGUAL by default —
+    the old all-MiniLM-L6-v2 was English-only, so on French/Arabic documents
+    its similarity scores were near-random and the topic-change detection
+    produced arbitrary cuts."""
     if "m" not in _EMBED_MODEL:
         from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-        _EMBED_MODEL["m"] = HuggingFaceEmbedding(
-            model_name="sentence-transformers/all-MiniLM-L6-v2")
+        try:
+            _EMBED_MODEL["m"] = HuggingFaceEmbedding(
+                model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+        except Exception:
+            _EMBED_MODEL["m"] = HuggingFaceEmbedding(
+                model_name="sentence-transformers/all-MiniLM-L6-v2")
     return _EMBED_MODEL["m"]
 
 
@@ -375,7 +392,8 @@ def flatten_split(elements, split_fn, strategy, breadcrumb=True):
             if not piece:
                 continue
             content = f"{head}\n{piece}" if head and head not in piece else piece
-            chunks.append(mk_chunk(content, buf_page or 1, idx, strategy))
+            chunks.append(mk_chunk(content, buf_page or 1, idx, strategy,
+                                   section=head or None))
             idx += 1
         buf, buf_page = [], None
 
@@ -433,7 +451,8 @@ def element_chunks(elements, strategy, min_chars=0):
             chunks[-1]["content"] += "\n" + txt
         else:
             content = f"{head}\n{txt}" if head and head not in txt else txt
-            chunks.append(mk_chunk(content, page_of(el), idx, strategy)); idx += 1
+            chunks.append(mk_chunk(content, page_of(el), idx, strategy,
+                                   section=head or None)); idx += 1
     return chunks
 
 
@@ -511,7 +530,8 @@ def structure_chunks(elements, strategy, max_chars):
         for p in pieces:
             p = p.strip()
             if p:
-                chunks.append(mk_chunk(p, buf_page or 1, idx, strategy))
+                chunks.append(mk_chunk(p, buf_page or 1, idx, strategy,
+                                       section=head or None))
                 idx += 1
         buf, buf_page = [], None
 
@@ -616,13 +636,13 @@ def group_by_heading(elements, strategy, max_chars):
                 if text_parts:
                     idx = _emit_section(chunks, head, text_parts, page, idx, strategy, max_chars)
                     text_parts, page = [], None
-                chunks.append(table_chunk(el, idx, strategy)); idx += 1
+                chunks.append(table_chunk(el, idx, strategy, heading=head)); idx += 1
             elif is_image(el):
                 if has_real_image_text(el):
                     if text_parts:
                         idx = _emit_section(chunks, head, text_parts, page, idx, strategy, max_chars)
                         text_parts, page = [], None
-                    chunks.append(image_chunk(el, idx, strategy)); idx += 1
+                    chunks.append(image_chunk(el, idx, strategy, heading=head)); idx += 1
             else:
                 t = text_of(el)
                 if not t:
@@ -641,7 +661,8 @@ def _emit_section(chunks, head, text_parts, page, idx, strategy, max_chars):
     if not full:
         return idx
     if len(full) <= max_chars:
-        chunks.append(mk_chunk(full, page or 1, idx, strategy)); idx += 1
+        chunks.append(mk_chunk(full, page or 1, idx, strategy,
+                               section=head or None)); idx += 1
         return idx
     # oversize section → recursive split, re-prefix the heading on each piece
     for piece in split_recursive(body or full, max_chars, 50):

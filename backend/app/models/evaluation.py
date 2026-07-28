@@ -26,7 +26,8 @@ class EvalCase(Base):
     __tablename__ = "eval_cases"
 
     id = Column(String, primary_key=True, default=_uid)
-    rag_space_id = Column(String, ForeignKey("rag_spaces.id"), nullable=False, index=True)
+    rag_space_id = Column(String, ForeignKey("rag_spaces.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
 
     question = Column(Text, nullable=False)
     expected_answer = Column(Text, nullable=True)      # ground truth (optional)
@@ -44,7 +45,8 @@ class EvalRun(Base):
     __tablename__ = "eval_runs"
 
     id = Column(String, primary_key=True, default=_uid)
-    rag_space_id = Column(String, ForeignKey("rag_spaces.id"), nullable=False, index=True)
+    rag_space_id = Column(String, ForeignKey("rag_spaces.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
 
     config_summary = Column(Text, nullable=True)   # JSON: embedding/chunking/llm/retrieval/judge at run time
     metrics = Column(Text, nullable=True)          # JSON: aggregates + breakdown + per-category + recommendations

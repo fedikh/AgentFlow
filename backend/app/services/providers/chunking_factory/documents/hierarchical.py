@@ -35,7 +35,8 @@ def chunk(parsed, cfg):
             for parent_text in parents:
                 parent_idx = idx
                 chunks.append(mk_chunk(parent_text, page or 1, idx, "hierarchical",
-                                       chunk_level="parent")); idx += 1
+                                       chunk_level="parent",
+                                       section=head or None)); idx += 1
                 children = split_recursive(parent_text, child_size, overlap)
                 if len(children) <= 1:
                     continue                       # parent already child-sized
@@ -44,6 +45,7 @@ def chunk(parsed, cfg):
                     if child:
                         chunks.append(mk_chunk(child, page or 1, idx, "hierarchical",
                                                chunk_level="child",
+                                               section=head or None,
                                                parent_index=parent_idx)); idx += 1
 
         for kind, el in standalone:

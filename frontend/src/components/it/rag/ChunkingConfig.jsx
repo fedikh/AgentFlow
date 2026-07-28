@@ -61,6 +61,25 @@ const stratLabel = (catalog, ft, name) => {
   return s?.label || name;
 };
 
+/* Small "?" toggle — press to show/hide the param's explanation. */
+function HelpTip({ text }) {
+  const [open, setOpen] = useState(false);
+  if (!text) return null;
+  return (
+    <span className="rag-ck-help-wrap">
+      <button
+        type="button"
+        className={`rag-ck-help ${open ? "on" : ""}`}
+        title="What does this parameter do?"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(!open); }}
+      >
+        ?
+      </button>
+      {open && <span className="rag-ck-help-pop">{text}</span>}
+    </span>
+  );
+}
+
 /* One tunable parameter input (int/float/bool/select) from the catalog schema. */
 function ParamInput({ def, value, onChange }) {
   const v = value ?? def.default;
@@ -69,13 +88,14 @@ function ParamInput({ def, value, onChange }) {
       <label className="rag-ck-param rag-ck-param-bool">
         <input type="checkbox" checked={!!v} onChange={(e) => onChange(e.target.checked)} />
         <span>{def.label}</span>
+        <HelpTip text={def.help} />
       </label>
     );
   }
   if (def.type === "select") {
     return (
       <label className="rag-ck-param">
-        <span className="rag-ck-param-lbl">{def.label}</span>
+        <span className="rag-ck-param-lbl">{def.label}<HelpTip text={def.help} /></span>
         <select className="rag-ck-select" value={v} onChange={(e) => onChange(e.target.value)}>
           {(def.options || []).map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -86,7 +106,7 @@ function ParamInput({ def, value, onChange }) {
   }
   return (
     <label className="rag-ck-param">
-      <span className="rag-ck-param-lbl">{def.label}</span>
+      <span className="rag-ck-param-lbl">{def.label}<HelpTip text={def.help} /></span>
       <input
         type="number"
         min={def.min}
@@ -115,6 +135,11 @@ function ParamGrid({ strat, params, onParam }) {
 
 /* A compact strategy dropdown for one format/document. The Agentic pipeline is
  * offered at the bottom, separated from the manual strategies. */
+/* Structured formats have a DETERMINISTIC optimal strategy (record / row) —
+ * the agentic AI pipeline adds only cost there, so it's not offered. */
+const NO_AGENTIC_TYPES = ["json", "xml", "csv", "xlsx", "xls", "excel"];
+const agenticAllowed = (ft) => !NO_AGENTIC_TYPES.includes(lc(ft));
+
 function StrategySelect({ strats, value, onChange, allowDefault, withAgentic, className = "rag-ck-select" }) {
   return (
     <select className={className} value={value} onChange={(e) => onChange(e.target.value)}>
@@ -161,8 +186,9 @@ export default function ChunkingConfig({
   }, [cfg?.embedding_provider_id]);
   const embSrc = embSource(cfg || {}, providers);
   const rawMode = (cfg.chunk_mode || "SINGLE").toUpperCase();
-  const mode =
-    rawMode === "PER_DOCUMENT" ? "PER_DOCUMENT" : rawMode === "AGENTIC" ? "AGENTIC" : "SINGLE";
+  // AGENTIC is a STRATEGY now (inside Single / Per-document), no longer a mode.
+  // Legacy AGENTIC-mode spaces are migrated server-side; map them to SINGLE here.
+  const mode = rawMode === "PER_DOCUMENT" ? "PER_DOCUMENT" : "SINGLE";
 
   if (!catalog) return <div className="rag-cfg-hint">Loading chunking strategies…</div>;
 
@@ -183,9 +209,8 @@ export default function ChunkingConfig({
       <label className="rag-cfg-label">Chunking mode</label>
       <div className="rag-cfg-cards">
         {[
-          { k: "SINGLE", n: "Single", d: "One strategy per format" },
-          { k: "PER_DOCUMENT", n: "Per document", d: "Choose per file — manual or Agentic" },
-          { k: "AGENTIC", n: "Agentic", d: "AI pipeline for ALL documents", badge: "AI" },
+          { k: "SINGLE", n: "Single", d: "One strategy per format — incl. 🤖 Agentic" },
+          { k: "PER_DOCUMENT", n: "Per document", d: "Choose per file — manual or 🤖 Agentic" },
         ].map((m) => (
           <button
             key={m.k}
@@ -200,15 +225,6 @@ export default function ChunkingConfig({
           </button>
         ))}
       </div>
-
-      {/* ── AGENTIC: compact settings; pipeline behind a toggle ── */}
-      {mode === "AGENTIC" && (
-        <AgenticPanel
-          catalog={catalog}
-          params={cfg.chunk_params || {}}
-          onParam={(key, val) => setC("chunk_params", { ...(cfg.chunk_params || {}), [key]: val })}
-        />
-      )}
 
       {/* ── SINGLE: one strategy per format (compact) ── */}
       {mode === "SINGLE" && (
@@ -228,7 +244,7 @@ export default function ChunkingConfig({
                   <StrategySelect
                     strats={strats}
                     value={name}
-                    withAgentic
+                    withAgentic={agenticAllowed(ft)}
                     onChange={(n) =>
                       setFormat(
                         ft, n,
@@ -468,12 +484,12 @@ function DocRow({ d, catalog, mode, effLabel, onSetChunking, onProcess, processi
             value={active}
             onChange={onStrategy}
             allowDefault
-            withAgentic
+            withAgentic={agenticAllowed(d.file_type)}
             className="rag-ck-select rag-ck-select-doc"
           />
         ) : (
           <span className="rag-doc-strategy-fixed">
-            {mode === "AGENTIC" ? "Agentic" : perDoc ? strat?.label || active || "default" : effLabel}
+            {perDoc ? strat?.label || active || "default" : effLabel}
           </span>
         )}
 

@@ -1,7 +1,8 @@
 """Subtree — a parent node plus its descendants packed into one chunk up to
-max_chars, so a logical record (an object and its fields) stays together. A
+max_chars (records count as ONE node carrying their full field text), so a logical record (an object and its fields) stays together. A
 subtree that overflows emits the node's own text, then recurses into children."""
-from ..base import elements_of, text_of, order_of, mk_chunk
+from ..base import text_of, order_of, mk_chunk
+from . import tree_stream, split_oversized
 
 
 def _parent(e):
@@ -10,7 +11,7 @@ def _parent(e):
 
 def chunk(parsed, cfg):
     max_chars = cfg.p("max_chars", 1200)
-    els = elements_of(parsed)
+    els = tree_stream(parsed)
     if not els:
         return []
 
@@ -35,9 +36,8 @@ def chunk(parsed, cfg):
     chunks = [0]  # idx holder
 
     def emit(text, out):
-        text = (text or "").strip()
-        if text:
-            out.append(mk_chunk(text, 1, chunks[0], "subtree")); chunks[0] += 1
+        for piece in split_oversized(text, max_chars):
+            out.append(mk_chunk(piece, 1, chunks[0], "subtree")); chunks[0] += 1
 
     out = []
 

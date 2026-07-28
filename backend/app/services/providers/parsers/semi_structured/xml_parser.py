@@ -32,7 +32,16 @@ def parse(loaded_data: dict) -> ParsedDocument:
 
     meta.update({"root": root_name, "encoding": "utf-8", "source_type": "xml"})
 
-    sections = [Section(heading=root_name or "", content=text_repr, level=1, page=1)]
+    # One section per detected RECORD ("Book bk101" + its fields) — the
+    # enterprise shape. Only documents without repeated structures fall back
+    # to the flattened single section.
+    from app.services.providers.parsers.tree_elements import record_sections
+    recs = record_sections(elements)
+    if recs:
+        sections = [Section(heading=r["heading"], content=r["content"],
+                            level=r["level"], page=1) for r in recs]
+    else:
+        sections = [Section(heading=root_name or "", content=text_repr, level=1, page=1)]
 
     return ParsedDocument(
         title=root_name or "", sections=sections, elements=elements,

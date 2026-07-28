@@ -31,8 +31,15 @@ def parse(loaded_data: dict) -> ParsedDocument:
     meta.update({"root": root_type, "schema_detected": schema_detected,
                  "encoding": "utf-8", "source_type": "json"})
 
-    # One section holds the flattened semantic text for chunking/embedding.
-    sections = [Section(heading="", content=text_repr, level=1, page=1)]
+    # One section per detected RECORD (enterprise shape); flattened single
+    # section only when the document has no repeated structures.
+    from app.services.providers.parsers.tree_elements import record_sections
+    recs = record_sections(elements)
+    if recs:
+        sections = [Section(heading=r["heading"], content=r["content"],
+                            level=r["level"], page=1) for r in recs]
+    else:
+        sections = [Section(heading="", content=text_repr, level=1, page=1)]
 
     return ParsedDocument(
         title=meta.get("source", ""), sections=sections, elements=elements,

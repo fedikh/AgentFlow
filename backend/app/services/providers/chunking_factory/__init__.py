@@ -161,15 +161,23 @@ def resolve_config(space, doc) -> ChunkConfig:
         return ChunkConfig(strategy="agentic", params=params, file_type=file_type)
 
     if mode == "PER_DOCUMENT":
-        strategy = (getattr(doc, "chunk_strategy", None)
-                    or getattr(space, "chunk_strategy", None))
+        explicit = getattr(doc, "chunk_strategy", None)
+        strategy = explicit or getattr(space, "chunk_strategy", None)
         params = _load_params(getattr(doc, "chunk_params", None)
                               or getattr(space, "chunk_params", None))
     else:  # SINGLE — one strategy PER FORMAT
         fmt_map = _load_params(getattr(space, "chunk_format_map", None))
         entry = fmt_map.get(file_type) or {}
-        strategy = entry.get("strategy") or getattr(space, "chunk_strategy", None)
+        explicit = entry.get("strategy")
+        strategy = explicit or getattr(space, "chunk_strategy", None)
         params = entry.get("params") or {}
+
+    # STRUCTURED formats (json/xml/csv/xlsx): the space-wide chunk_strategy is
+    # a DOCUMENTS default ('recursive') — without an explicit per-doc/per-format
+    # choice it would silently run recursive on trees/tables (valid but wrong).
+    # Fall back to the category's RECOMMENDED strategy instead (record / row).
+    if not explicit and category_for(file_type) in ("semi_structured", "tabular"):
+        strategy = default_strategy(file_type)
 
     strategy = (str(strategy).lower() if strategy else default_strategy(file_type))
 

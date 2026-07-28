@@ -59,8 +59,8 @@ PROVIDER_MODELS = {
 
 EMBEDDING_PROVIDER_MODELS = {
     "OPENAI": [
-        {"id": "text-embedding-3-small", "label": "text-embedding-3-small (1024)", "dim": 1024},
-        {"id": "text-embedding-3-large", "label": "text-embedding-3-large (1024)", "dim": 1024},
+        {"id": "text-embedding-3-small", "label": "text-embedding-3-small (1536)", "dim": 1536},
+        {"id": "text-embedding-3-large", "label": "text-embedding-3-large (3072)", "dim": 3072},
     ],
     "VOYAGE": [
         {"id": "voyage-3.5",            "label": "voyage-3.5 (1024)",            "dim": 1024},
@@ -74,18 +74,22 @@ EMBEDDING_PROVIDER_MODELS = {
     # Gemini embeddings — native dims differ (e.g. 3072); the embedding factory
     # fits vectors to the fixed 1024 pgvector column.
     "GOOGLE": [
-        {"id": "gemini-embedding-002", "label": "Gemini Embedding 2 (fit 1024)", "dim": 3072},
-        {"id": "gemini-embedding-001", "label": "Gemini Embedding 1 (fit 1024)", "dim": 3072},
+        {"id": "gemini-embedding-002", "label": "Gemini Embedding 2 (3072)", "dim": 3072},
+        {"id": "gemini-embedding-001", "label": "Gemini Embedding 1 (3072)", "dim": 3072},
     ],
     "LOCAL": [
-        {"id": "BAAI/bge-m3", "label": "BGE-M3 (1024, local)", "dim": 1024},
+        {"id": "BAAI/bge-m3", "label": "BGE-M3 (1024, multilingual) ★", "dim": 1024},
+        {"id": "BAAI/bge-base-en-v1.5", "label": "BGE-Base (768, English)", "dim": 768},
+        {"id": "sentence-transformers/all-MiniLM-L6-v2", "label": "MiniLM-L6 (384, fastest)", "dim": 384},
+        {"id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+         "label": "Multilingual MiniLM (384, fast)", "dim": 384},
     ],
     # Ollama runs locally (no key). mxbai-embed-large is natively 1024 → clean
     # match; the smaller ones are fit to 1024 to match the pgvector column.
     "OLLAMA": [
         {"id": "mxbai-embed-large", "label": "mxbai-embed-large (1024, local)", "dim": 1024},
-        {"id": "nomic-embed-text",  "label": "nomic-embed-text (768 → 1024)",   "dim": 768},
-        {"id": "all-minilm",        "label": "all-minilm (384 → 1024)",         "dim": 384},
+        {"id": "nomic-embed-text",  "label": "nomic-embed-text (768, local)",   "dim": 768},
+        {"id": "all-minilm",        "label": "all-minilm (384, local)",         "dim": 384},
     ],
 }
 

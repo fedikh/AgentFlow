@@ -972,3 +972,16 @@ details.ev-run-old > summary.ev-q::-webkit-details-marker { display: none; }
 .ev2-row-active td{background:#fafafa}
 .ev3-chip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;
   background:#f3f4f6;color:#4b5563}
+
+/* ── Chunking param "?" help buttons ─────────────────────── */
+.rag-ck-help-wrap{position:relative;display:inline-block;margin-left:6px}
+.rag-ck-help{width:16px;height:16px;border-radius:50%;border:1px solid #d1d5db;
+  background:#f9fafb;color:#6b7280;font:700 10px system-ui,sans-serif;
+  cursor:pointer;line-height:1;padding:0;vertical-align:middle}
+.rag-ck-help:hover{border-color:#6366f1;color:#4338ca}
+.rag-ck-help.on{background:#6366f1;border-color:#6366f1;color:#fff}
+.rag-ck-help-pop{position:absolute;z-index:30;top:calc(100% + 6px);left:50%;
+  transform:translateX(-50%);width:250px;background:#111827;color:#f9fafb;
+  font:400 11.5px/1.55 system-ui,sans-serif;border-radius:10px;padding:9px 11px;
+  box-shadow:0 8px 24px rgba(0,0,0,.25);text-transform:none;letter-spacing:0;
+  white-space:normal;text-align:left}

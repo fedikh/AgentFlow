@@ -682,11 +682,7 @@ const DocModal = ({
                   imgUrl={imgUrl}
                 />
               ) : showJson ? (
-                <div className="rag-json">
-                  <pre>
-                    {JSON.stringify(modalData.parsed_document, null, 2)}
-                  </pre>
-                </div>
+                <JsonDump obj={modalData.parsed_document} />
               ) : modalData.parsed_document?.elements?.length ? (
                 <BlocksView doc={modalData.parsed_document} imgUrl={imgUrl} />
               ) : (
@@ -847,19 +843,35 @@ const DocModal = ({
                   </div>
                 ))}
               </div>
-              {modalData.map((c) => (
+              <Capped items={modalData} step={200} label="chunks">{(c) => (
                 <div key={c.id} className="rag-block">
                   <div className="rag-block-header">
                     <span className="rag-block-tag">
                       Chunk {c.chunk_index + 1}
                     </span>
+                    {c.section_path && (
+                      <span className="rag-block-tag" style={{ background: "#eef2ff", color: "#3730a3" }}
+                        title="Section (heading breadcrumb)">
+                        § {c.section_path}
+                      </span>
+                    )}
                     <span className="rag-block-meta">
-                      p.{c.page} · {c.content.length}c
+                      p.{c.page}
+                      {c.token_count != null ? ` · ${c.token_count} tok` : ` · ${c.content.length}c`}
+                      {c.lang ? ` · ${c.lang}` : ""}
+                      {c.strategy ? ` · ${c.strategy}` : ""}
+                      {c.meta?.quality != null ? ` · Q${c.meta.quality}` : ""}
                     </span>
                   </div>
+                  {c.meta?.title && (
+                    <div className="rag-block-meta" style={{ padding: "2px 0 6px", color: "#4338ca" }}>
+                      🏷 {c.meta.title}
+                      {c.meta.keywords?.length ? ` — ${c.meta.keywords.join(", ")}` : ""}
+                    </div>
+                  )}
                   <pre className="rag-block-content">{c.content}</pre>
                 </div>
-              ))}
+              )}</Capped>
             </>
           )}
 
@@ -930,11 +942,76 @@ function JsonValue({ value, valueType }) {
   return <span style={{ color }}>{text}</span>;
 }
 
+/* ── Progressive rendering (big documents must not explode the DOM) ──
+   A 5 MB JSON can parse into tens of thousands of elements; mounting them all
+   at once freezes the tab. These helpers render a batch and load more on
+   demand. */
+function ShowMoreBar({ shown, total, step, onMore, label = "items" }) {
+  if (shown >= total) return null;
+  return (
+    <button
+      className="rag-btn rag-btn-sm"
+      style={{ display: "block", margin: "10px auto" }}
+      onClick={onMore}
+    >
+      ▼ Show {Math.min(step, total - shown).toLocaleString()} more {label} (
+      {(total - shown).toLocaleString()} remaining)
+    </button>
+  );
+}
+
+function Capped({ items = [], step = 150, label = "items", children }) {
+  const [n, setN] = React.useState(step);
+  const shown = Math.min(n, items.length);
+  return (
+    <>
+      {items.slice(0, shown).map(children)}
+      <ShowMoreBar shown={shown} total={items.length} step={step}
+        onMore={() => setN(n + step)} label={label} />
+    </>
+  );
+}
+
+function CappedText({ text, first = 30000, step = 150000, className, pre = false }) {
+  const t = text || "";
+  const [n, setN] = React.useState(first);
+  const Tag = pre ? "pre" : "div";
+  return (
+    <>
+      <Tag className={className}>{t.slice(0, n) || "Empty"}</Tag>
+      {n < t.length && (
+        <button
+          className="rag-btn rag-btn-sm"
+          style={{ display: "block", margin: "10px auto" }}
+          onClick={() => setN(n + step)}
+        >
+          ▼ Show more text ({(t.length - n).toLocaleString()} characters remaining)
+        </button>
+      )}
+    </>
+  );
+}
+
+function JsonDump({ obj }) {
+  const text = React.useMemo(() => {
+    try { return JSON.stringify(obj, null, 2) || ""; }
+    catch { return "(unserializable)"; }
+  }, [obj]);
+  return (
+    <div className="rag-json">
+      <CappedText text={text} first={60000} step={200000} pre />
+    </div>
+  );
+}
+
+const _TREE_KIDS_STEP = 200;
+
 function TreeNode({ node, byId, depth, mode }) {
   const initOpen =
     mode === "expand" ? true : mode === "collapse" ? depth < 1 : depth < 2;
   const [open, setOpen] = React.useState(initOpen);
   const [hover, setHover] = React.useState(false);
+  const [kidsShown, setKidsShown] = React.useState(_TREE_KIDS_STEP);
   const childIds = node.relationships?.children || [];
   const has = childIds.length > 0;
   const c = node.content || {};
@@ -1031,14 +1108,20 @@ function TreeNode({ node, byId, depth, mode }) {
           </span>
         )}
       </div>
-      {open &&
-        has &&
-        childIds.map(
-          (cid) =>
-            byId[cid] && (
-              <TreeNode key={cid} node={byId[cid]} byId={byId} depth={depth + 1} mode={mode} />
-            ),
-        )}
+      {open && has && (
+        <>
+          {childIds.slice(0, kidsShown).map(
+            (cid) =>
+              byId[cid] && (
+                <TreeNode key={cid} node={byId[cid]} byId={byId} depth={depth + 1} mode={mode} />
+              ),
+          )}
+          <ShowMoreBar shown={Math.min(kidsShown, childIds.length)}
+            total={childIds.length} step={_TREE_KIDS_STEP}
+            onMore={() => setKidsShown(kidsShown + _TREE_KIDS_STEP)}
+            label="child nodes" />
+        </>
+      )}
     </div>
   );
 }
@@ -1095,9 +1178,9 @@ function TreeView({ doc }) {
         className="rag-block"
         style={{ fontFamily: "var(--mono, monospace)", padding: "8px 6px" }}
       >
-        {roots.map((r) => (
-          <TreeNode key={r.id} node={r} byId={byId} depth={0} mode={mode} />
-        ))}
+        <Capped items={roots} step={200} label="root nodes">
+          {(r) => <TreeNode key={r.id} node={r} byId={byId} depth={0} mode={mode} />}
+        </Capped>
       </div>
     </div>
   );
@@ -1614,7 +1697,7 @@ function OrderedBlocks({ doc, imgUrl }) {
   }
   flush();
 
-  return blocks.map((b, i) => {
+  return <Capped items={blocks} step={150} label="blocks">{(b, i) => {
     if (b.kind === "table") {
       return (
         <div key={i} className="rag-block rag-block-table">
@@ -1695,7 +1778,7 @@ function OrderedBlocks({ doc, imgUrl }) {
         <pre className="rag-block-content">{b.content}</pre>
       </div>
     );
-  });
+  }}</Capped>;
 }
 
 function LoadedView({ data }) {
@@ -1719,7 +1802,7 @@ function LoadedView({ data }) {
             </div>
           ))}
         </div>
-        <div className="rag-raw-text">{data.raw_text || "Empty"}</div>
+        <CappedText text={data.raw_text} className="rag-raw-text" />
       </>
     );
   }
@@ -1765,7 +1848,7 @@ function LoadedView({ data }) {
           </div>
         )}
       </div>
-      <div className="rag-wl-body">{data.raw_text || "Empty"}</div>
+      <CappedText text={data.raw_text} className="rag-wl-body" />
     </>
   );
 }

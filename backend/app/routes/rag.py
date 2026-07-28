@@ -443,7 +443,7 @@ def load_and_parse_all(space_id: str, request: Request, db: Session = Depends(ge
 @router.get("/spaces/{space_id}/image")
 def serve_image(space_id: str, path: str, db: Session = Depends(get_db)):
     """Serve an extracted image. `path` must be under uploads/{space_id}."""
-    safe_root = os.path.abspath(os.path.join("uploads", space_id))
+    safe_root = os.path.abspath(rag_service._uploads_path(space_id))
     full = os.path.abspath(path)
     if not full.startswith(safe_root):
         raise HTTPException(403, "Forbidden path")

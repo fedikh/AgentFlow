@@ -15,18 +15,18 @@ import CustomDropdown from "./CustomDropdown";
  * A single OpenAI admin key is dual-capable: it appears here for embeddings
  * AND in the LLM picker, so admins add OpenAI once.
  *
- * pgvector is fixed at 1024 dims. Every model offered here outputs 1024, so
- * switching source is safe — but re-indexing is still required for embeddings
- * to actually be regenerated with the new provider (flagged below).
+ * DIMENSIONS: every model runs at its NATIVE dimension (384/768/1024/1536/
+ * 3072…) — vectors are stored in per-dimension buckets, so nothing is padded
+ * or truncated anymore. Switching model/source still requires re-indexing.
  */
 const OWN_FAMILIES = ["OPENAI", "VOYAGE", "GOOGLE"];
 
-/* Curated per-family embedding models (mirror of the backend catalog).
- * Non-1024 native dims (Gemini) are fitted to the 1024 pgvector column. */
+/* Curated per-family embedding models (mirror of the backend catalog),
+ * each at its native dimension. */
 const OWN_MODELS = {
   OPENAI: [
-    { id: "text-embedding-3-small", label: "text-embedding-3-small (1024)" },
-    { id: "text-embedding-3-large", label: "text-embedding-3-large (1024)" },
+    { id: "text-embedding-3-small", label: "text-embedding-3-small (1536)" },
+    { id: "text-embedding-3-large", label: "text-embedding-3-large (3072)" },
   ],
   VOYAGE: [
     { id: "voyage-3.5", label: "voyage-3.5 (1024)" },
@@ -38,8 +38,8 @@ const OWN_MODELS = {
     { id: "voyage-law-2", label: "voyage-law-2 (legal)" },
   ],
   GOOGLE: [
-    { id: "gemini-embedding-002", label: "Gemini Embedding 2 (fit 1024)" },
-    { id: "gemini-embedding-001", label: "Gemini Embedding 1 (fit 1024)" },
+    { id: "gemini-embedding-002", label: "Gemini Embedding 2 (3072)" },
+    { id: "gemini-embedding-001", label: "Gemini Embedding 1 (3072)" },
   ],
 };
 
@@ -181,11 +181,12 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
             )}
           </div>
           <div className="rag-cfg-hint">
-            BGE-M3 (1024d) is the recommended local default — it matches the
-            pgvector column, so no re-indexing is needed. No key, no data leaves
-            the machine. <strong>Ollama</strong> models run on your local Ollama
-            daemon (<code>ollama serve</code>); vectors are fit to 1024 —
-            <code>mxbai-embed-large</code> is a native 1024 match.
+            Every model runs at its <strong>native dimension</strong> (shown next
+            to its name) — 384d models are the fastest, 1024d the highest quality.
+            <strong> BGE-M3</strong> (1024d, multilingual) is the recommended
+            default for French documents. No key, no data leaves the machine.
+            <strong> Ollama</strong> models run on your local Ollama daemon
+            (<code>ollama serve</code>).
           </div>
         </>
       )}
@@ -293,8 +294,9 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
       )}
 
       <div className="rag-cfg-warn" style={{ marginTop: 10 }}>
-        pgvector is fixed at 1024 dimensions. Changing the embedding source or
-        model requires re-indexing your documents for it to take effect.
+        Each model stores vectors at its own native dimension. Changing the
+        embedding source or model requires re-indexing your documents for it
+        to take effect (the platform flags this automatically).
       </div>
     </>
   );

@@ -6,5 +6,5 @@ from ..llm_client import make_llm_split
 def chunk(parsed, cfg):
     access = cfg.p("_llm") or None
     max_chars = cfg.p("max_chars", 1200)
-    split_fn = make_llm_split(access, max_chars)
+    split_fn = make_llm_split(access, max_chars, overlap=cfg.p("chunk_overlap", 50))
     return flatten_split(elements_of(parsed), split_fn, "llm")

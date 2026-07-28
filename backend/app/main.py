@@ -56,9 +56,38 @@ def _run_light_migrations():
         "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS retrieval_params TEXT",
         # ── Evaluation: independent judge settings ──
         "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS eval_params TEXT",
+        # ── Agentic is a STRATEGY now, not a mode: migrate old AGENTIC-mode
+        #    spaces to SINGLE mode with the agentic strategy ──
+        "UPDATE rag_spaces SET chunk_mode = 'SINGLE', chunk_strategy = 'agentic' WHERE chunk_mode = 'AGENTIC'",
+        # ── Evaluation tables must die with their space (cascade) ──
+        "ALTER TABLE eval_cases DROP CONSTRAINT IF EXISTS eval_cases_rag_space_id_fkey",
+        """ALTER TABLE eval_cases ADD CONSTRAINT eval_cases_rag_space_id_fkey
+           FOREIGN KEY (rag_space_id) REFERENCES rag_spaces(id) ON DELETE CASCADE""",
+        "ALTER TABLE eval_runs DROP CONSTRAINT IF EXISTS eval_runs_rag_space_id_fkey",
+        """ALTER TABLE eval_runs ADD CONSTRAINT eval_runs_rag_space_id_fkey
+           FOREIGN KEY (rag_space_id) REFERENCES rag_spaces(id) ON DELETE CASCADE""",
+        # ── Dimension-per-space vectors: bucket tables at native dims ──
+        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS embedding_dim INTEGER",
+        """CREATE TABLE IF NOT EXISTS chunk_vectors_1024 (
+                chunk_id TEXT PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
+                rag_space_id TEXT NOT NULL,
+                embedding vector(1024) NOT NULL
+            )""",
+        "CREATE INDEX IF NOT EXISTS chunk_vectors_1024_space_idx ON chunk_vectors_1024 (rag_space_id)",
+        "CREATE INDEX IF NOT EXISTS chunk_vectors_1024_hnsw ON chunk_vectors_1024 USING hnsw (embedding vector_cosine_ops)",
+        # Legacy fixed-1024 vector column: its data was copied into
+        # chunk_vectors_1024 (one-time migration, done) — drop it for good.
+        "DROP INDEX IF EXISTS idx_chunk_embedding",
+        "ALTER TABLE chunks DROP COLUMN IF EXISTS embedding",
         "ALTER TABLE documents  ADD COLUMN IF NOT EXISTS chunk_params TEXT",
         "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS strategy VARCHAR",
         "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS parent_index INTEGER",
+        # ── Chunk metadata (section breadcrumb / hash / tokens / language) ──
+        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS section_path VARCHAR",
+        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS chunk_meta TEXT",
+        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS content_hash VARCHAR",
+        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS token_count INTEGER",
+        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS lang VARCHAR",
         # Widen the old enum columns → VARCHAR so the catalog can grow + use
         # SINGLE / PER_DOCUMENT. Safe no-ops if the columns are already VARCHAR.
         "ALTER TABLE rag_spaces ALTER COLUMN chunk_strategy DROP DEFAULT",
@@ -99,6 +128,17 @@ def _run_light_migrations():
 
 
 _run_light_migrations()
+
+# Startup self-healing: remove upload folders of spaces that no longer exist
+# (a delete may have failed earlier on a locked file — retried here).
+try:
+    from app.database import SessionLocal as _SL
+    from app.services.rag_service import cleanup_orphan_upload_folders as _cof
+    _db = _SL()
+    _removed = _cof(_db)
+    _db.close()
+except Exception as _e:
+    print(f"[CLEANUP] orphan sweep skipped: {_e}")
 
 app = FastAPI(
     title="AgentFlow API",

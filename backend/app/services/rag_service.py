@@ -12,6 +12,7 @@ Everything else (loaders, parsers, chunking, embedding, search) is UNCHANGED.
 """
 
 import os
+import re
 import json
 import uuid
 import glob
@@ -778,12 +779,60 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
     db.refresh(space)
     return _space_dict(db, space, user)
 
+# ── Uploads root, anchored to the backend folder (immune to the server's
+#    working directory) ──
+UPLOADS_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads"))
+
+
+def _uploads_path(*parts) -> str:
+    return os.path.join(UPLOADS_ROOT, *parts)
+
+
+def _rmtree_force(path: str):
+    """rmtree that survives Windows quirks: clears read-only flags and logs
+    what could NOT be deleted instead of failing silently (locked files stay
+    behind but are reported — and the startup orphan sweep retries later)."""
+    import stat
+
+    def _onerror(func, p, exc_info):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception as e:
+            logger.warning(f"[CLEANUP] locked, could not delete {p}: {e}")
+
+    shutil.rmtree(path, onerror=_onerror)
+
+
+def cleanup_orphan_upload_folders(db) -> int:
+    """Startup self-healing: delete uploads/<uuid> folders whose space no
+    longer exists (e.g. deletion failed earlier because a file was locked).
+    Only UUID-named folders are touched — data_agent etc. are safe."""
+    import re
+    if not os.path.isdir(UPLOADS_ROOT):
+        return 0
+    uuid_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+    from sqlalchemy import text as _T
+    alive = {r[0] for r in db.execute(_T("SELECT id FROM rag_spaces")).fetchall()}
+    removed = 0
+    for name in os.listdir(UPLOADS_ROOT):
+        full = os.path.join(UPLOADS_ROOT, name)
+        if os.path.isdir(full) and uuid_re.match(name) and name not in alive:
+            _rmtree_force(full)
+            if not os.path.isdir(full):
+                removed += 1
+    if removed:
+        logger.info(f"[CLEANUP] removed {removed} orphan upload folder(s)")
+    return removed
+
+
 def _safe_unlink(path: str, space_id: str):
     """Delete a file only if it lives under uploads/{space_id} (path-guard)."""
     if not path:
         return
     try:
-        safe_root = os.path.abspath(os.path.join("uploads", space_id))
+        safe_root = os.path.abspath(_uploads_path(space_id))
         full = os.path.abspath(path)
         if full.startswith(safe_root + os.sep) and os.path.isfile(full):
             os.unlink(full)
@@ -796,10 +845,10 @@ def _safe_rmtree(path: str, space_id: str):
     if not path:
         return
     try:
-        safe_root = os.path.abspath(os.path.join("uploads", space_id))
+        safe_root = os.path.abspath(_uploads_path(space_id))
         full = os.path.abspath(path)
         if full.startswith(safe_root + os.sep) and os.path.isdir(full):
-            shutil.rmtree(full, ignore_errors=True)
+            _rmtree_force(full)
     except Exception as e:
         logger.warning(f"[CLEANUP] could not remove dir {path}: {e}")
 
@@ -813,7 +862,7 @@ def _document_source_path(doc, space_id: str) -> str:
                 return fp
         except Exception:
             pass
-    matches = glob.glob(os.path.join("uploads", space_id, f"{doc.id}.*"))
+    matches = glob.glob(_uploads_path(space_id, f"{doc.id}.*"))
     return matches[0] if matches else ""
 
 
@@ -828,7 +877,7 @@ def _document_file_paths(doc, space_id: str) -> list[str]:
                 paths.append(fp)
         except Exception:
             pass
-    paths += glob.glob(os.path.join("uploads", space_id, f"{doc.id}.*"))
+    paths += glob.glob(_uploads_path(space_id, f"{doc.id}.*"))
     # 2) extracted images referenced by this document's parsed content
     if doc.extracted_content:
         try:
@@ -852,10 +901,10 @@ def delete_space(db: Session, space_id: str, org_id: str, user=None) -> dict:
     db.commit()
     # Remove the whole uploads folder for this space (source files + images).
     try:
-        space_dir = os.path.abspath(os.path.join("uploads", space_id))
-        uploads_root = os.path.abspath("uploads")
+        space_dir = os.path.abspath(_uploads_path(space_id))
+        uploads_root = UPLOADS_ROOT
         if space_dir.startswith(uploads_root + os.sep) and os.path.isdir(space_dir):
-            shutil.rmtree(space_dir, ignore_errors=True)
+            _rmtree_force(space_dir)
     except Exception as e:
         logger.warning(f"[CLEANUP] could not remove space folder {space_id}: {e}")
     return {"message": f"Space '{space.name}' deleted"}
@@ -938,7 +987,7 @@ def get_document_file(db: Session, space_id: str, doc_id: str, org_id: str, user
         except Exception:
             pass
     if not path:
-        matches = [m for m in glob.glob(os.path.join("uploads", space_id, f"{doc_id}.*")) if os.path.isfile(m)]
+        matches = [m for m in glob.glob(_uploads_path(space_id, f"{doc_id}.*")) if os.path.isfile(m)]
         if matches:
             path = os.path.abspath(matches[0])
     if not path or not os.path.exists(path):
@@ -952,7 +1001,12 @@ def list_chunks(db: Session, space_id: str, doc_id: str, org_id: str) -> list:
              "chunk_type": getattr(c, "chunk_type", "text") or "text",
              "strategy": getattr(c, "strategy", None),
              "parent_index": getattr(c, "parent_index", None),
-             "image_path": getattr(c, "image_path", None)} for c in chunks]
+             "image_path": getattr(c, "image_path", None),
+             # chunk metadata (parsing → chunking → here)
+             "section_path": getattr(c, "section_path", None),
+             "meta": _load_json(getattr(c, "chunk_meta", None)) or None,
+             "token_count": getattr(c, "token_count", None),
+             "lang": getattr(c, "lang", None)} for c in chunks]
 
 
 # ══════════════════════════════════════════════════════
@@ -1031,7 +1085,7 @@ def add_document_image(db: Session, space_id: str, doc_id: str, org_id: str, fil
     if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"):
         raise HTTPException(400, "Unsupported image type. Use PNG, JPG, WEBP, GIF or BMP.")
 
-    images_dir = os.path.abspath(os.path.join("uploads", space_id, "images"))
+    images_dir = os.path.abspath(_uploads_path(space_id, "images"))
     os.makedirs(images_dir, exist_ok=True)
     filename = f"manual_{uuid.uuid4().hex[:10]}{ext}"
     save_path = os.path.join(images_dir, filename)
@@ -1083,7 +1137,7 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
     db.commit()
     db.refresh(doc)
 
-    upload_dir = os.path.join("uploads", space_id)
+    upload_dir = _uploads_path(space_id)
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, f"{doc.id}{ext}")
 
@@ -1141,7 +1195,7 @@ async def upload_from_drive(db, space_id, org_id, drive_file_id, access_token):
     space = _find_space(db, space_id, org_id)
 
     doc_id = str(uuid.uuid4())
-    save_dir = os.path.join("uploads", space_id)
+    save_dir = _uploads_path(space_id)
 
     try:
         drive_result = download_from_drive(drive_file_id, access_token, save_dir)
@@ -1299,7 +1353,7 @@ def _ingest_url(db: Session, space_id: str, url: str, source_type: str = "url",
         if not loaded_data or not loaded_data.get("raw_text"):
             raise Exception(f"No content found at {url}")
 
-        upload_dir = os.path.join("uploads", space_id)
+        upload_dir = _uploads_path(space_id)
         os.makedirs(upload_dir, exist_ok=True)
         file_path = os.path.join(upload_dir, f"{doc.id}.html")
         with open(file_path, "w", encoding="utf-8") as f:
@@ -1364,7 +1418,7 @@ def ingest_raw_html(db: Session, space_id: str, org_id: str, html: str,
     db.commit()
     db.refresh(doc)
     try:
-        upload_dir = os.path.join("uploads", space_id)
+        upload_dir = _uploads_path(space_id)
         os.makedirs(upload_dir, exist_ok=True)
         file_path = os.path.join(upload_dir, f"{doc.id}.html")
         with open(file_path, "w", encoding="utf-8") as f:
@@ -1884,17 +1938,59 @@ def update_extracted_content(db: Session, space_id: str, doc_id: str, org_id: st
 # STEP 3: PROCESS — chunking + embedding
 # ══════════════════════════════════════════════════════
 
+def _content_md5(text: str) -> str:
+    import hashlib
+    return hashlib.md5((text or "").encode("utf-8")).hexdigest()
+
+
+def _count_tokens(text: str) -> int:
+    """Real token count via tiktoken when available; chars/4 heuristic else."""
+    try:
+        import tiktoken
+        if not hasattr(_count_tokens, "_enc"):
+            _count_tokens._enc = tiktoken.get_encoding("cl100k_base")
+        return len(_count_tokens._enc.encode(text or ""))
+    except Exception:
+        return max(1, len(text or "") // 4)
+
+
+def _detect_lang(text: str):
+    """Language detection via langdetect (port of Google's language-detection,
+    ~55 languages: fr, en, ar, es, de, it, zh, …). Deterministic (fixed seed).
+    Returns the ISO code, or None for text too short/ambiguous to judge."""
+    t = (text or "").strip()
+    if len(t) < 40:                     # too short → detection is a coin flip
+        return None
+    try:
+        from langdetect import detect, DetectorFactory
+        DetectorFactory.seed = 0        # deterministic across runs
+        # judge on a bounded sample — plenty for detection, cheap for big chunks
+        return detect(t[:1200])
+    except Exception:
+        return None
+
+
 def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dict:
     space = _find_space(db, space_id, org_id)
-    doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
+    # Row lock: serialize concurrent process calls for the SAME document.
+    # Without it, two simultaneous runs each delete the (not yet committed)
+    # old chunks and each insert a full set → every chunk duplicated.
+    doc = (db.query(Document)
+           .filter(Document.id == doc_id, Document.rag_space_id == space_id)
+           .with_for_update()
+           .first())
     if not doc:
         raise HTTPException(404, "Document not found")
 
     if not doc.extracted_content:
         raise HTTPException(400, "No parsed content — parse the document first")
 
+    if doc.status == DocStatus.PROCESSING:
+        # another request is already chunking this document
+        raise HTTPException(409, "This document is already being processed — please wait")
+
     doc.status = DocStatus.PROCESSING
-    db.commit()
+    db.commit()   # releases the row lock; concurrent calls now see PROCESSING → 409
 
     try:
         parsed_data = json.loads(doc.extracted_content)
@@ -1918,13 +2014,23 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
         if not chunks:
             raise Exception("No chunks generated")
 
-        chunk_texts = [c["content"] for c in chunks]
+        # Embed input = structured metadata (title/keywords, when the agentic
+        # Metadata Agent produced them) + the content. The STORED content stays
+        # clean — metadata lives in chunk_meta, but still boosts the vector.
+        def _embed_input(c):
+            meta = c.get("meta") or {}
+            bits = [meta.get("title") or "", " ".join(meta.get("keywords") or [])]
+            prefix = " · ".join(b for b in bits if b).strip()
+            return f"{prefix}\n{c['content']}" if prefix else c["content"]
+
+        chunk_texts = [_embed_input(c) for c in chunks]
         embeddings = embed_texts(db, space, chunk_texts)
 
+        db_chunks = []
         for i, chunk_data in enumerate(chunks):
+            content = chunk_data["content"]
             db_chunk = Chunk(
-                content=chunk_data["content"],
-                embedding=embeddings[i],
+                content=content,
                 page=chunk_data.get("page", 1),
                 chunk_index=chunk_data["chunk_index"],
                 # Batch 5: persist type + image path so the chat can render images
@@ -1933,10 +2039,30 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
                 # traceability: which strategy made this chunk + parent link
                 strategy=chunk_data.get("strategy"),
                 parent_index=chunk_data.get("parent_index"),
+                # ── chunk metadata carried from parsing/chunking ──
+                section_path=(chunk_data.get("section") or None),
+                chunk_meta=(json.dumps(chunk_data["meta"]) if chunk_data.get("meta") else None),
+                content_hash=_content_md5(content),
+                token_count=_count_tokens(content),
+                lang=_detect_lang(content),
                 document_id=doc.id,
                 rag_space_id=space_id,
             )
             db.add(db_chunk)
+            db_chunks.append(db_chunk)
+
+        # ── Dimension-per-space vectors: write into chunk_vectors_<dim> ──
+        from app.services import pgvector_store
+        db.flush()   # materialize chunk ids
+        dim = len(embeddings[0])
+        if space.embedding_dim and space.embedding_dim != dim:
+            # Embedding model changed dimension → the OTHER docs' vectors sit
+            # in the old bucket and are no longer searched: force re-index.
+            space.reindex_required = True
+            logger.warning(f"[VEC] {space_id}: dim {space.embedding_dim}→{dim} — re-index required")
+        space.embedding_dim = dim
+        pgvector_store.upsert_vectors(
+            db, dim, [(c.id, space_id, embeddings[i]) for i, c in enumerate(db_chunks)])
 
         doc.num_chunks = len(chunks)
         # Record the strategy that ACTUALLY produced the chunks (shown in the
@@ -1948,11 +2074,12 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
         db.refresh(doc)
 
     except Exception as e:
+        db.rollback()   # discard any partially-flushed chunk/vector rows
         doc.status = DocStatus.ERROR
         doc.error_msg = str(e)
-        # The old chunks were already deleted (and that delete is committed
-        # below) — zero the fields that described them so the API/UI never
-        # report a strategy/count for chunks that no longer exist.
+        # The old chunks were already deleted — zero the fields that described
+        # them so the API/UI never report a strategy/count for chunks that no
+        # longer exist.
         doc.num_chunks = 0
         doc.chosen_strategy = None
         db.commit()
@@ -1999,17 +2126,11 @@ def process_all_documents(db: Session, space_id: str, org_id: str) -> dict:
 # ══════════════════════════════════════════════════════
 
 def pgvector_search(db, space_id, query_embedding, top_k):
-    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-    # Batch 5: also return chunk_type + image_path so the chat can render images.
-    sql = text("""
-        SELECT id, content, page, document_id, chunk_index, chunk_type, image_path,
-            1 - (embedding <=> :query_vec) AS similarity_score
-        FROM chunks WHERE rag_space_id = :space_id AND embedding IS NOT NULL
-        ORDER BY embedding <=> :query_vec LIMIT :top_k
-    """)
-    result = db.execute(sql, {"query_vec": embedding_str, "space_id": space_id, "top_k": top_k})
+    # Dimension-bucket search (chunk_vectors_<dim>) at native model dims.
+    from app.services import pgvector_store
+    result = pgvector_store.search(db, space_id, query_embedding, top_k)
     rows = []
-    for r in result.fetchall():
+    for r in result:
         chunk_type = getattr(r, "chunk_type", None) or "text"
         # keep the legacy "type" (used by table keyword-boosting in hybrid_search)
         if chunk_type == "image_summary":
@@ -2022,7 +2143,7 @@ def pgvector_search(db, space_id, query_embedding, top_k):
             "content": r.content,
             "page": r.page,
             "document_id": r.document_id,
-            "score": round(float(r.similarity_score), 4),
+            "score": round(float(r.sim), 4),
             "type": legacy_type,
             "chunk_type": chunk_type,
             "image_path": getattr(r, "image_path", None),

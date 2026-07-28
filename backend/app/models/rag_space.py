@@ -139,6 +139,9 @@ class RAGSpace(Base):
     retrieval_params   = Column(Text, nullable=True)
     # Evaluation settings: independent judge choice (JSON: {judge, judge_model})
     eval_params        = Column(Text, nullable=True)
+    # Native dimension of the space's embedding model → picks the
+    # chunk_vectors_<dim> bucket table (dimension-per-space architecture)
+    embedding_dim      = Column(Integer, nullable=True)
 
     # ── Prompt config ──                                                           # NEW
     system_prompt   = Column(Text, nullable=True)           # null = prompt par défaut
