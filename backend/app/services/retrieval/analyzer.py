@@ -56,7 +56,6 @@ ID_CONTEXT_WORDS = {
 
 STOPWORDS = FR_HINTS | EN_HINTS | {"me", "my", "please", "svp", "stp", "give", "show", "find"}
 
-
 def strip_accents(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 

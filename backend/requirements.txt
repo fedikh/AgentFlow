@@ -25,6 +25,7 @@ llama-index-core>=0.12.0
 llama-index-readers-file>=0.4.0
 llama-index>=0.12.0
 llama-index-embeddings-huggingface>=0.4.0   # embed model for SemanticSplitterNodeParser
+einops>=0.8            # required by jinaai/jina-embeddings-v3 (trust_remote_code model)
  
 # ── Required by loaders (some may already be installed) ──
 pandas>=2.0
@@ -41,7 +42,7 @@ pymupdf>=1.23
 python-pptx>=1.0       # PPTX: Docling's backend + native fallback loader
 markdown-it-py>=3.0    # CommonMark + GFM markdown parsing (element schema)
 lxml>=5.0              # XML tree parsing (element schema)
-ks-xlsx-parser>=0.2    # RAG-native Excel parsing (chunks + citations; openpyxl fallback)
+# Excel is parsed by Docling (same engine as PDF/DOCX); xlrd converts legacy .xls
 
 # ── Web parsing ──
 crawl4ai>=0.9          # AI/RAG web crawler (JS rendering + markdown); requests fallback
@@ -59,3 +60,5 @@ rank-bm25
 bm25s
 flashrank
 ragas
+xlrd                   # legacy .xls → .xlsx conversion for Docling
+trafilatura>=2.1        # web main-content + metadata + structure extraction (no hand-rolled boilerplate rules)

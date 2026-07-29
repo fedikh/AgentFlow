@@ -7,8 +7,9 @@ import CustomDropdown from "./CustomDropdown";
 
 /**
  * EmbeddingSourceSelector — Batch 6. Mirror of LLMSourceSelector, for
- * embeddings, now with the same logo dropdowns. Three sources:
- *   Local   → BGE-M3 (free, 1024 dims, the default)
+ * embeddings. ALL three sources now pick their model through the same
+ * CustomDropdown (the local list shows each model's note + dim inline):
+ *   Local   → sentence-transformers / Ollama models (free, BGE-M3 default)
  *   Company → an embedding-capable provider the admin deployed (OpenAI / Voyage)
  *   Own key → the IT supplies a key for OPENAI or VOYAGE
  *
@@ -22,20 +23,25 @@ import CustomDropdown from "./CustomDropdown";
 const OWN_FAMILIES = ["OPENAI", "VOYAGE", "GOOGLE"];
 
 /* Curated per-family embedding models (mirror of the backend catalog),
- * each at its native dimension. */
+ * each at its DEFAULT output dimension. */
 const OWN_MODELS = {
   OPENAI: [
     { id: "text-embedding-3-small", label: "text-embedding-3-small (1536)" },
     { id: "text-embedding-3-large", label: "text-embedding-3-large (3072)" },
   ],
   VOYAGE: [
+    { id: "voyage-4-large", label: "voyage-4-large (1024)" },
+    { id: "voyage-4", label: "voyage-4 (1024)" },
+    { id: "voyage-4-lite", label: "voyage-4-lite (1024)" },
+    { id: "voyage-4-nano", label: "voyage-4-nano (1024)" },
+    { id: "voyage-context-4", label: "voyage-context-4 (1024, contextual)" },
     { id: "voyage-3.5", label: "voyage-3.5 (1024)" },
     { id: "voyage-3.5-lite", label: "voyage-3.5-lite (1024)" },
     { id: "voyage-3-large", label: "voyage-3-large (1024)" },
     { id: "voyage-multimodal-3.5", label: "Voyage Multimodal 3.5 (1024)" },
-    { id: "voyage-code-3", label: "voyage-code-3 (code)" },
-    { id: "voyage-finance-2", label: "voyage-finance-2 (finance)" },
-    { id: "voyage-law-2", label: "voyage-law-2 (legal)" },
+    { id: "voyage-code-3", label: "voyage-code-3 (1024, code)" },
+    { id: "voyage-finance-2", label: "voyage-finance-2 (1024, finance)" },
+    { id: "voyage-law-2", label: "voyage-law-2 (1024, legal)" },
   ],
   GOOGLE: [
     { id: "gemini-embedding-002", label: "Gemini Embedding 2 (3072)" },
@@ -95,6 +101,21 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
       .finally(() => setLoadingModels(false));
   }, [mode, value.embedding_provider_id]);
 
+  const localModels = embedModels.filter(
+    (m) => m.provider === "LOCAL" || m.provider === "OLLAMA",
+  );
+  const selectedLocal = localModels.find((m) => m.id === value.embedding_model);
+
+  /* Brand logo for a local model: Ollama models keep the Ollama logo; the
+   * in-process ones get their own brand (BGE-M3 → BAAI, Jina v3 → Jina). */
+  const localLogoFamily = (m) => {
+    if (m.provider === "OLLAMA") return "OLLAMA";
+    const id = (m.id || "").toLowerCase();
+    if (id.includes("bge")) return "BAAI";
+    if (id.includes("jina")) return "JINA";
+    return "LOCAL";
+  };
+
   const pick = (next) => {
     setMode(next);
     if (next === "local") {
@@ -140,53 +161,48 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
         ))}
       </div>
 
-      {/* LOCAL */}
+      {/* LOCAL — same dropdown as the other modes (logo + note per model) */}
       {mode === "local" && (
         <>
-          <label className="rag-cfg-label">Local &amp; Ollama embedding models</label>
-          <div className="rag-cfg-models">
-            {embedModels
-              .filter((m) => m.provider === "LOCAL" || m.provider === "OLLAMA")
-              .map((m) => (
-                <label
-                  key={m.id}
-                  className={`rag-cfg-model ${value.embedding_model === m.id ? "active" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    name="embed"
-                    checked={value.embedding_model === m.id}
-                    onChange={() =>
-                      onChange({
-                        embedding_model: m.id,
-                        embedding_provider: m.provider,   // LOCAL or OLLAMA
-                        embedding_provider_id: null,
-                        embedding_api_key: "",
-                      })
-                    }
-                  />
-                  <div>
-                    <div className="rag-cfg-model-n">
-                      {m.label} · {m.dim}d
-                      {m.provider === "OLLAMA" && (
-                        <span className="rag-config-tag" style={{ marginLeft: 6 }}>Ollama</span>
-                      )}
-                    </div>
-                    <div className="rag-cfg-model-note">{m.note}</div>
-                  </div>
-                </label>
-              ))}
-            {embedModels.length === 0 && (
-              <div className="rag-cfg-hint">Loading…</div>
-            )}
-          </div>
+          <label className="rag-cfg-label">Model</label>
+          {localModels.length === 0 ? (
+            <div className="rag-cfg-hint">Loading…</div>
+          ) : (
+            <CustomDropdown
+              showLogo
+              options={localModels.map((m) => ({
+                value: m.id,
+                label: `${m.label} (${m.dim}d)`,
+                family: localLogoFamily(m),
+                sub: m.note,
+                tag: m.provider === "OLLAMA" ? "Ollama" : "Local",
+              }))}
+              value={value.embedding_model || ""}
+              onChange={(id) => {
+                const m = localModels.find((x) => x.id === id);
+                onChange({
+                  embedding_model: id,
+                  embedding_provider: m?.provider || "LOCAL", // LOCAL or OLLAMA
+                  embedding_provider_id: null,
+                  embedding_api_key: "",
+                });
+              }}
+              placeholder={`Select a model… (${localModels.length})`}
+            />
+          )}
+          {selectedLocal && (
+            <div className="rag-cfg-hint">
+              {selectedLocal.note} · {selectedLocal.dim}d
+            </div>
+          )}
           <div className="rag-cfg-hint">
-            Every model runs at its <strong>native dimension</strong> (shown next
-            to its name) — 384d models are the fastest, 1024d the highest quality.
+            Every model runs at its <strong>default dimension</strong> — smaller
+            dims (384/768d) are the fastest and most CPU-friendly, larger dims
+            (1024/2560d) the highest quality.
             <strong> BGE-M3</strong> (1024d, multilingual) is the recommended
             default for French documents. No key, no data leaves the machine.
             <strong> Ollama</strong> models run on your local Ollama daemon
-            (<code>ollama serve</code>).
+            (<code>ollama serve</code> + <code>ollama pull &lt;model&gt;</code>).
           </div>
         </>
       )}

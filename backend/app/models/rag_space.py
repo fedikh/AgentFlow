@@ -80,8 +80,6 @@ class RAGSpace(Base):
     owner_id            = Column(String, ForeignKey("users.id"), nullable=True)
     # is_private: end-user exposure master switch. True → no end user sees it,
     #   even if ACTIVE. Flipped to False when the IT "publishes" on deploy.
-    #   NOTE: the DB default is FALSE (see main.py migration) so pre-existing
-    #   spaces stay published; new spaces are set True explicitly in create_space.
     is_private          = Column(Boolean, default=True)
     # deployed_version_id: the RAGSpaceVersion currently live. Plain string (no
     #   DB FK) to avoid a circular create-order between the two tables.

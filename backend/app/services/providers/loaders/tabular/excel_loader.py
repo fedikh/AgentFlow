@@ -13,7 +13,10 @@ def load(file_path: str) -> dict:
 
     import pandas as pd
 
-    dfs = pd.read_excel(file_path, sheet_name=None, engine="openpyxl")
+    # .xlsx → openpyxl; legacy binary .xls → xlrd (openpyxl cannot read BIFF)
+    is_xls = str(file_path).lower().endswith(".xls")
+    engine = "xlrd" if is_xls else "openpyxl"
+    dfs = pd.read_excel(file_path, sheet_name=None, engine=engine)
 
     if not dfs:
         raise ValueError("Excel file has no sheets or is empty")
@@ -36,7 +39,8 @@ def load(file_path: str) -> dict:
     raw_text = "\n\n".join(parts)
 
     from app.services.providers.loaders._utils import build_doc_metadata
-    metadata = build_doc_metadata(file_path, len(parts), "xlsx", parser_name="openpyxl",
+    metadata = build_doc_metadata(file_path, len(parts), "xls" if is_xls else "xlsx",
+                                  parser_name=engine,
                                   extra={"num_sheets": len(sheet_names), "total_rows": total_rows})
 
     return {

@@ -84,22 +84,33 @@ def _img_fallback(c) -> str:
 
 def table_text(el) -> str:
     """Readable text for a table element (documents/web use markdown; tabular
-    tables carry columns+rows and no markdown — render them 'col: val | …')."""
+    tables carry columns+rows and no markdown — render them 'col: val | …').
+    Machine-generated table names (uuids from on-disk filenames) are dropped —
+    they are token noise, not information."""
+    import re as _re
     c = _content(el)
     md = c.get("markdown")
     if md:
         return md
-    name = c.get("table_name") or c.get("caption") or "Table"
+    name = (c.get("table_name") or c.get("caption") or "").strip()
+    if _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[0-9a-f]{16,}$",
+                 name, _re.IGNORECASE):
+        name = ""
     headers = c.get("headers") or [col.get("name") for col in (c.get("columns") or [])]
-    lines = [f"Table: {name}"]
+    generic = _re.compile(r"^(col|column)\s*_?\d+$|^unnamed", _re.IGNORECASE)
+    lines = [f"Table: {name}"] if name else []
     for r in (c.get("rows") or []):
         vals = r.get("values") if isinstance(r, dict) and "values" in r else r
         if not isinstance(vals, dict):
             continue
-        if headers:
-            lines.append(" | ".join(f"{h}: {vals.get(h, '')}" for h in headers))
-        else:
-            lines.append(" | ".join(f"{k}: {v}" for k, v in vals.items()))
+        items = [(h, vals.get(h)) for h in headers] if headers else list(vals.items())
+        parts = []
+        for h, v in items:
+            if v in (None, "", " "):
+                continue
+            parts.append(str(v) if (not h or generic.match(str(h))) else f"{h}: {v}")
+        if parts:
+            lines.append(" | ".join(parts))
     return "\n".join(lines)
 
 

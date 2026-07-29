@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text as _sql_text
 
 from app.database import Base, engine, test_connection
 from app.routes import auth, users
@@ -22,6 +21,10 @@ from app.models.rag_space_collaborator import RAGSpaceCollaborator  # noqa: F401
 # Evaluation — datasets + experiment runs (tables created by create_all)
 from app.models.evaluation import EvalCase, EvalRun  # noqa: F401
 
+# Vector buckets — one chunk_vectors_<dim> model per catalog dimension,
+# created by create_all like every other table (see models/chunk_vector.py)
+from app.models import chunk_vector  # noqa: F401
+
 # Import rag — show error if it fails
 try:
     from app.routes import rag
@@ -30,104 +33,9 @@ except Exception as e:
     has_rag = False
     print(f"⚠️  RAG module not loaded: {e}")
 
+# Schema comes entirely from the SQLAlchemy models — create_all() creates
+# every missing table + index, chunk_vectors_<dim> buckets included.
 Base.metadata.create_all(bind=engine)
-
-
-# ── Lightweight idempotent migrations ──
-# create_all() creates missing TABLES but never ALTERs existing ones, so new
-# columns on already-created tables must be added here. All statements use
-# "IF NOT EXISTS", so this is safe to run on every startup.
-def _run_light_migrations():
-    stmts = [
-        # Batch 5 — image chunks
-        "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS chunk_type VARCHAR DEFAULT 'text'",
-        "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS image_path VARCHAR",
-        # Batch 6 — embedding source on a space (mirrors the LLM source)
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS embedding_provider_id VARCHAR",
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS embedding_api_key_enc TEXT",
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS embedding_base_url VARCHAR",
-        # Per-document image extraction toggle
-        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS extract_images BOOLEAN DEFAULT TRUE",
-        # ── Manual per-format chunking ──
-        # New per-strategy params + chunk traceability
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS chunk_params TEXT",
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS chunk_format_map TEXT",
-        # ── Retrieval Engine: per-space pipeline overrides (visual pipeline UI) ──
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS retrieval_params TEXT",
-        # ── Evaluation: independent judge settings ──
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS eval_params TEXT",
-        # ── Agentic is a STRATEGY now, not a mode: migrate old AGENTIC-mode
-        #    spaces to SINGLE mode with the agentic strategy ──
-        "UPDATE rag_spaces SET chunk_mode = 'SINGLE', chunk_strategy = 'agentic' WHERE chunk_mode = 'AGENTIC'",
-        # ── Evaluation tables must die with their space (cascade) ──
-        "ALTER TABLE eval_cases DROP CONSTRAINT IF EXISTS eval_cases_rag_space_id_fkey",
-        """ALTER TABLE eval_cases ADD CONSTRAINT eval_cases_rag_space_id_fkey
-           FOREIGN KEY (rag_space_id) REFERENCES rag_spaces(id) ON DELETE CASCADE""",
-        "ALTER TABLE eval_runs DROP CONSTRAINT IF EXISTS eval_runs_rag_space_id_fkey",
-        """ALTER TABLE eval_runs ADD CONSTRAINT eval_runs_rag_space_id_fkey
-           FOREIGN KEY (rag_space_id) REFERENCES rag_spaces(id) ON DELETE CASCADE""",
-        # ── Dimension-per-space vectors: bucket tables at native dims ──
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS embedding_dim INTEGER",
-        """CREATE TABLE IF NOT EXISTS chunk_vectors_1024 (
-                chunk_id TEXT PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
-                rag_space_id TEXT NOT NULL,
-                embedding vector(1024) NOT NULL
-            )""",
-        "CREATE INDEX IF NOT EXISTS chunk_vectors_1024_space_idx ON chunk_vectors_1024 (rag_space_id)",
-        "CREATE INDEX IF NOT EXISTS chunk_vectors_1024_hnsw ON chunk_vectors_1024 USING hnsw (embedding vector_cosine_ops)",
-        # Legacy fixed-1024 vector column: its data was copied into
-        # chunk_vectors_1024 (one-time migration, done) — drop it for good.
-        "DROP INDEX IF EXISTS idx_chunk_embedding",
-        "ALTER TABLE chunks DROP COLUMN IF EXISTS embedding",
-        "ALTER TABLE documents  ADD COLUMN IF NOT EXISTS chunk_params TEXT",
-        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS strategy VARCHAR",
-        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS parent_index INTEGER",
-        # ── Chunk metadata (section breadcrumb / hash / tokens / language) ──
-        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS section_path VARCHAR",
-        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS chunk_meta TEXT",
-        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS content_hash VARCHAR",
-        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS token_count INTEGER",
-        "ALTER TABLE chunks     ADD COLUMN IF NOT EXISTS lang VARCHAR",
-        # Widen the old enum columns → VARCHAR so the catalog can grow + use
-        # SINGLE / PER_DOCUMENT. Safe no-ops if the columns are already VARCHAR.
-        "ALTER TABLE rag_spaces ALTER COLUMN chunk_strategy DROP DEFAULT",
-        "ALTER TABLE rag_spaces ALTER COLUMN chunk_strategy TYPE VARCHAR USING chunk_strategy::text",
-        "ALTER TABLE rag_spaces ALTER COLUMN chunk_mode DROP DEFAULT",
-        "ALTER TABLE rag_spaces ALTER COLUMN chunk_mode TYPE VARCHAR USING chunk_mode::text",
-        # Normalise legacy values to the new catalog vocabulary
-        "UPDATE rag_spaces SET chunk_strategy = lower(chunk_strategy) WHERE chunk_strategy IS NOT NULL",
-        "UPDATE documents  SET chunk_strategy = lower(chunk_strategy) WHERE chunk_strategy IS NOT NULL",
-        "UPDATE rag_spaces SET chunk_mode = 'SINGLE' WHERE chunk_mode IN ('FIXED_ALL', 'ADAPTIVE')",
-        "ALTER TABLE rag_spaces ALTER COLUMN chunk_strategy SET DEFAULT 'recursive'",
-        "ALTER TABLE rag_spaces ALTER COLUMN chunk_mode SET DEFAULT 'SINGLE'",
-        # ── Versioning + ownership/permissions ──
-        # owner_id stays NULL on existing rows (legacy → visible to all IT).
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS owner_id VARCHAR",
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS deployed_version_id VARCHAR",
-        # IMPORTANT: DB default FALSE (not TRUE) so already-deployed spaces stay
-        # visible to end users. New spaces are set private via the ORM.
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT FALSE",
-        "ALTER TABLE rag_spaces ADD COLUMN IF NOT EXISTS reindex_required BOOLEAN DEFAULT FALSE",
-        # Convert status from the native enum to VARCHAR so new statuses (EDITING)
-        # don't need an enum migration. Safe no-op if already VARCHAR.
-        "ALTER TABLE rag_spaces ALTER COLUMN status DROP DEFAULT",
-        "ALTER TABLE rag_spaces ALTER COLUMN status TYPE VARCHAR USING status::text",
-        "ALTER TABLE rag_spaces ALTER COLUMN status SET DEFAULT 'DRAFT'",
-    ]
-    # Each statement in its own transaction so one failure (e.g. an enum
-    # conversion on an unexpected state) can't abort the rest.
-    applied = 0
-    for s in stmts:
-        try:
-            with engine.begin() as conn:
-                conn.execute(_sql_text(s))
-            applied += 1
-        except Exception as e:
-            print(f"⚠️  migration step skipped: {s[:60]}… ({e})")
-    print(f"✅ Light migrations applied ({applied}/{len(stmts)} steps)")
-
-
-_run_light_migrations()
 
 # Startup self-healing: remove upload folders of spaces that no longer exist
 # (a delete may have failed earlier on a locked file — retried here).

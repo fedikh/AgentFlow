@@ -20,20 +20,13 @@ Design ("dimension per space"):
   · Model switch → new dim → vectors go to the new bucket; the space's
     re-index flow (already enforced on config drift) rebuilds everything.
 
-The legacy chunks.embedding vector(1024) column is no longer read or
-written; startup migration copies its data into chunk_vectors_1024 once.
+The bucket tables are SQLAlchemy models (app/models/chunk_vector.py): one
+model per catalog dimension, created by Base.metadata.create_all() at
+startup like every other table. This module only reads/writes them.
 """
 from __future__ import annotations
 
-import logging
-
 from sqlalchemy import text
-
-logger = logging.getLogger(__name__)
-
-# HNSW on plain `vector` is capped at 2000 dims → halfvec above that.
-_HNSW_VECTOR_MAX = 2000
-_HALFVEC_MAX = 4000
 
 _ensured: set[int] = set()   # buckets confirmed to exist (per process)
 
@@ -42,40 +35,13 @@ def _table(dim: int) -> str:
     return f"chunk_vectors_{int(dim)}"
 
 
-def _coltype(dim: int) -> str:
-    return f"halfvec({int(dim)})" if dim > _HNSW_VECTOR_MAX else f"vector({int(dim)})"
-
-
-def _ops(dim: int) -> str:
-    return "halfvec_cosine_ops" if dim > _HNSW_VECTOR_MAX else "vector_cosine_ops"
-
-
-def bucket_ddl(dim: int) -> list[str]:
-    """Idempotent DDL for one dimension bucket (used by startup migrations too)."""
-    t = _table(dim)
-    ddl = [
-        f"""CREATE TABLE IF NOT EXISTS {t} (
-                chunk_id TEXT PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
-                rag_space_id TEXT NOT NULL,
-                embedding {_coltype(dim)} NOT NULL
-            )""",
-        f"CREATE INDEX IF NOT EXISTS {t}_space_idx ON {t} (rag_space_id)",
-    ]
-    if dim <= _HALFVEC_MAX:
-        ddl.append(f"CREATE INDEX IF NOT EXISTS {t}_hnsw ON {t} "
-                   f"USING hnsw (embedding {_ops(dim)})")
-    else:
-        # beyond halfvec's index limit: exact scan only (still correct, slower)
-        logger.warning(f"[VEC] dim {dim} exceeds HNSW limits — bucket runs unindexed")
-    return ddl
-
-
 def ensure_bucket(db, dim: int) -> None:
-    """Create the bucket table + indexes for `dim` if missing (idempotent)."""
+    """Safety net for a dimension OUTSIDE the catalog: build its model and
+    create its table if missing (catalog dims already exist via create_all)."""
     if dim in _ensured:
         return
-    for sql in bucket_ddl(dim):
-        db.execute(text(sql))
+    from app.models.chunk_vector import chunk_vector_model
+    chunk_vector_model(dim).__table__.create(bind=db.connection(), checkfirst=True)
     db.flush()
     _ensured.add(dim)
 

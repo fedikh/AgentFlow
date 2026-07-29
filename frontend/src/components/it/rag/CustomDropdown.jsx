@@ -6,7 +6,9 @@ import ProviderLogo from "../../ProviderLogo";
  * to each option. Native <select> can't put images inside <option>, so both the
  * LLM and Embedding source selectors use this for a consistent look.
  *
- * options: [{ value, label, family? }]  (family drives the logo when showLogo)
+ * options: [{ value, label, family?, sub?, tag? }]
+ *   family → logo when showLogo · sub → small second line in the open list
+ *   tag    → small pill on the right (e.g. "Ollama" / "Local")
  */
 export default function CustomDropdown({
   options,
@@ -40,6 +42,15 @@ export default function CustomDropdown({
     cursor: "pointer",
   };
 
+  const tagStyle = {
+    fontSize: 10,
+    padding: "2px 7px",
+    borderRadius: 999,
+    background: "#eef2f7",
+    color: "#475569",
+    flexShrink: 0,
+  };
+
   return (
     <div
       ref={ref}
@@ -59,6 +70,7 @@ export default function CustomDropdown({
           <>
             {showLogo && <ProviderLogo family={selected.family} size={18} />}
             <span style={{ flex: 1 }}>{selected.label}</span>
+            {selected.tag && <span style={tagStyle}>{selected.tag}</span>}
           </>
         ) : (
           <span style={{ flex: 1, color: "#94a3b8" }}>{placeholder}</span>
@@ -106,7 +118,22 @@ export default function CustomDropdown({
               }}
             >
               {showLogo && <ProviderLogo family={o.family} size={18} />}
-              <span>{o.label}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block" }}>{o.label}</span>
+                {o.sub && (
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      color: "#64748b",
+                      marginTop: 2,
+                    }}
+                  >
+                    {o.sub}
+                  </span>
+                )}
+              </span>
+              {o.tag && <span style={tagStyle}>{o.tag}</span>}
             </button>
           ))}
         </div>

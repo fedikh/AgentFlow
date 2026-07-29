@@ -100,6 +100,24 @@ def _img_is_tiny(img):
     return False
 
 
+def _content_root(soup):
+    """The page's main content container.
+
+    NEVER `soup.find("article")`: the FIRST <article> on a page is often a
+    tiny related-post teaser card (WordPress themes), which would swallow the
+    whole parse. Instead pick the <article>/<main> holding the MOST text, and
+    only trust it when it carries a real share (≥35%) of the page's text —
+    otherwise parse the whole <body>."""
+    body = soup.body or soup
+    body_len = max(1, len(body.get_text("", strip=True)))
+    cands = body.find_all(["article", "main"])
+    if cands:
+        best = max(cands, key=lambda t: len(t.get_text("", strip=True)))
+        if len(best.get_text("", strip=True)) >= 0.35 * body_len:
+            return best
+    return body
+
+
 def build_web_elements(html, base_url=None):
     """Return (elements, images, links, metadata, text_repr)."""
     from bs4 import BeautifulSoup
@@ -108,7 +126,7 @@ def build_web_elements(html, base_url=None):
     soup = BeautifulSoup(html, "html.parser")
     meta = extract_web_metadata(soup, base_url)
 
-    root = soup.find("article") or soup.find("main") or soup.body or soup
+    root = _content_root(soup)
     for tag in root.find_all(_NOISE):
         tag.decompose()
 
@@ -250,19 +268,26 @@ def build_web_elements(html, base_url=None):
             elif name == "img":
                 emit_image(child)
             elif name == "figure":
+                # figures wrap images AND tables (WordPress: wp-block-table)
                 img = child.find("img")
                 cap = child.find("figcaption")
                 if img:
                     emit_image(img, caption=cap.get_text(" ", strip=True) if cap else "")
+                for tbl in child.find_all("table"):
+                    emit_table(tbl)
+                if not img and not child.find("table"):
+                    walk(child)           # embeds/quotes inside a figure
             else:
                 walk(child)   # recurse into containers (div/section/span/…)
 
     walk(root)
 
-    # Safety net: catch any image the structural walk still missed (unusual
-    # nesting). Dedup by src keeps everything already emitted inline at its
-    # correct reading-order position; only genuinely-missed images append here.
-    for im in root.find_all("img"):
+    # Safety net: catch any image the structural walk still missed — scan the
+    # WHOLE body, not just the content root (hero banners and gallery images
+    # often live outside the article container). Dedup by src keeps everything
+    # already emitted inline at its correct reading-order position; the
+    # tiny-image and data:-placeholder filters keep icons/pixels out.
+    for im in (soup.body or soup).find_all("img"):
         emit_image(im)
 
     return elements, images, links, meta, "\n\n".join(text_lines)

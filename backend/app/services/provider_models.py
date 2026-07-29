@@ -51,10 +51,11 @@ PROVIDER_MODELS = {
 
 # ══════════════════════════════════════════════════════
 # EMBEDDING model catalog (Batch 6)
-# pgvector is fixed at 1024 dims. Models that don't natively output 1024 are
-# labelled; OpenAI text-embedding-3-* support a `dimensions` param to force
-# 1024, and Voyage voyage-3(.5) are natively 1024. Switching to a model whose
-# stored dimension differs requires re-embedding (flagged in the UI).
+# Every model is listed at its DEFAULT output dimension (what the API/library
+# returns when no `dimensions`/`output_dimension` param is sent). Vectors are
+# stored natively in per-dimension bucket tables (see pgvector_store.py).
+# Switching to a model whose dimension differs requires re-embedding
+# (flagged in the UI).
 # ══════════════════════════════════════════════════════
 
 EMBEDDING_PROVIDER_MODELS = {
@@ -62,7 +63,14 @@ EMBEDDING_PROVIDER_MODELS = {
         {"id": "text-embedding-3-small", "label": "text-embedding-3-small (1536)", "dim": 1536},
         {"id": "text-embedding-3-large", "label": "text-embedding-3-large (3072)", "dim": 3072},
     ],
+    # Voyage models default to 1024 output dims (voyage-4 / -3.5 / context
+    # families are Matryoshka: 256/512/1024/2048 — we use the 1024 default).
     "VOYAGE": [
+        {"id": "voyage-4-large",        "label": "voyage-4-large (1024)",        "dim": 1024},
+        {"id": "voyage-4",              "label": "voyage-4 (1024)",              "dim": 1024},
+        {"id": "voyage-4-lite",         "label": "voyage-4-lite (1024)",         "dim": 1024},
+        {"id": "voyage-4-nano",         "label": "voyage-4-nano (1024)",         "dim": 1024},
+        {"id": "voyage-context-4",      "label": "voyage-context-4 (1024, contextual)", "dim": 1024},
         {"id": "voyage-3.5",            "label": "voyage-3.5 (1024)",            "dim": 1024},
         {"id": "voyage-3.5-lite",       "label": "voyage-3.5-lite (1024)",       "dim": 1024},
         {"id": "voyage-3-large",        "label": "voyage-3-large (1024)",        "dim": 1024},
@@ -71,25 +79,24 @@ EMBEDDING_PROVIDER_MODELS = {
         {"id": "voyage-finance-2",      "label": "voyage-finance-2 (1024, finance)", "dim": 1024},
         {"id": "voyage-law-2",          "label": "voyage-law-2 (1024, legal)",   "dim": 1024},
     ],
-    # Gemini embeddings — native dims differ (e.g. 3072); the embedding factory
-    # fits vectors to the fixed 1024 pgvector column.
+    # Gemini embeddings default to 3072 output dims (Matryoshka: 768/1536/3072
+    # — we use the 3072 default; stored as halfvec, still HNSW-indexable).
     "GOOGLE": [
         {"id": "gemini-embedding-002", "label": "Gemini Embedding 2 (3072)", "dim": 3072},
         {"id": "gemini-embedding-001", "label": "Gemini Embedding 1 (3072)", "dim": 3072},
     ],
+    # In-process sentence-transformers models, at their default dims.
     "LOCAL": [
         {"id": "BAAI/bge-m3", "label": "BGE-M3 (1024, multilingual) ★", "dim": 1024},
-        {"id": "BAAI/bge-base-en-v1.5", "label": "BGE-Base (768, English)", "dim": 768},
-        {"id": "sentence-transformers/all-MiniLM-L6-v2", "label": "MiniLM-L6 (384, fastest)", "dim": 384},
-        {"id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-         "label": "Multilingual MiniLM (384, fast)", "dim": 384},
+        {"id": "jinaai/jina-embeddings-v3", "label": "Jina Embeddings v3 (1024, multilingual)", "dim": 1024},
     ],
-    # Ollama runs locally (no key). mxbai-embed-large is natively 1024 → clean
-    # match; the smaller ones are fit to 1024 to match the pgvector column.
+    # Ollama runs locally (no key). Each model at its default dimension.
     "OLLAMA": [
-        {"id": "mxbai-embed-large", "label": "mxbai-embed-large (1024, local)", "dim": 1024},
-        {"id": "nomic-embed-text",  "label": "nomic-embed-text (768, local)",   "dim": 768},
-        {"id": "all-minilm",        "label": "all-minilm (384, local)",         "dim": 384},
+        {"id": "qwen3-embedding:0.6b", "label": "Qwen3-Embedding 0.6B (1024, local)", "dim": 1024},
+        {"id": "qwen3-embedding:4b",   "label": "Qwen3-Embedding 4B (2560, local)",   "dim": 2560},
+        {"id": "nomic-embed-text",     "label": "Nomic-Embed-Text (768, CPU-friendly)", "dim": 768},
+        {"id": "embeddinggemma:300m",  "label": "EmbeddingGemma 300M (768, CPU-friendly)", "dim": 768},
+        {"id": "all-minilm",           "label": "all-minilm (384, fastest)",       "dim": 384},
     ],
 }
 

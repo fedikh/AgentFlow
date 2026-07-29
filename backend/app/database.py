@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text, event
+from sqlalchemy import DDL, create_engine, text, event
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.config import settings
 
@@ -12,6 +12,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):
     pass
+
+# The chunk_vectors_<dim> models use vector/halfvec column types, so the
+# pgvector extension must exist BEFORE create_all() creates their tables.
+event.listen(
+    Base.metadata, "before_create",
+    DDL("CREATE EXTENSION IF NOT EXISTS vector"),
+)
 
 def get_db():
     db = SessionLocal()

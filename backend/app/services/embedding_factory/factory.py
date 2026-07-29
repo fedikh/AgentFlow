@@ -6,11 +6,12 @@ Returns an embedder exposing the SAME interface as LangChain embeddings:
     .embed_query(str)          -> list[float]
 
 Families:
-    LOCAL   → BGE-M3 via sentence-transformers (free, 1024 dims, the default)
-    OPENAI  → OpenAIEmbeddings (text-embedding-3-*, native 1536/3072 dims)
-    VOYAGE  → VoyageAIEmbeddings (voyage-3.5*, native 1024 dims)
-    GOOGLE  → Gemini embeddings (native 3072 dims)
-    OLLAMA  → local Ollama daemon (mxbai 1024, nomic 768, minilm 384 …)
+    LOCAL   → sentence-transformers (BGE-M3 1024 ★ default, Jina v3 1024)
+    OPENAI  → OpenAIEmbeddings (text-embedding-3-*, default 1536/3072 dims)
+    VOYAGE  → VoyageAIEmbeddings (voyage-4* / voyage-3.5*, default 1024 dims)
+    GOOGLE  → Gemini embeddings (default 3072 dims)
+    OLLAMA  → local Ollama daemon (qwen3-embedding 1024/2560,
+              nomic 768, embeddinggemma 768, minilm 384)
 
 The factory does NOT decide which key/model to use — that's resolver.py's job.
 
@@ -26,13 +27,10 @@ logger = logging.getLogger(__name__)
 
 
 class _LocalEmbedder:
-    """Local sentence-transformers models at their NATIVE dimension, cached
+    """Local sentence-transformers models at their DEFAULT dimension, cached
     process-wide PER MODEL (dimension buckets store each dim natively):
-        BAAI/bge-m3                                   1024, multilingual ★
-        BAAI/bge-base-en-v1.5                          768, English
-        sentence-transformers/all-MiniLM-L6-v2         384, English, fastest
-        sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-                                                       384, multilingual, fast
+        BAAI/bge-m3                 1024, multilingual ★ (default)
+        jinaai/jina-embeddings-v3   1024, multilingual (trust_remote_code)
     """
     _models: dict = {}
 
@@ -45,12 +43,16 @@ class _LocalEmbedder:
             os.environ["TRANSFORMERS_NO_TF"] = "1"
             os.environ["USE_TF"] = "0"
             from sentence_transformers import SentenceTransformer
+            kwargs = {}
+            # jina-embeddings-v3 ships custom modeling code on the Hub
+            if "jina-embeddings" in self.name.lower():
+                kwargs["trust_remote_code"] = True
             try:
                 logger.info(f"[EMB] Loading local model {self.name}…")
-                _LocalEmbedder._models[self.name] = SentenceTransformer(self.name)
+                _LocalEmbedder._models[self.name] = SentenceTransformer(self.name, **kwargs)
             except Exception as e1:
-                logger.warning(f"[EMB] {self.name} failed ({e1}) — falling back to MiniLM")
-                _LocalEmbedder._models[self.name] = SentenceTransformer("all-MiniLM-L6-v2")
+                logger.warning(f"[EMB] {self.name} failed ({e1}) — falling back to BGE-M3")
+                _LocalEmbedder._models[self.name] = SentenceTransformer("BAAI/bge-m3")
         return _LocalEmbedder._models[self.name]
 
     def _query_prefix(self) -> str:
@@ -84,12 +86,13 @@ def local_embedder() -> _LocalEmbedder:
 
 
 class _OllamaEmbedder:
-    """Embeddings from a local Ollama daemon (mxbai-embed-large, nomic-embed-text,
-    all-minilm, …) at each model's NATIVE dimension. No API key — local."""
+    """Embeddings from a local Ollama daemon (qwen3-embedding:*, nomic-embed-text,
+    embeddinggemma:300m, all-minilm, …) at each model's DEFAULT dimension.
+    No API key — local."""
 
     def __init__(self, model: str = "", base_url: str = ""):
         import os
-        self.model = model or "mxbai-embed-large"
+        self.model = model or "nomic-embed-text"
         self.base = (base_url or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
 
     def _one(self, text: str):

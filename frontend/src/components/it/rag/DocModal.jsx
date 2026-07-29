@@ -419,7 +419,11 @@ const DocModal = ({
                     l: "Characters",
                     v: modalData.total_chars?.toLocaleString(),
                   },
-                  { l: "OCR", v: modalData.ocr_quality },
+                  // OCR quality only exists for PDFs (scanned pages) — other
+                  // formats show their image count instead
+                  (modalData.file_type || "").toUpperCase() === "PDF"
+                    ? { l: "OCR", v: modalData.ocr_quality }
+                    : { l: "Images", v: modalData.total_images ?? 0 },
                 ].map((s, i) => (
                   <div key={i} className="rag-stat">
                     <div className="rag-stat-label">{s.l}</div>
@@ -1286,16 +1290,21 @@ function SheetBlock({ sheet, byId }) {
       </div>
       {open && (
         <div style={{ marginTop: 10 }}>
-          {tables.map((t) => (
-            <div key={t.id} style={{ marginBottom: 12 }}>
-              {tables.length > 1 && (
-                <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 3 }}>
-                  {t.location?.range}
+          {tables.map((t) => {
+            const name = t.content?.table_name;
+            const showName = name && !name.includes("!");   // real title, not "Sheet!B4:E9"
+            return (
+              <div key={t.id} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, marginBottom: 3, display: "flex", gap: 8, alignItems: "baseline" }}>
+                  {showName && (
+                    <span style={{ fontWeight: 700, color: "#0F766E" }}>{name}</span>
+                  )}
+                  <span style={{ fontSize: 11, color: "#94A3B8" }}>{t.location?.range}</span>
                 </div>
-              )}
-              <TableGrid table={t} />
-            </div>
-          ))}
+                <TableGrid table={t} />
+              </div>
+            );
+          })}
           {charts.length > 0 && (
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: "#7C3AED" }}>

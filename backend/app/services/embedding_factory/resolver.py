@@ -32,7 +32,7 @@ def resolve_embedding_config(db: Session, space) -> dict:
         import os
         base = getattr(space, "embedding_base_url", "") or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         logger.info(f"[EMB-RESOLVER] Ollama · {model} · {base}")
-        return {"family": "OLLAMA", "model": model or "mxbai-embed-large", "api_key": "", "base_url": base}
+        return {"family": "OLLAMA", "model": model or "nomic-embed-text", "api_key": "", "base_url": base}
 
     # ── 1. Space's own key ──
     own_key_enc = getattr(space, "embedding_api_key_enc", None)

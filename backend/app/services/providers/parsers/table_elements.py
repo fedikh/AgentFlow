@@ -261,8 +261,10 @@ def _chart_element(g, parent_id, ch, sheet_name):
     ct = str(getattr(ch, "chart_type", "")).split(".")[-1].lower()
     title = getattr(ch, "title", None)
     summary = getattr(ch, "summary_text", None) or ""
-    semantic = (f"{ct} chart" + (f" '{title}'" if title else "")
-                + (f": {summary}" if summary else ""))
+    # the summary already names the chart — don't repeat the title
+    semantic = summary if (summary and title and title in summary) else (
+        f"{ct} chart" + (f" '{title}'" if title else "")
+        + (f": {summary}" if summary else ""))
     anchor = getattr(ch, "anchor", None)
     return {
         "id": g.nid("chart"), "parent_id": parent_id, "type": "chart",
@@ -279,12 +281,49 @@ def build_excel_workbook(file_path):
     """
     Return (elements, chunk_sections, engine). Primary: ks-xlsx-parser
     (RAG-native chunks + citations). Fallback: openpyxl + pandas.
+    Legacy .xls (binary BIFF): neither engine can read it — degraded path via
+    pandas+xlrd (tables per sheet; no formulas/merged cells/charts).
     """
+    if str(file_path).lower().endswith(".xls"):
+        return _build_excel_xls(file_path)
     try:
         return _build_excel_ks(file_path)
     except Exception as e:
         logger.warning(f"[EXCEL] ks-xlsx-parser unavailable/failed ({e}); using openpyxl")
         return _build_excel_openpyxl(file_path)
+
+
+def _build_excel_xls(file_path):
+    """Legacy .xls via pandas+xlrd — sheets + typed tables, cleaner applied."""
+    import pandas as pd
+    dfs = pd.read_excel(file_path, sheet_name=None, engine="xlrd")
+
+    g = _IdGen()
+    elements, chunk_sections = [], []
+    sheet_names = list(dfs.keys())
+    wb_el = _workbook_element(g, sheet_names)
+    elements.append(wb_el)
+    sheet_ids = []
+
+    for idx, (name, df) in enumerate(dfs.items()):
+        df = df.dropna(how="all").dropna(axis=1, how="all")
+        s_el = _sheet_element(g, wb_el["id"], name, idx, None, len(df), len(df.columns))
+        elements.append(s_el)
+        child_ids = []
+        if not df.empty:
+            tid = g.nid("table")
+            t_el, cols, rows = _table_element(tid, s_el["id"], name, df, 3, g.order(),
+                                              sheet=name)
+            elements.append(t_el)
+            child_ids.append(tid)
+            chunk_sections.append((name, _table_text(name, cols, rows)))
+        s_el["relationships"]["children"] = child_ids
+        sheet_ids.append(s_el["id"])
+
+    wb_el["relationships"]["children"] = sheet_ids
+    from app.services.providers.parsers.workbook_cleaner import clean_workbook_elements
+    elements, cleaned_sections = clean_workbook_elements(elements)
+    return elements, (cleaned_sections or chunk_sections), "xlrd (legacy .xls)"
 
 
 def _build_excel_ks(file_path):
@@ -425,6 +464,10 @@ def _build_excel_ks(file_path):
         sheet_ids.append(s_el["id"])
 
     wb_el["relationships"]["children"] = sheet_ids
+    # Cleaner pass: dedupe overlapping tables/blocks, drop layout junk, name
+    # tables from their titles, rebuild sections from what survived.
+    from app.services.providers.parsers.workbook_cleaner import clean_workbook_elements
+    elements, chunk_sections = clean_workbook_elements(elements)
     return elements, chunk_sections, "ks-xlsx-parser"
 
 
@@ -527,4 +570,6 @@ def _build_excel_openpyxl(file_path):
         sheet_ids.append(s_el["id"])
 
     wb_el["relationships"]["children"] = sheet_ids
+    from app.services.providers.parsers.workbook_cleaner import clean_workbook_elements
+    elements, chunk_sections = clean_workbook_elements(elements)
     return elements, chunk_sections, "openpyxl"

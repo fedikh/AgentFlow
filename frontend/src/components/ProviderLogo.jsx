@@ -1,4 +1,5 @@
 import React from "react";
+import { BAAI, Jina } from "@lobehub/icons";
 import openaiLogo from "../assets/providers/openai.png";
 import anthropicLogo from "../assets/providers/anthropic.png";
 import geminiLogo from "../assets/providers/gemini.png";
@@ -7,10 +8,11 @@ import ollamaLogo from "../assets/providers/ollama.png";
 import voyageLogo from "../assets/providers/voyage.png";
 
 /**
- * ProviderLogo — real official brand logos as PNG images.
+ * ProviderLogo — real official brand logos.
  *
- * Put the PNG files in:  src/assets/providers/
+ * PNG files in src/assets/providers/:
  *   openai.png  anthropic.png  gemini.png  groq.png  ollama.png  voyage.png
+ * Families without a PNG (BAAI/BGE, Jina …) use SVG marks from @lobehub/icons.
  *
  * Usage:  <ProviderLogo family="OPENAI" size={20} />
  */
@@ -24,9 +26,18 @@ const LOGOS = {
   VOYAGE: voyageLogo,
 };
 
+/* SVG icon components for brands we have no PNG for (local embedding models). */
+const ICON_COMPONENTS = {
+  BAAI: BAAI, // BGE-M3 & other BGE models
+  JINA: Jina, // jina-embeddings-*
+};
+
 const ProviderLogo = ({ family, size = 20 }) => {
-  const src = LOGOS[(family || "").toUpperCase()];
+  const fam = (family || "").toUpperCase();
+  const src = LOGOS[fam];
   if (!src) {
+    const Icon = ICON_COMPONENTS[fam];
+    if (Icon) return <Icon size={size} style={{ flexShrink: 0 }} />;
     return (
       <span
         style={{
