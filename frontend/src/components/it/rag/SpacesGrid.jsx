@@ -40,11 +40,18 @@ const IcLock = () => (
     <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" strokeWidth="1.8" />
   </svg>
 );
+const IcPencil = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
-const SpaceCard = ({ s, onClick, currentUserId }) => {
+const SpaceCard = ({ s, onClick, onEdit, currentUserId }) => {
   const status = (s.status || "DRAFT").toLowerCase();
   const deployed = status === "active";
   const shared = s.owner_id && currentUserId && s.owner_id !== currentUserId;
+  const canEdit = onEdit && s.is_owner !== false;
   return (
     <button className="sg-card" onClick={onClick}>
       <div className="sg-card-head">
@@ -60,6 +67,24 @@ const SpaceCard = ({ s, onClick, currentUserId }) => {
           </div>
           {shared && <div className="sg-shared">Shared with you</div>}
         </div>
+        {canEdit && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Edit name & description"
+            onClick={(e) => { e.stopPropagation(); onEdit(s); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onEdit(s); }
+            }}
+            style={{ display: "inline-grid", placeItems: "center", width: 26,
+                     height: 26, borderRadius: 7, color: "#94a3b8",
+                     flexShrink: 0, cursor: "pointer" }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#2563eb"; e.currentTarget.style.background = "#eff6ff"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.background = "none"; }}
+          >
+            <IcPencil />
+          </span>
+        )}
         <span className="sg-status-wrap">
           <span className={`sg-status ${status}`}>
             {deployed ? "DEPLOYED" : s.status || "DRAFT"}
@@ -86,6 +111,7 @@ const SpacesGrid = ({
   depts,
   spaces,
   openSpace,
+  onEditSpace,
   showCreate,
   setShowCreate,
   createDept,
@@ -104,6 +130,30 @@ const SpacesGrid = ({
 }) => {
   const [showAccess, setShowAccess] = useState(false);
   const [filter, setFilter] = useState("all");
+
+  // ── Edit-card modal (name / description) ──
+  const [editSpace, setEditSpace] = useState(null);
+  const [eName, setEName] = useState("");
+  const [eDesc, setEDesc] = useState("");
+  const [eSaving, setESaving] = useState(false);
+
+  const openEdit = (s) => {
+    setEditSpace(s);
+    setEName(s.name || "");
+    setEDesc(s.description || "");
+  };
+  const submitEdit = async () => {
+    if (!eName.trim()) return;
+    setESaving(true);
+    try {
+      await onEditSpace(editSpace.id, { name: eName.trim(), description: eDesc });
+      setEditSpace(null);
+    } catch {
+      /* parent showed the error — keep the modal open */
+    } finally {
+      setESaving(false);
+    }
+  };
 
   const currentUserId = (() => {
     try {
@@ -290,6 +340,52 @@ const SpacesGrid = ({
         </div>
       )}
 
+      {editSpace && (
+        <div
+          className="rag-create-overlay"
+          onClick={(e) => e.target === e.currentTarget && setEditSpace(null)}
+        >
+          <div className="rag-create-modal">
+            <div className="rag-create-modal-head">
+              <span className="rag-create-title">Edit space</span>
+              <button className="rag-create-x" onClick={() => setEditSpace(null)}>
+                ✕
+              </button>
+            </div>
+
+            <div className="rag-create-body">
+              <label className="rag-create-label">Name</label>
+              <input
+                className="rag-create-input"
+                value={eName}
+                onChange={(e) => setEName(e.target.value)}
+              />
+
+              <label className="rag-create-label">Description</label>
+              <input
+                className="rag-create-input"
+                placeholder="What is this space about?"
+                value={eDesc}
+                onChange={(e) => setEDesc(e.target.value)}
+              />
+            </div>
+
+            <div className="rag-create-foot">
+              <button className="rag-btn" onClick={() => setEditSpace(null)}>
+                Cancel
+              </button>
+              <button
+                className="rag-btn rag-btn-blue"
+                onClick={submitEdit}
+                disabled={!eName.trim() || eSaving}
+              >
+                {eSaving ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {spaces.length > 0 && (
         <div className="sg-filters">
           {FILTERS.map((f) => (
@@ -343,6 +439,7 @@ const SpacesGrid = ({
                       s={s}
                       currentUserId={currentUserId}
                       onClick={() => openSpace(s)}
+                      onEdit={onEditSpace ? openEdit : undefined}
                     />
                   ))}
                 </div>

@@ -194,19 +194,6 @@ const ConfigPanel = ({
       {/* RETRIEVAL */}
       {panel === "retrieval" && (
         <>
-          <label className="rag-cfg-label">
-            Semantic {Math.round(cfg.semantic_weight * 100)}% · Keyword{" "}
-            {Math.round((1 - cfg.semantic_weight) * 100)}%
-          </label>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={cfg.semantic_weight}
-            onChange={(e) => setC("semantic_weight", e.target.value)}
-            className="rag-cfg-range"
-          />
           <label className="rag-cfg-label">Top-K · {cfg.top_k}</label>
           <input
             type="range"

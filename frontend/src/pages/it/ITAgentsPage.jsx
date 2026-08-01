@@ -12,6 +12,7 @@ const ITAgentsPage = () => (
     subtitle="Preview your deployed agents exactly as your end users see them"
     emptyText="You haven't deployed any agents yet. Deploy a space from RAG Spaces to preview it here."
     onlyDeployed
+    basePath="/it/agents"
   />
 );
 

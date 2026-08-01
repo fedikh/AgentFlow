@@ -260,6 +260,14 @@ def list_public_documents(space_id: str, request: Request, db: Session = Depends
     return rag_service.list_public_documents(db, space_id, user.organization_id, user)
 
 
+@router.get("/spaces/{space_id}/public-documents/{doc_id}/content")
+def public_document_content(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
+    """Parsed-text preview — used by the viewer for formats the browser can't
+    render natively (docx / xlsx / pptx…)."""
+    user = _get_current_user(request, db)
+    return rag_service.get_public_document_text(db, space_id, doc_id, user.organization_id, user)
+
+
 @router.delete("/spaces/{space_id}/documents/{doc_id}")
 def delete_document(space_id: str, doc_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
@@ -578,6 +586,22 @@ def eval_run(space_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     space = rag_service._find_space(db, space_id, user.organization_id)
     return eval_service.run_evaluation(db, space, user.organization_id)
+
+
+@router.post("/spaces/{space_id}/eval/run-async")
+def eval_run_async(space_id: str, request: Request, db: Session = Depends(get_db)):
+    """Start the experiment in the background → {job_id, total}. The UI polls
+    run-status for case-by-case progress."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.start_evaluation(db, space, user.organization_id)
+
+
+@router.get("/spaces/{space_id}/eval/run-status/{job_id}")
+def eval_run_status(space_id: str, job_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.job_status(job_id)
 
 
 @router.get("/spaces/{space_id}/eval/runs")

@@ -9,15 +9,78 @@ import "../../../styles/it/versions.css";
  * the live answers match. "Apply" loads a version's config into the working form
  * without deploying it.
  */
+/* Chunking chip shows the REAL config: the per-format strategy map (or
+ * per-document mode) — not just the legacy chunk_strategy column, which
+ * defaults to "recursive" and hid the actual setup. */
+const chunkChip = (cfg) => {
+  const mode = String(cfg.chunk_mode || "SINGLE").toUpperCase();
+  if (mode === "PER_DOCUMENT") return "per document";
+  let map = cfg.chunk_format_map;
+  try {
+    if (typeof map === "string") map = JSON.parse(map);
+  } catch { map = null; }
+  const entries = Object.entries(map || {});
+  if (entries.length) {
+    const shown = entries.slice(0, 3)
+      .map(([ft, v]) => `${ft}:${(v || {}).strategy || "—"}`).join(" ");
+    return entries.length > 3 ? `${shown} +${entries.length - 3}` : shown;
+  }
+  return cfg.chunk_strategy || "recursive";
+};
+
 const cfgChips = (cfg = {}) => {
-  const items = [];
-  if (cfg.chunk_strategy)
-    items.push(["chunk", `${cfg.chunk_strategy} · ${cfg.chunk_size ?? "?"}`]);
+  const items = [["chunk", chunkChip(cfg)]];
   if (cfg.embedding_model)
     items.push(["embed", String(cfg.embedding_model).split("/").pop()]);
   if (cfg.llm_model) items.push(["llm", cfg.llm_model]);
   if (cfg.top_k != null) items.push(["top-k", cfg.top_k]);
   return items;
+};
+
+/* Full config sections of a version — same structure as the experiment
+ * config card, derived from the snapshot's raw space columns. */
+const configSections = (cfg = {}) => {
+  let rp = cfg.retrieval_params;
+  try { if (typeof rp === "string") rp = JSON.parse(rp); } catch { rp = null; }
+  rp = rp || {};
+  const reranker = rp.reranker_provider === "voyage"
+    ? (rp.reranker_model || "rerank-2.5") : "BGE v2-m3 (local)";
+  return [
+    ["Embedding",
+      `${cfg.embedding_model || "—"}` +
+      (cfg.embedding_provider_id ? " · company provider"
+        : cfg.embedding_provider ? ` · ${cfg.embedding_provider}` : "")],
+    ["LLM",
+      `${cfg.llm_model || "—"} · temp ${cfg.llm_temperature ?? 0.2} · ` +
+      `max ${cfg.llm_max_tokens ?? 1024} tok · ` +
+      `prompt ${cfg.system_prompt ? "custom" : "default"}` +
+      (cfg.llm_provider_id ? " · company provider" : "")],
+    ["Chunking",
+      String(cfg.chunk_mode || "SINGLE").toUpperCase() === "PER_DOCUMENT"
+        ? "Per document (see processors below)"
+        : `Single — ${chunkChip(cfg)}`],
+    ["Retrieval",
+      `${rp.search_mode || "hybrid"} · top-${cfg.top_k ?? 5} · ` +
+      `rrf ${rp.rrf_k ?? 60} · fetch ${rp.fetch_k ?? 30}/${rp.keyword_k ?? 30} · ` +
+      `rerank ${reranker} (top ${rp.rerank_top_n ?? 10}) · ` +
+      `enhance ${rp.transform_enabled === false ? "off" : "on"}`],
+  ];
+};
+
+/* Per-format (SINGLE) or per-file (PER_DOCUMENT) chunking processors of a
+ * version — the detail behind the "chunk" chip. */
+const formatProcessors = (cfg = {}) => {
+  const mode = String(cfg.chunk_mode || "SINGLE").toUpperCase();
+  if (mode === "PER_DOCUMENT") {
+    const entries = Object.entries(cfg.documents_chunking || {})
+      .map(([f, v]) => [f, (v || {}).strategy || "—"]);
+    return entries.length ? { title: "Processeurs par fichier", entries } : null;
+  }
+  let map = cfg.chunk_format_map;
+  try { if (typeof map === "string") map = JSON.parse(map); } catch { map = null; }
+  const entries = Object.entries(map || {})
+    .map(([ft, v]) => [ft, (v || {}).strategy || "—"]);
+  return entries.length ? { title: "Processeurs par format", entries } : null;
 };
 
 const fmtDate = (s) => {
@@ -45,6 +108,8 @@ const VersionsPanel = ({
   const [showSave, setShowSave] = useState(false);
   const [label, setLabel] = useState("");
   const [notes, setNotes] = useState("");
+  const [openCfg, setOpenCfg] = useState({});   // version id → full config open
+  const toggleCfg = (id) => setOpenCfg((o) => ({ ...o, [id]: !o[id] }));
 
   const deployedId = space?.deployed_version_id;
   const paused = space?.status === "EDITING";
@@ -197,6 +262,49 @@ const VersionsPanel = ({
                     </span>
                   ))}
                 </div>
+                <button type="button"
+                  onClick={() => toggleCfg(v.id)}
+                  style={{ background: "none", border: "none", padding: "4px 0",
+                           cursor: "pointer", fontSize: 12, color: "#2563eb",
+                           fontWeight: 600 }}>
+                  {openCfg[v.id] ? "▾ Hide full config" : "▸ Full config"}
+                </button>
+                {openCfg[v.id] && (
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse",
+                                  margin: "2px 0 6px" }}>
+                    <tbody>
+                      {configSections(v.config).map(([k, val]) => (
+                        <tr key={k} style={{ borderTop: "1px solid #f1f5f9" }}>
+                          <td style={{ fontWeight: 600, width: 84, padding: "5px 8px 5px 0",
+                                       verticalAlign: "top", color: "#334155" }}>{k}</td>
+                          <td style={{ padding: "5px 0", color: "#64748b" }}>{val}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {(() => {
+                  const fp = formatProcessors(v.config);
+                  if (!fp) return null;
+                  return (
+                    <div style={{ margin: "7px 0 2px" }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8",
+                                    textTransform: "uppercase", letterSpacing: 0.4 }}>
+                        {fp.title}
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                        {fp.entries.slice(0, 8).map(([name, s]) => (
+                          <span key={name} className="vp-chip" title={name}>
+                            <b>{name.length > 24 ? `${name.slice(0, 22)}…` : name}</b> {s}
+                          </span>
+                        ))}
+                        {fp.entries.length > 8 && (
+                          <span className="vp-chip">+{fp.entries.length - 8}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {canBuild && (
                   <div className="vp-actions">
                     <button

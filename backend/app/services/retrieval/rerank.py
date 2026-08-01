@@ -1,17 +1,21 @@
 """
-Re-ranking layer — optional, pluggable, NEVER fatal.
+Cross-Encoder Re-ranking — stage 5. ALWAYS ON, never fatal.
 
-Providers (cfg.reranker_provider):
-    cross_encoder : SentenceTransformers CrossEncoder (local, default
-                    "cross-encoder/ms-marco-MiniLM-L-6-v2")
-    bge           : BGE reranker via CrossEncoder (local, "BAAI/bge-reranker-base")
-    cohere        : Cohere Rerank API      (COHERE_API_KEY)
-    jina          : Jina AI Reranker API   (JINA_API_KEY)
-    voyage        : Voyage Rerank API      (VOYAGE_API_KEY)
+The cross-encoder reads (query + chunk) TOGETHER — unlike embeddings, which
+never see them side by side — giving a far more accurate relevance score.
+The top rerank_top_n fused candidates are re-scored and re-ordered.
 
-Any failure (missing key, model download, network, timeout) logs a warning and
-returns the fused order untouched — retrieval quality degrades gracefully,
-queries never break.
+Models (cfg.reranker_provider):
+    bge    → BAAI/bge-reranker-v2-m3, local via sentence-transformers
+             CrossEncoder (free, cached on disk, the default)
+    voyage → rerank-2.5, Voyage AI Rerank API. Key resolution order:
+                 1. the space's own key   (rag_spaces.reranker_api_key_enc)
+                 2. an admin VOYAGE provider key (api_providers)
+                 3. the VOYAGE_API_KEY environment variable
+
+Any failure (missing model/key, network, timeout) logs a warning and returns
+the fused order untouched — retrieval quality degrades gracefully, queries
+never break.
 """
 from __future__ import annotations
 
@@ -20,131 +24,113 @@ import os
 
 logger = logging.getLogger(__name__)
 
-_LOCAL_MODELS: dict = {}      # model name -> CrossEncoder singleton
+_BGE_DEFAULT = "BAAI/bge-reranker-v2-m3"
+_VOYAGE_DEFAULT = "rerank-2.5"
 
-_DEFAULTS = {
-    "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    "bge": "BAAI/bge-reranker-v2-m3",                       # best local quality
-    "jina_local": "jinaai/jina-reranker-v2-base-multilingual",
-    "flashrank": "ms-marco-MiniLM-L-12-v2",                  # tiny + fast (ONNX)
-    "cohere": "rerank-v3.5",
-    "jina": "jina-reranker-v2-base-multilingual",
-    "voyage": "rerank-2",
-}
+_LOCAL_MODELS: dict = {}     # model name → CrossEncoder singleton
 
-_FLASHRANK: dict = {}     # model name -> flashrank Ranker singleton
+
+def resolve_reranker_key(db, space, source: str = "company") -> str:
+    """Voyage key, honoring the user's choice (cfg.reranker_key_source):
+
+        source="company" → the admin-deployed VOYAGE provider key
+                           (api_providers), falling back to VOYAGE_API_KEY env
+        source="own"     → the space's own encrypted key ONLY
+                           (rag_spaces.reranker_api_key_enc)
+    """
+    if source == "own":
+        return _space_key(space)
+    return _company_key(db) or os.environ.get("VOYAGE_API_KEY", "")
+
+
+def _space_key(space) -> str:
+    enc = getattr(space, "reranker_api_key_enc", None)
+    if not enc:
+        return ""
+    try:
+        from app.services.providers_crypto import decrypt_key
+        return decrypt_key(enc) or ""
+    except Exception as e:
+        logger.warning(f"[RETRIEVAL/rerank] own key decrypt failed: {e}")
+        return ""
+
+
+def _company_key(db) -> str:
+    try:
+        from app.models.api_provider import ApiProvider
+        p = db.query(ApiProvider).filter(ApiProvider.family == "VOYAGE").first()
+        if p and p.api_key_encrypted:
+            from app.services.providers_crypto import decrypt_key
+            return decrypt_key(p.api_key_encrypted) or ""
+    except Exception as e:
+        logger.warning(f"[RETRIEVAL/rerank] company key lookup failed: {e}")
+    return ""
+
+
+def rerank(cfg, query: str, chunks: list) -> list:
+    """Re-order `chunks` by cross-encoder relevance. Fused order on failure."""
+    if not chunks:
+        return chunks
+    head = chunks[: int(cfg.rerank_top_n)]
+    tail = chunks[len(head):]
+    try:
+        if cfg.reranker_provider == "voyage":
+            ranked = _voyage(cfg, query, head)
+        else:
+            ranked = _bge(cfg, query, head)
+        return ranked + tail
+    except Exception as e:
+        logger.warning(f"[RETRIEVAL/rerank] {cfg.reranker_provider} failed ({e}) "
+                       "— keeping fusion order")
+        return chunks
 
 
 def _apply_order(chunks, order_scores):
-    """order_scores: list of (index_into_chunks, score) — highest first."""
+    """order_scores: [(index_into_chunks, 0..1 score)] highest first."""
     out = []
     for i, s in order_scores:
         c = chunks[i]
         c.score = round(float(s), 4)
-        c.method = c.method + "+rerank" if "rerank" not in c.method else c.method
+        c.methods = set(c.methods or {c.method}) | {"rerank"}
+        c.method = "+".join(sorted(c.methods))
         out.append(c)
     return out
 
 
-def _local_cross_encoder(model_name, query, chunks):
+def _bge(cfg, query, chunks):
+    """Local CrossEncoder (sentence-transformers), model singleton."""
     from sentence_transformers import CrossEncoder
-    if model_name not in _LOCAL_MODELS:
-        logger.info(f"[RETRIEVAL/rerank] loading local model {model_name}…")
-        _LOCAL_MODELS[model_name] = CrossEncoder(model_name)
-    model = _LOCAL_MODELS[model_name]
-    scores = model.predict([(query, c.content[:2000]) for c in chunks])
+    name = cfg.reranker_model or _BGE_DEFAULT
+    if name not in _LOCAL_MODELS:
+        logger.info(f"[RETRIEVAL/rerank] loading local model {name}…")
+        _LOCAL_MODELS[name] = CrossEncoder(name)
+    model = _LOCAL_MODELS[name]
+    # 1000-char cap: cross-encoder relevance saturates well before that, and
+    # scoring time grows with passage length (CPU)
+    scores = model.predict([(query, c.content[:1000]) for c in chunks])
     ranked = sorted(range(len(chunks)), key=lambda i: float(scores[i]), reverse=True)
-    # min-max normalize CE logits to 0..1 for consistent downstream scores
     lo, hi = float(min(scores)), float(max(scores))
     span = (hi - lo) or 1.0
     return _apply_order(chunks, [(i, (float(scores[i]) - lo) / span) for i in ranked])
 
 
-def _flashrank(model_name, query, chunks):
-    """FlashRank — small ONNX cross-encoders, very fast on CPU, no torch."""
-    from flashrank import Ranker, RerankRequest
-    if model_name not in _FLASHRANK:
-        logger.info(f"[RETRIEVAL/rerank] loading FlashRank {model_name}…")
-        _FLASHRANK[model_name] = Ranker(model_name=model_name)
-    ranker = _FLASHRANK[model_name]
-    req = RerankRequest(
-        query=query,
-        passages=[{"id": i, "text": c.content[:2000]} for i, c in enumerate(chunks)],
-    )
-    results = ranker.rerank(req)
-    return _apply_order(chunks, [(int(r["id"]), float(r["score"])) for r in results])
-
-
-def _api_rerank(provider, model_name, query, chunks):
+def _voyage(cfg, query, chunks):
+    """Voyage AI Rerank API (rerank-2.5)."""
     import requests
-    docs = [c.content[:2000] for c in chunks]
-    if provider == "cohere":
-        key = os.environ.get("COHERE_API_KEY")
-        if not key:
-            raise RuntimeError("COHERE_API_KEY not set")
-        r = requests.post(
-            "https://api.cohere.com/v2/rerank",
-            headers={"Authorization": f"Bearer {key}"},
-            json={"model": model_name, "query": query, "documents": docs},
-            timeout=20,
-        )
-        r.raise_for_status()
-        results = r.json().get("results", [])
-        return _apply_order(chunks, [(x["index"], x["relevance_score"]) for x in results])
-    if provider == "jina":
-        key = os.environ.get("JINA_API_KEY")
-        if not key:
-            raise RuntimeError("JINA_API_KEY not set")
-        r = requests.post(
-            "https://api.jina.ai/v1/rerank",
-            headers={"Authorization": f"Bearer {key}"},
-            json={"model": model_name, "query": query, "documents": docs},
-            timeout=20,
-        )
-        r.raise_for_status()
-        results = r.json().get("results", [])
-        return _apply_order(
-            chunks, [(x["index"], x.get("relevance_score", 0.0)) for x in results])
-    if provider == "voyage":
-        key = os.environ.get("VOYAGE_API_KEY")
-        if not key:
-            raise RuntimeError("VOYAGE_API_KEY not set")
-        r = requests.post(
-            "https://api.voyageai.com/v1/rerank",
-            headers={"Authorization": f"Bearer {key}"},
-            json={"model": model_name, "query": query, "documents": docs},
-            timeout=20,
-        )
-        r.raise_for_status()
-        results = r.json().get("data", [])
-        return _apply_order(
-            chunks, [(x["index"], x.get("relevance_score", 0.0)) for x in results])
-    raise RuntimeError(f"unknown reranker provider '{provider}'")
-
-
-def rerank(cfg, query: str, chunks: list) -> list:
-    """Re-rank fused candidates. Returns chunks re-ordered (or unchanged on
-    any failure). Only the top cfg.rerank_top_n candidates are scored —
-    cross-encoders are accurate but slow."""
-    if not cfg.rerank or len(chunks) <= 1:
-        return chunks
-    provider = (cfg.reranker_provider or "bge").lower()
-    model_name = cfg.reranker_model or _DEFAULTS.get(provider, "")
-    head = chunks[: int(cfg.rerank_top_n)]
-    tail = chunks[int(cfg.rerank_top_n):]
-    try:
-        if provider in ("cross_encoder", "bge", "jina_local"):
-            ranked = _local_cross_encoder(model_name, query, head)
-        elif provider == "flashrank":
-            ranked = _flashrank(model_name, query, head)
-        else:
-            ranked = _api_rerank(provider, model_name, query, head)
-        # optional relevance floor: drop clearly-irrelevant reranked results
-        thr = float(getattr(cfg, "rerank_threshold", 0) or 0)
-        if thr > 0:
-            kept = [c for c in ranked if c.score >= thr]
-            ranked = kept or ranked[:1]      # never return an empty context
-        return ranked + tail
-    except Exception as e:
-        logger.warning(f"[RETRIEVAL/rerank] {provider} failed ({e}) — keeping fusion order")
-        return chunks
+    key = cfg.reranker_api_key or os.environ.get("VOYAGE_API_KEY", "")
+    if not key:
+        raise RuntimeError("no Voyage API key (space key / provider / env)")
+    r = requests.post(
+        "https://api.voyageai.com/v1/rerank",
+        headers={"Authorization": f"Bearer {key}"},
+        json={
+            "model": cfg.reranker_model or _VOYAGE_DEFAULT,
+            "query": query,
+            "documents": [c.content[:4000] for c in chunks],
+            "top_k": len(chunks),
+        },
+        timeout=20,
+    )
+    r.raise_for_status()
+    data = r.json().get("data", [])
+    return _apply_order(chunks, [(d["index"], float(d["relevance_score"])) for d in data])

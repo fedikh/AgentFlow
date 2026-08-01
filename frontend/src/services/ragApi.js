@@ -180,6 +180,9 @@ export const evalUploadDatasetFile = async (s, file) => {
 };
 export const evalGenerateCases = (s, n = 8) => req("POST", `/rag/spaces/${s}/eval/generate-cases?n=${n}`);
 export const evalRun = (s) => req("POST", `/rag/spaces/${s}/eval/run`);
+export const evalRunAsync = (s) => req("POST", `/rag/spaces/${s}/eval/run-async`);
+export const getPublicDocumentText = (s, d) => req("GET", `/rag/spaces/${s}/public-documents/${d}/content`);
+export const evalRunStatus = (s, job) => req("GET", `/rag/spaces/${s}/eval/run-status/${job}`);
 export const evalRuns = (s) => req("GET", `/rag/spaces/${s}/eval/runs`);
 export const evalRunDetail = (s, id) => req("GET", `/rag/spaces/${s}/eval/runs/${id}`);
 

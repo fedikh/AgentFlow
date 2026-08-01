@@ -19,8 +19,8 @@ const FT_LABEL = {
 const isPerDoc = (space) =>
   String(space.chunk_mode || "SINGLE").toUpperCase() === "PER_DOCUMENT";
 
-// Compact summary line for the chunking stage.
-const chunkSummary = (space) => {
+// Compact summary line for the chunking stage (exported — flow chips reuse it).
+export const chunkSummary = (space) => {
   if (isPerDoc(space)) return "Per document";
   const map = space.chunk_format_map || {};
   const n = Object.keys(map).length;
@@ -47,29 +47,33 @@ const chunkRows = (space) => {
   return rows;
 };
 
+/* Source precedence mirrors the selectors: a chosen COMPANY provider
+ * (provider_id set) wins over a leftover own key. */
 function llmSource(space, providers) {
-  if (space.llm_has_own_key)
-    return { label: "My own key", family: space.llm_provider };
   if (space.llm_provider_id) {
     const p = providers.find((x) => x.id === space.llm_provider_id);
     return {
-      label: `Company · ${p?.name || space.llm_provider_id}`,
+      // never surface the raw provider UUID — plain "Company" when the
+      // provider list isn't loaded (or the name can't be resolved)
+      label: p?.name ? `Company · ${p.name}` : "Company",
       family: p?.family || space.llm_provider,
     };
   }
+  if (space.llm_has_own_key)
+    return { label: "My own key", family: space.llm_provider };
   return { label: "Local · Ollama", family: "OLLAMA" };
 }
 
 export function embSource(space, providers) {
-  if (space.embedding_has_own_key)
-    return { label: "My own key", family: space.embedding_provider };
   if (space.embedding_provider_id) {
     const p = providers.find((x) => x.id === space.embedding_provider_id);
     return {
-      label: `Company · ${p?.name || space.embedding_provider_id}`,
+      label: p?.name ? `Company · ${p.name}` : "Company",
       family: p?.family || space.embedding_provider,
     };
   }
+  if (space.embedding_has_own_key)
+    return { label: "My own key", family: space.embedding_provider };
   if ((space.embedding_provider || "").toUpperCase() === "OLLAMA")
     return { label: "Ollama · local", family: "OLLAMA" };
   return { label: "Local · free", family: "LOCAL" };
@@ -142,6 +146,28 @@ export function useEffectiveModels(space) {
   return eff;
 }
 
+/* Retrieval stage card — reads the saved engine settings (retrieval_params).
+ * Single source of truth for the flow card AND the "Currently saved" bar. */
+const MODE_LABEL = { hybrid: "Hybrid", vector: "Vector", keyword: "Keyword" };
+
+function retrievalSection(space) {
+  const rp =
+    (typeof space.retrieval_params === "object" && space.retrieval_params) || {};
+  const mode = MODE_LABEL[rp.search_mode] || "Hybrid";
+  const reranker =
+    rp.reranker_provider === "voyage" ? "rerank-2.5 (Voyage)" : "BGE v2-m3 (local)";
+  return {
+    how: "Finds the most relevant chunks — vector search (meaning, pgvector + HNSW) and/or keyword search (exact words, PostgreSQL full-text) merged by Reciprocal Rank Fusion — then a cross-encoder re-ranks the top candidates.",
+    summary: `${mode} · top-${space.top_k ?? 5}`,
+    rows: [
+      ["Search mode", mode],
+      ["Query enhancement", rp.transform_enabled === false ? "Off" : "On"],
+      ["Re-ranker", reranker],
+      ["Top-K", space.top_k ?? 5],
+    ],
+  };
+}
+
 /**
  * Returns the ordered pipeline sections for a space.
  * `overrides` = { llm, emb } effective model ids (from useEffectiveModels).
@@ -151,7 +177,6 @@ export function buildPipelineSections(space, providers = [], overrides = {}) {
   if (!space) return [];
   const llm = llmSource(space, providers);
   const emb = embSource(space, providers);
-  const sem = space.semantic_weight ?? 0.7;
 
   const embModel = overrides.emb || space.embedding_model || "BAAI/bge-m3";
   const llmModel =
@@ -215,14 +240,7 @@ export function buildPipelineSections(space, providers = [], overrides = {}) {
       accent: "#10b981",
       title: "Retrieval",
       tag: "Search",
-      how: "Finds the most relevant chunks with hybrid search — semantic similarity blended with keyword matching — then optionally re-ranks with the LLM.",
-      summary: `${pct(sem)} sem · top-${space.top_k ?? 5}`,
-      rows: [
-        ["Engine", space.search_engine || "HYBRID"],
-        ["Semantic / keyword", `${pct(sem)} / ${pct(1 - sem)}`],
-        ["Top-K", space.top_k ?? 5],
-        ["Reranking", space.reranking_enabled ? "On" : "Off"],
-      ],
+      ...retrievalSection(space),
     },
     {
       key: "eval",

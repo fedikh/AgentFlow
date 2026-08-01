@@ -137,6 +137,12 @@ class RAGSpace(Base):
     retrieval_params   = Column(Text, nullable=True)
     # Evaluation settings: independent judge choice (JSON: {judge, judge_model})
     eval_params        = Column(Text, nullable=True)
+    # Re-ranker own key (Voyage rerank-2.5) — encrypted at rest, like the
+    # llm/embedding own keys
+    reranker_api_key_enc = Column(Text, nullable=True)
+    # Evaluation judge own key — the judge LLM is independent from the RAG's
+    # LLM; its key follows the same encrypted-at-rest flow
+    judge_api_key_enc = Column(Text, nullable=True)
     # Native dimension of the space's embedding model → picks the
     # chunk_vectors_<dim> bucket table (dimension-per-space architecture)
     embedding_dim      = Column(Integer, nullable=True)

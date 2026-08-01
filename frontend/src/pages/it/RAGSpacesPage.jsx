@@ -170,7 +170,6 @@ function csvContentToGrid(c) {
 // first column + empties, since CSV/Excel are rectangular).
 function gridToCsvContent(prev, headers, grid) {
   const pos = matrixToPositional(buildMatrix(grid));
-  const ncols = headers.length || (pos[0] ? pos[0].length : 1);
   const columns = headers.map((h, i) => { const p = (prev.columns || [])[i] || {}; return { name: h, type: p.type || "string", nullable: p.nullable ?? true }; });
   const rows = pos.map((r, ri) => ({ index: ri + 1, values: Object.fromEntries(headers.map((h, ci) => [h, r[ci] ?? ""])) }));
   return { ...prev, columns, rows };
@@ -539,9 +538,9 @@ const RAGSpacesPage = () => {
           : 0.2,
         llm_max_tokens: parseInt(cfg.llm_max_tokens) || 1024,
         top_k: parseInt(cfg.top_k),
-        semantic_weight: parseFloat(cfg.semantic_weight),
-        reranking_enabled: !!cfg.reranking_enabled,
         system_prompt: cfg.system_prompt || null,
+        // ── Retrieval engine settings (search mode, reranker, rrf_k…) ──
+        retrieval_params: cfg.retrieval_params || {},
         // ── LLM source (new) ──
         llm_provider_id: cfg.llm_provider_id || null,
         llm_base_url: cfg.llm_base_url || null,
@@ -551,18 +550,19 @@ const RAGSpacesPage = () => {
       // Only send keys if the IT typed a new one (they're write-only)
       if (cfg.llm_api_key) payload.llm_api_key = cfg.llm_api_key;
       if (cfg.embedding_api_key) payload.embedding_api_key = cfg.embedding_api_key;
+      if (cfg.reranker_api_key) payload.reranker_api_key = cfg.reranker_api_key;
 
       await updateSpace(activeSpace.id, payload);
       setSuccess("Configuration saved");
 
       // clear the typed keys from local state after saving
-      setCfg((c) => ({ ...c, llm_api_key: "", embedding_api_key: "" }));
+      setCfg((c) => ({ ...c, llm_api_key: "", embedding_api_key: "", reranker_api_key: "" }));
 
       const u = await listSpaces();
       const s = u.find((x) => x.id === activeSpace.id);
       if (s) {
         setActiveSpace(s);
-        setCfg(() => ({ ...s, llm_api_key: "", embedding_api_key: "" }));
+        setCfg(() => ({ ...s, llm_api_key: "", embedding_api_key: "", reranker_api_key: "" }));
       }
     } catch (e) {
       setError(e.message);
@@ -572,10 +572,22 @@ const RAGSpacesPage = () => {
   };
 
   // ── Sync a space dict returned by the API into local state ──
+  // ── Edit a space's name/description from the card's ✎ button ──
+  const handleEditSpace = async (spaceId, payload) => {
+    try {
+      const s = await updateSpace(spaceId, payload);
+      setSpaces((list) => list.map((x) => (x.id === spaceId ? { ...x, ...s } : x)));
+      setSuccess("Space updated");
+    } catch (e) {
+      setError(e.message);
+      throw e;                 // keep the modal open on failure
+    }
+  };
+
   const syncSpace = (s) => {
     if (!s) return;
     setActiveSpace(s);
-    setCfg({ ...s, llm_api_key: "", embedding_api_key: "" });
+    setCfg({ ...s, llm_api_key: "", embedding_api_key: "", reranker_api_key: "" });
     setSpaces((list) => list.map((x) => (x.id === s.id ? s : x)));
   };
 
@@ -586,7 +598,7 @@ const RAGSpacesPage = () => {
     setLoadingVersions(true);
     try {
       setVersions(await listVersions(sid));
-    } catch (e) {
+    } catch {
       /* non-fatal — versions just won't render */
     } finally {
       setLoadingVersions(false);
@@ -941,7 +953,8 @@ const RAGSpacesPage = () => {
       const r = await queryRAG(activeSpace.id, q);
       setChatHistory((h) => [
         ...h,
-        { role: "assistant", content: r.answer, sources: r.sources },
+        { role: "assistant", content: r.answer, sources: r.sources,
+          timings: r.timings },
       ]);
     } catch (e) {
       setChatHistory((h) => [
@@ -1160,6 +1173,7 @@ const RAGSpacesPage = () => {
           depts={depts}
           spaces={spaces}
           openSpace={openSpace}
+          onEditSpace={handleEditSpace}
           showCreate={showCreate}
           setShowCreate={setShowCreate}
           createDept={createDept}
@@ -1203,9 +1217,6 @@ const RAGSpacesPage = () => {
               </div>
             </div>
             <div className="rag-header-actions">
-              <span className="rag-config-tag">
-                {activeSpace.chunk_strategy} · {activeSpace.chunk_size}
-              </span>
               <span className="rag-config-tag">
                 {activeSpace.num_chunks} chunks
               </span>

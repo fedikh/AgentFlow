@@ -6,6 +6,7 @@ import {
 import { getLLMModels } from "../../../services/ragApi";
 import CustomDropdown from "./CustomDropdown";
 import ProviderLogo from "../../ProviderLogo";
+import SavedKeyInput from "./SavedKeyInput";
 
 /**
  * LLMSourceSelector — Batch 8. Three finalized sources:
@@ -266,14 +267,15 @@ const LLMSourceSelector = ({ value, onChange, hasOwnKey }) => {
           <label className="rag-cfg-label">
             API key{ownFamily === "CUSTOM" ? " (optional)" : ""}
           </label>
-          <input
-            className="rag-cfg-select"
-            type="password"
-            onChange={(e) => onChange({ llm_api_key: e.target.value })}
-            placeholder={hasOwnKey ? "Key saved — type to replace" : "sk-..."}
+          <SavedKeyInput
+            masked={value.llm_api_key_masked}
+            hasKey={hasOwnKey}
+            value={value.llm_api_key || ""}
+            onChange={(v) => onChange({ llm_api_key: v })}
+            placeholder="sk-..."
           />
           <div className="rag-cfg-hint">
-            Stored encrypted. Never shown again.
+            Stored encrypted. Only a masked preview is ever shown.
           </div>
 
           <label className="rag-cfg-label">

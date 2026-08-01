@@ -265,6 +265,19 @@ def _strval(v):
     return str(v.value if hasattr(v, "value") else v)
 
 
+def _masked_own_key(space, attr: str) -> str:
+    """Masked preview ('sk-•••4f2') of a space's encrypted own key — safe to
+    show in the UI; the full key is never sent to the frontend."""
+    enc = getattr(space, attr, None)
+    if not enc:
+        return ""
+    try:
+        from app.services.providers_crypto import decrypt_key, mask_key
+        return mask_key(decrypt_key(enc))
+    except Exception:
+        return "•••"
+
+
 def _load_json(raw):
     """JSON text (or dict) → dict; {} on anything unparseable."""
     if not raw:
@@ -317,6 +330,11 @@ def _space_dict(db, space, user=None):
         # NEW (Batch 6): embedding source for the IT selector (mirrors LLM)
         "embedding_provider_id": getattr(space, 'embedding_provider_id', None),
         "embedding_has_own_key": bool(getattr(space, 'embedding_api_key_enc', None)),
+        "embedding_api_key_masked": _masked_own_key(space, 'embedding_api_key_enc'),
+        "reranker_has_own_key": bool(getattr(space, 'reranker_api_key_enc', None)),
+        "reranker_api_key_masked": _masked_own_key(space, 'reranker_api_key_enc'),
+        "judge_has_own_key": bool(getattr(space, 'judge_api_key_enc', None)),
+        "judge_api_key_masked": _masked_own_key(space, 'judge_api_key_enc'),
         "embedding_base_url": getattr(space, 'embedding_base_url', None),
         "llm_provider": getattr(space, 'llm_provider', 'GROQ') or 'GROQ',
         "llm_model": getattr(space, 'llm_model', 'llama-3.3-70b-versatile') or 'llama-3.3-70b-versatile',
@@ -325,6 +343,7 @@ def _space_dict(db, space, user=None):
         # NEW: provider source for the IT selector (safe getattr — may not exist yet)
         "llm_provider_id": getattr(space, 'llm_provider_id', None),
         "llm_has_own_key": bool(getattr(space, 'llm_api_key_enc', None)),
+        "llm_api_key_masked": _masked_own_key(space, 'llm_api_key_enc'),
         "top_k": space.top_k,
         "search_engine": getattr(space, 'search_engine', 'HYBRID') or 'HYBRID',
         "semantic_weight": getattr(space, 'semantic_weight', 0.7) if getattr(space, 'semantic_weight', None) is not None else 0.7,
@@ -370,10 +389,11 @@ _VERSION_CONFIG_COLUMNS = [
     "llm_provider", "llm_model", "llm_temperature", "llm_max_tokens",
     "llm_provider_id", "llm_api_key_enc", "llm_base_url",
     "top_k", "search_engine", "semantic_weight", "reranking_enabled",
-    "retrieval_params",
+    "retrieval_params", "reranker_api_key_enc",
     "system_prompt",
 ]
-_VERSION_SECRET_KEYS = ("llm_api_key_enc", "embedding_api_key_enc")
+_VERSION_SECRET_KEYS = ("llm_api_key_enc", "embedding_api_key_enc",
+                        "reranker_api_key_enc")
 
 # Only these columns affect the built index. A change to any of them means the
 # stored chunks are stale and a full re-index is needed. Query-time fields
@@ -417,17 +437,41 @@ def _config_fp(space) -> tuple:
     return tuple(_canon(getattr(space, c, None)) for c in _VERSION_CONFIG_COLUMNS)
 
 
-def _snapshot_config(space: RAGSpace) -> dict:
+def _snapshot_config(db: Session, space: RAGSpace) -> dict:
     """Capture the space's current pipeline config as a JSON-serializable dict.
-    chunk_params/chunk_format_map are stored as text and copied verbatim."""
-    return {col: getattr(space, col, None) for col in _VERSION_CONFIG_COLUMNS}
+    chunk_params/chunk_format_map are stored as text and copied verbatim.
+    ALSO captures the PER-DOCUMENT chunking choices (they live on the
+    documents table — without them a version couldn't bring back the
+    strategy chosen per file)."""
+    snap = {col: getattr(space, col, None) for col in _VERSION_CONFIG_COLUMNS}
+    docs = db.query(Document).filter(Document.rag_space_id == space.id).all()
+    snap["documents_chunking"] = {
+        d.file_name: {
+            "strategy": d.chunk_strategy or d.chosen_strategy or None,
+            "params": _load_json(getattr(d, "chunk_params", None)) or None,
+        }
+        for d in docs
+    }
+    return snap
 
 
-def _apply_config(space: RAGSpace, cfg: dict):
-    """Write a version's snapshot back onto the space columns."""
+def _apply_config(db: Session, space: RAGSpace, cfg: dict):
+    """Write a version's snapshot back onto the space columns AND restore the
+    per-document chunking choices (matched by file name; documents added
+    after the snapshot keep their current setting)."""
     for col in _VERSION_CONFIG_COLUMNS:
         if col in cfg:
             setattr(space, col, cfg[col])
+    dc = cfg.get("documents_chunking") or {}
+    if dc:
+        for d in db.query(Document).filter(Document.rag_space_id == space.id).all():
+            entry = dc.get(d.file_name)
+            if not entry:
+                continue
+            if entry.get("strategy"):
+                d.chunk_strategy = entry["strategy"]
+            if entry.get("params"):
+                d.chunk_params = json.dumps(entry["params"])
 
 
 def _version_dict(v: RAGSpaceVersion) -> dict:
@@ -474,7 +518,7 @@ def _create_version(db, space, user, label=None, notes=None) -> RAGSpaceVersion:
         label=(label or f"v{n}").strip(),
         status="SAVED",
         notes=notes,
-        config=json.dumps(_snapshot_config(space)),
+        config=json.dumps(_snapshot_config(db, space)),
         created_by=getattr(user, "id", None),
     )
     db.add(v)
@@ -511,7 +555,7 @@ def apply_version(db, space_id, org_id, user, version_id) -> dict:
         )
     v = _find_version(db, space.id, version_id)
     fp_before = _index_fp(space)
-    _apply_config(space, _load_json(v.config))
+    _apply_config(db, space, _load_json(v.config))
     if _index_fp(space) != fp_before:
         space.reindex_required = True   # index-relevant config changed
     db.commit()
@@ -544,7 +588,7 @@ def deploy_version(db, space_id, org_id, user, version_id, publish=False) -> dic
         raise HTTPException(403, "Only the owner can deploy this space")
     v = _find_version(db, space.id, version_id)
     fp_before = _index_fp(space)
-    _apply_config(space, _load_json(v.config))
+    _apply_config(db, space, _load_json(v.config))
     if _index_fp(space) != fp_before:
         space.reindex_required = True   # deploying a different index config
     _mark_deployed(db, space, v, publish)
@@ -701,6 +745,8 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
     _was_active = _strval(space.status) == "ACTIVE"
 
     # Chiffre la clé propre de l'IT si fournie (jamais stockée en clair)
+    _new_llm_key = bool(payload.get("llm_api_key"))
+    _new_emb_key = bool(payload.get("embedding_api_key"))
     if "llm_api_key" in payload:
         raw = payload.pop("llm_api_key")
         if raw:
@@ -717,6 +763,42 @@ def update_space(db: Session, space_id: str, org_id: str, data: UpdateRAGSpaceRe
             space.embedding_api_key_enc = encrypt_key(raw)
         else:
             space.embedding_api_key_enc = None
+
+    # Re-ranker own key (Voyage rerank-2.5) — same encrypted-at-rest flow
+    if "reranker_api_key" in payload:
+        raw = payload.pop("reranker_api_key")
+        if raw:
+            from app.services.providers_crypto import encrypt_key
+            space.reranker_api_key_enc = encrypt_key(raw)
+        else:
+            space.reranker_api_key_enc = None
+
+    # Evaluation judge own key — same encrypted-at-rest flow
+    if "judge_api_key" in payload:
+        raw = payload.pop("judge_api_key")
+        if raw:
+            from app.services.providers_crypto import encrypt_key
+            space.judge_api_key_enc = encrypt_key(raw)
+        else:
+            space.judge_api_key_enc = None
+
+    # ── Source exclusivity: a space uses ONE source per capability. Choosing
+    # a COMPANY provider clears any stored own key, and switching to a
+    # LOCAL/OLLAMA source clears it too — otherwise the stale key silently
+    # wins in the resolver and the UI shows "My own key" after the user
+    # explicitly picked Company. ──
+    if payload.get("llm_provider_id") and not _new_llm_key:
+        space.llm_api_key_enc = None
+    if payload.get("embedding_provider_id") and not _new_emb_key:
+        space.embedding_api_key_enc = None
+    if ("embedding_provider" in payload and not payload.get("embedding_provider_id")
+            and str(payload.get("embedding_provider") or "").upper() in ("LOCAL", "OLLAMA")
+            and not _new_emb_key):
+        space.embedding_api_key_enc = None
+    if ("llm_provider" in payload and not payload.get("llm_provider_id")
+            and str(payload.get("llm_provider") or "").upper() == "OLLAMA"
+            and not _new_llm_key):
+        space.llm_api_key_enc = None
 
     # ── Access control (Batch 1) — sync the allowed-user list ──
     # Pop it out so the generic setattr loop below never sees it (not a column).
@@ -965,6 +1047,24 @@ def delete_document(db: Session, space_id: str, doc_id: str, org_id: str) -> dic
     db.delete(doc)
     db.commit()
     return {"message": f"Document '{name}' deleted"}
+
+
+def get_public_document_text(db: Session, space_id: str, doc_id: str, org_id: str, user=None) -> dict:
+    """Parsed-text preview of a document — lets the viewer show SOMETHING for
+    binary formats the browser can't render (docx / xlsx / pptx…). Same access
+    rules as the file route."""
+    space = _find_space(db, space_id, org_id)
+    if user is not None and _role_name(user) == "USER":
+        check_space_access(db, space, user)
+    doc = db.query(Document).filter(Document.id == doc_id, Document.rag_space_id == space_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    data = _load_json(getattr(doc, "loaded_content", None))
+    text = (data.get("raw_text") or "").strip()
+    if not text:
+        raise HTTPException(404, "No text preview available for this document")
+    return {"file_name": doc.file_name, "file_type": doc.file_type,
+            "text": text[:300000]}
 
 
 def get_document_file(db: Session, space_id: str, doc_id: str, org_id: str, user=None) -> dict:
@@ -2041,7 +2141,7 @@ def process_document(db: Session, space_id: str, doc_id: str, org_id: str) -> di
                 parent_index=chunk_data.get("parent_index"),
                 # ── chunk metadata carried from parsing/chunking ──
                 section_path=(chunk_data.get("section") or None),
-                chunk_meta=(json.dumps(chunk_data["meta"]) if chunk_data.get("meta") else None),
+                chunk_meta=(chunk_data.get("meta") or None),   # JSONB — dict stored natively
                 content_hash=_content_md5(content),
                 token_count=_count_tokens(content),
                 lang=_detect_lang(content),
@@ -2197,11 +2297,15 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: Use
     #    dense/BM25/metadata/exact in parallel → fusion → optional rerank →
     #    context builder. Falls back to the legacy dense+keyword search if the
     #    engine fails, so querying never breaks.
+    import time as _time
+    _t0 = _time.perf_counter()
+    _stage_timings = {}
     items = []
     try:
         from app.services.retrieval import retrieve as engine_retrieve
         result = engine_retrieve(db, space, data.question)
         items = result["items"]
+        _stage_timings = result.get("timings_ms") or {}
     except Exception as e:
         logger.warning(f"[QUERY] retrieval engine failed ({e}) — legacy fallback")
         query_embedding = embed_query(db, space, data.question)
@@ -2234,7 +2338,9 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: Use
     sources_text = "\n".join(sources_info)
 
     # ── LLM Factory: resolves provider/model/key/prompt from the space ──
+    _t_answer = _time.perf_counter()
     answer = generate_answer(db, space, data.question, context, sources_text)
+    _answer_ms = round((_time.perf_counter() - _t_answer) * 1000, 1)
 
     from urllib.parse import quote
 
@@ -2246,6 +2352,10 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: Use
             "page": m["page"],
             "score": m["score"],
             "method": m.get("method", ""),
+            # context construction merges adjacent chunks of one document into
+            # a single passage — surface how many, so "sources · 2" with
+            # top-k 4 is explainable in the UI
+            "chunks": len(m.get("chunk_ids") or []) or 1,
         }
         # Batch 5: if the retrieved chunk is an image, expose it so the chat can
         # render it inline. image_url is relative to the API base; the frontend
@@ -2255,4 +2365,16 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: Use
             src["image_url"] = f"/rag/spaces/{space_id}/image?path={quote(m['image_path'])}"
         sources.append(src)
 
-    return {"answer": answer, "sources": sources}
+    # The CONTEXT stays in document order (better for the LLM); the SOURCES
+    # list is for humans — show it best-first.
+    sources.sort(key=lambda s: s.get("score") or 0, reverse=True)
+
+    # Latency breakdown for the manual-evaluation UI (per-stage retrieval
+    # timings come straight from the engine).
+    timings = {
+        "retrieval_ms": _stage_timings.get("total"),
+        "answer_ms": _answer_ms,
+        "total_ms": round((_time.perf_counter() - _t0) * 1000, 1),
+        "stages": _stage_timings,
+    }
+    return {"answer": answer, "sources": sources, "timings": timings}

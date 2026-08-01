@@ -1,6 +1,9 @@
-from .dense import DenseRetriever
-from .bm25 import BM25Retriever
-from .metadata import MetadataRetriever
-from .exact import ExactMatchRetriever
+"""The two search branches:
 
-__all__ = ["DenseRetriever", "BM25Retriever", "MetadataRetriever", "ExactMatchRetriever"]
+    vector  — pgvector + HNSW, cosine (semantic)
+    keyword — PostgreSQL FTS: tsvector + GIN + ts_rank, all-language (lexical)
+"""
+from .keyword import KeywordRetriever
+from .vector import VectorRetriever
+
+__all__ = ["VectorRetriever", "KeywordRetriever"]

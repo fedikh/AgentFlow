@@ -1,14 +1,14 @@
 """
-Evaluation — Ragas scoring for the context & answer metrics
-(context_recall, context_precision, faithfulness, answer_relevancy),
-with a single-call judge fallback so a Ragas failure never breaks a run.
-
-An all-None Ragas result (every job errored internally) is treated as a
-FAILURE — the caller falls back and the run's "powered by" stays honest.
+Scoring — generation. Ragas is the LLM-as-judge framework: faithfulness,
+answer_relevancy, context_precision and context_recall are computed by Ragas
+driving the independent judge LLM (scoring/judge.py) + the space's own
+embedder. A single-call judge fallback covers Ragas failures so a run never
+breaks; an all-None Ragas result is treated as a failure ("powered by" stays
+honest).
 """
 from __future__ import annotations
 
-from .common import logger, json_from
+from ..common import logger, json_from
 
 _ASPECTS = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
 
@@ -16,7 +16,9 @@ _ASPECTS = ["faithfulness", "answer_relevancy", "context_precision", "context_re
 def ragas_scores(db, space, judge, question, expected, contexts, answer):
     """→ dict of the 4 metrics (+scored_by="ragas"), or None on failure."""
     try:
+        from copy import deepcopy
         from ragas import evaluate, EvaluationDataset, SingleTurnSample
+        from ragas.run_config import RunConfig
         from ragas.metrics import (faithfulness, answer_relevancy,
                                    context_precision, context_recall)
         from ragas.llms import LangchainLLMWrapper
@@ -34,9 +36,16 @@ def ragas_scores(db, space, judge, question, expected, contexts, answer):
         )
         result = evaluate(
             EvaluationDataset(samples=[sample]),
-            metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
+            # deepcopy: the imported metrics are module-level SINGLETONS and
+            # cases run in parallel threads — sharing them races the llm/
+            # embeddings assignment ("llm must be set to compute score")
+            metrics=[deepcopy(faithfulness), deepcopy(answer_relevancy),
+                     deepcopy(context_precision), deepcopy(context_recall)],
             llm=LangchainLLMWrapper(judge),
             embeddings=LangchainEmbeddingsWrapper(emb),
+            # hard budget: a slow/rate-limited metric errors out instead of
+            # hanging the whole experiment (the fallback scorer takes over)
+            run_config=RunConfig(timeout=90, max_retries=2),
             show_progress=False,
         )
         row = result.to_pandas().iloc[0].to_dict()
@@ -82,10 +91,11 @@ ANSWER: {answer}"""
 def fallback_scores(judge, question, expected, context, answer):
     """Single judge call scoring the same 4 aspects — used when Ragas fails."""
     try:
-        out = json_from(getattr(judge.invoke(_FALLBACK_PROMPT.format(
+        from .judge import _invoke_with_retry
+        out = json_from(_invoke_with_retry(judge, _FALLBACK_PROMPT.format(
             question=question, expected=expected or "(none)",
             context=(context or "")[:6000], answer=(answer or "")[:2000],
-        )), "content", ""))
+        )))
         if not isinstance(out, dict):
             return {}
         res = {}

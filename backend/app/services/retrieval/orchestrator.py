@@ -1,21 +1,30 @@
 """
-Retriever Orchestrator — the engine's brain.
+Retriever Orchestrator — wires the pipeline.
 
-    analyze → pick strategy → run retrievers in parallel (own db session each,
-    per-retriever timeout) → fuse (RRF/weighted) → optional rerank → build
-    context. Timings for every stage are logged and returned for profiling.
+                     User Query
+                          │
+              1. Query Transformation      transforms.py  (LLM: rewrite,
+                          │                 expansion, multi-query, spell,
+                          │                 noise — enabled by default)
+            ┌─────────────┴─────────────┐
+            ▼                           ▼
+     2a. Vector Search           2b. Keyword Search
+     pgvector + HNSW             PostgreSQL FTS
+     cosine similarity           tsvector + GIN + ts_rank
+            └─────────────┬─────────────┘
+                          ▼
+              3. Reciprocal Rank Fusion    fusion.py  (hybrid mode)
+                          │
+              4. Cross-Encoder Re-ranking  rerank.py  (BGE v2-m3 / rerank-2.5)
+                          │
+              5. Context Construction      context.py (final top-k, dedup,
+                          │                 merge, document order, budget)
+                          ▼
+                         LLM
 
-Strategy auto-selection (intersected with the config's enabled retrievers):
-
-    exact_id   → exact + bm25 + metadata     (identifiers never rely on vectors)
-    filename   → metadata + bm25
-    metadata   → metadata + dense
-    keyword    → bm25 + dense                (names, companies → hybrid)
-    hybrid_id  → exact + bm25 + dense        (identifier inside a real sentence)
-    semantic   → dense + bm25                (+ reranker when enabled)
-
-Adding a retriever: implement BaseRetriever, register it in _RETRIEVER_CLASSES
-and reference its name in _STRATEGIES — no other code changes (open/closed).
+The search mode is switchable per space: "hybrid" (both branches + RRF),
+"vector" (semantic only) or "keyword" (lexical only). Branches run in
+parallel with their own db sessions; every stage is timed.
 """
 from __future__ import annotations
 
@@ -25,93 +34,59 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.database import SessionLocal
 
-from .analyzer import analyze
 from .config import load_config
 from .context import build_context
 from .fusion import fuse
-from .rerank import rerank
-from .retrievers import (
-    BM25Retriever, DenseRetriever, ExactMatchRetriever, MetadataRetriever,
-)
+from .rerank import rerank, resolve_reranker_key
+from .retrievers import KeywordRetriever, VectorRetriever
+from .transforms import enhance_query
+from .types import Query
 
 logger = logging.getLogger(__name__)
 
-_RETRIEVER_CLASSES = {
-    "dense": DenseRetriever,
-    "bm25": BM25Retriever,
-    "metadata": MetadataRetriever,
-    "exact": ExactMatchRetriever,
+_MODE_BRANCHES = {
+    "hybrid": ["vector", "keyword"],
+    "vector": ["vector"],
+    "keyword": ["keyword"],
 }
-
-_STRATEGIES = {
-    "exact_id":  ["exact", "bm25", "metadata"],
-    "filename":  ["metadata", "bm25"],
-    "metadata":  ["metadata", "dense"],
-    "keyword":   ["bm25", "dense"],
-    "hybrid_id": ["exact", "bm25", "dense"],
-    "semantic":  ["dense", "bm25"],
-}
-
-
-def _enabled(cfg, name):
-    return getattr(cfg, f"enable_{name}", True)
+_RETRIEVER_CLASSES = {"vector": VectorRetriever, "keyword": KeywordRetriever}
 
 
 def retrieve(db, space, question: str, cfg=None) -> dict:
     """Public API. Returns:
     {
-      "items": [...],            # ordered context items (doc, page, score, method…)
-      "strategy": [...],         # retrievers actually run
-      "intent": "...",           # analyzer classification
-      "timings_ms": {...},       # per-stage profiling
+      "items": [...],        # final context items (doc, page, score, method…)
+      "search_mode": "...",  # mode actually used
+      "timings_ms": {...},   # per-stage profiling
     }
     """
     t0 = time.perf_counter()
     cfg = cfg or load_config(space)
     timings = {}
+    q = Query(raw=question or "")
 
-    # ── 1. analyze ──
-    q = analyze(question)
-    timings["analyze"] = round((time.perf_counter() - t0) * 1000, 1)
-
-    # ── 1b. optional LLM transforms: rewrite / HyDE / multi-query ──
-    if cfg.rewrite_query or cfg.hyde or cfg.multi_query:
+    # ── 1. query transformation (LLM) ──
+    if cfg.transform_enabled:
         t = time.perf_counter()
-        try:
-            from .transforms import apply_transforms
-            apply_transforms(db, space, cfg, q)
-        except Exception as e:
-            logger.warning(f"[RETRIEVAL] transforms failed ({e}) — original query kept")
+        enhance_query(db, space, q)
         timings["transform"] = round((time.perf_counter() - t) * 1000, 1)
 
-    # ── 2. strategy ──
-    wanted = _STRATEGIES.get(q.intent, _STRATEGIES["semantic"])
-    strategy = [n for n in wanted if _enabled(cfg, n)]
-    if not strategy:                       # everything disabled → dense fallback
-        strategy = ["dense"]
+    # ── 2. the search branches ──
+    branches = list(_MODE_BRANCHES.get(cfg.search_mode, _MODE_BRANCHES["hybrid"]))
 
-    # ── 3. embed once, only if dense participates. HyDE swaps the embedded
-    #      text for the hypothetical answer; rewrite refines it. ──
-    if "dense" in strategy:
+    if "vector" in branches:
         t = time.perf_counter()
-        embed_text = q.hyde_text or q.rewritten or question
         try:
             from app.services.embedding_factory import embed_query
-            q.embedding = embed_query(db, space, embed_text)
+            q.embedding = embed_query(db, space, q.text)
         except Exception as e:
-            logger.warning(f"[RETRIEVAL] embedding failed ({e}) — dense skipped")
-            strategy = [n for n in strategy if n != "dense"] or ["bm25"]
+            logger.warning(f"[RETRIEVAL] embedding failed ({e}) — vector skipped")
+            branches = [b for b in branches if b != "vector"] or ["keyword"]
         timings["embed"] = round((time.perf_counter() - t) * 1000, 1)
 
-    # ── 4. build retrievers (DI: session factory + space + config) ──
-    retrievers = []
-    for name in strategy:
-        r = _RETRIEVER_CLASSES[name](SessionLocal, space, cfg)
-        if r.applies_to(q):
-            retrievers.append(r)
-    k = max(cfg.top_k * 3, 15)             # over-fetch; fusion + budget trim later
+    retrievers = [_RETRIEVER_CLASSES[b](SessionLocal, space, cfg) for b in branches]
+    k = max(cfg.top_k * 3, 15)
 
-    # ── 5. run (parallel, per-retriever timeout) ──
     t = time.perf_counter()
     results = {}
     if cfg.parallel and len(retrievers) > 1:
@@ -133,20 +108,20 @@ def retrieve(db, space, question: str, cfg=None) -> dict:
                 results[r.name] = []
     timings["retrieve"] = round((time.perf_counter() - t) * 1000, 1)
 
-    # ── 6. fuse ──
+    # ── 3. fusion (RRF merges ranks — no score normalization needed) ──
     t = time.perf_counter()
-    weights = {"dense": cfg.w_dense, "bm25": cfg.w_bm25, "metadata": cfg.w_metadata}
-    fused = fuse(results, method=cfg.fusion, rrf_k=cfg.rrf_k,
-                 semantic_weight=cfg.semantic_weight, weights=weights)
+    fused = fuse(results, rrf_k=cfg.rrf_k)
     timings["fuse"] = round((time.perf_counter() - t) * 1000, 1)
 
-    # ── 7. rerank (optional) ──
-    if cfg.rerank and fused:
+    # ── 4. cross-encoder re-ranking ──
+    if fused:
         t = time.perf_counter()
-        fused = rerank(cfg, question, fused)
+        if cfg.reranker_provider == "voyage" and not cfg.reranker_api_key:
+            cfg.reranker_api_key = resolve_reranker_key(db, space, cfg.reranker_key_source)
+        fused = rerank(cfg, q.text, fused)
         timings["rerank"] = round((time.perf_counter() - t) * 1000, 1)
 
-    # ── 8. context ──
+    # ── 5. context construction ──
     t = time.perf_counter()
     ctx = build_context(cfg, SessionLocal, space, fused)
     timings["context"] = round((time.perf_counter() - t) * 1000, 1)
@@ -154,14 +129,11 @@ def retrieve(db, space, question: str, cfg=None) -> dict:
 
     if cfg.log_timings:
         counts = {n: len(v) for n, v in results.items()}
-        logger.info(
-            f"[RETRIEVAL] intent={q.intent} strategy={strategy} hits={counts} "
-            f"fused={len(fused)} ctx={len(ctx['items'])} timings={timings}")
+        logger.info(f"[RETRIEVAL] mode={cfg.search_mode} hits={counts} "
+                    f"fused={len(fused)} ctx={len(ctx['items'])} timings={timings}")
 
     return {
         "items": ctx["items"],
-        "strategy": strategy,
-        "intent": q.intent,
-        "language": q.language,
+        "search_mode": cfg.search_mode,
         "timings_ms": timings,
     }

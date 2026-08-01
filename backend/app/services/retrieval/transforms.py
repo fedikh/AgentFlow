@@ -1,26 +1,42 @@
 """
-Query transforms — LLM-powered query rewriting, all OPTIONAL and fail-safe.
+Query Transformation — one LLM call that does all five jobs at once:
 
-    rewrite_query : reformulate a vague/conversational query for retrieval
-    hyde          : write a short hypothetical ANSWER and embed THAT
-                    (HyDE — hypothetical document embeddings)
-    multi_query   : generate 2-3 phrasing variants; they feed BM25 (as extra
-                    query tokens) and fusion recall
+    · Query Rewrite       — precise, self-contained search phrasing
+    · Query Expansion     — synonyms folded into the rewrite
+    · Multi-Query         — up to 2 alternative phrasings (widen recall)
+    · Spell Correction    — typos fixed
+    · Noise Removal       — "please", "can you tell me…" stripped
 
-They resolve the LLM through the platform's own llm_factory (the space's
-provider/key). No key / any error → the original query is used untouched —
-transforms can only ever ADD signal, never break retrieval.
+Enabled by default (cfg.transform_enabled). Uses the SAME LLM as the space
+(resolved through llm_factory). Identifiers, codes, numbers and filenames are
+explicitly preserved by the prompt. Any failure → the original query is used
+untouched — transformation can only ever ADD signal, never break retrieval.
 """
 from __future__ import annotations
 
+import json
 import logging
+
+from .types import Query
 
 logger = logging.getLogger(__name__)
 
+_PROMPT = """You improve search queries for a document-retrieval system.
 
-def _llm_complete(db, space, prompt: str, max_tokens: int = 220) -> str:
-    """One short completion through the platform's LLM factory (the space's
-    resolved provider/model/key). '' on any failure."""
+Rules:
+- Fix spelling, remove filler words, rewrite precisely and self-contained.
+- NEVER change identifiers, codes, reference numbers or filenames
+  (e.g. EMP2300114, INV-2026-001, rapport.pdf) — copy them exactly.
+- Keep the same language as the input.
+
+Reply with ONLY this JSON (no markdown):
+{{"cleaned": "<improved query>", "variants": ["<alt phrasing 1>", "<alt phrasing 2>"]}}
+
+Query: {query}"""
+
+
+def enhance_query(db, space, q: Query) -> None:
+    """Mutates q in place (cleaned / variants). Silent no-op on any failure."""
     try:
         from app.services.llm_factory import get_llm
         from app.services.llm_factory.resolver import resolve_llm_config
@@ -28,56 +44,14 @@ def _llm_complete(db, space, prompt: str, max_tokens: int = 220) -> str:
         llm = get_llm(
             family=conf["family"], model=conf["model"],
             api_key=conf.get("api_key", ""), base_url=conf.get("base_url", ""),
-            temperature=0.1, max_tokens=max_tokens,
+            temperature=0.1, max_tokens=200,
         )
-        resp = llm.invoke(prompt)
-        return (getattr(resp, "content", None) or "").strip()
+        out = (getattr(llm.invoke(_PROMPT.format(query=q.raw)), "content", "") or "").strip()
+        data = json.loads(out[out.find("{"): out.rfind("}") + 1])
+        cleaned = str(data.get("cleaned") or "").strip()
+        if 3 <= len(cleaned) <= 300:
+            q.cleaned = cleaned
+        q.variants = [str(v).strip() for v in (data.get("variants") or [])
+                      if 3 <= len(str(v).strip()) <= 300][:2]
     except Exception as e:
-        logger.warning(f"[RETRIEVAL/transform] LLM unavailable ({e}) — skipped")
-        return ""
-
-
-def apply_transforms(db, space, cfg, q) -> None:
-    """Mutates the AnalyzedQuery in place. Only runs for semantic/keyword-ish
-    intents — identifiers and filenames must stay literal."""
-    if q.intent in ("exact_id", "filename", "metadata"):
-        return
-    if not (cfg.rewrite_query or cfg.hyde or cfg.multi_query):
-        return
-
-    # ── rewrite: better search phrasing for vague queries ──
-    if cfg.rewrite_query:
-        out = _llm_complete(
-            db, space,
-            "Rewrite this search query to be precise and self-contained for "
-            "document retrieval. Reply with ONLY the rewritten query, same "
-            f"language.\n\nQuery: {q.raw}",
-        )
-        if out and 3 <= len(out) <= 300:
-            q.expansions.append(out)
-            q.rewritten = out            # dense embeds the rewritten form too
-
-    # ── HyDE: embed a hypothetical answer instead of the bare question ──
-    if cfg.hyde:
-        out = _llm_complete(
-            db, space,
-            "Write a short factual paragraph (3-4 sentences) that would "
-            "plausibly answer this question, as it might appear inside an "
-            f"internal company document. Same language. Question: {q.raw}",
-        )
-        if out and len(out) > 40:
-            q.hyde_text = out            # orchestrator embeds this text
-
-    # ── multi-query: phrasing variants widen recall ──
-    if cfg.multi_query:
-        out = _llm_complete(
-            db, space,
-            "Generate 3 alternative search queries for the question below — "
-            "synonyms, related entities, more specific phrasings. One per "
-            f"line, no numbering, same language.\n\nQuestion: {q.raw}",
-        )
-        for line in (out or "").splitlines():
-            v = line.strip(" -•\t")
-            if 3 <= len(v) <= 200 and v.lower() != q.raw.lower():
-                q.expansions.append(v)
-        q.expansions = list(dict.fromkeys(q.expansions))[:8]
+        logger.warning(f"[RETRIEVAL/transform] skipped ({e}) — original query kept")

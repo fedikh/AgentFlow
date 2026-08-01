@@ -4,6 +4,7 @@ import {
   getProviderModels,
 } from "../../../services/providersApi";
 import CustomDropdown from "./CustomDropdown";
+import SavedKeyInput from "./SavedKeyInput";
 
 /**
  * EmbeddingSourceSelector — Batch 6. Mirror of LLMSourceSelector, for
@@ -295,17 +296,14 @@ const EmbeddingSourceSelector = ({ value, onChange, hasOwnKey, embedModels = [] 
           />
 
           <label className="rag-cfg-label">API key</label>
-          <input
-            className="rag-cfg-select"
-            type="password"
-            onChange={(e) => onChange({ embedding_api_key: e.target.value })}
-            placeholder={
-              hasOwnKey
-                ? "Key saved — type to replace"
-                : KEY_PLACEHOLDER[value.embedding_provider] || "sk-…"
-            }
+          <SavedKeyInput
+            masked={value.embedding_api_key_masked}
+            hasKey={hasOwnKey}
+            value={value.embedding_api_key || ""}
+            onChange={(v) => onChange({ embedding_api_key: v })}
+            placeholder={KEY_PLACEHOLDER[value.embedding_provider] || "sk-…"}
           />
-          <div className="rag-cfg-hint">Stored encrypted. Never shown again.</div>
+          <div className="rag-cfg-hint">Stored encrypted. Only a masked preview is ever shown.</div>
         </>
       )}
 

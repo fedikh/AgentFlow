@@ -1,3 +1,11 @@
+import os
+
+# All ML models (embeddings, reranker, chunking, parsing) are downloaded and
+# cached locally — never contact the Hugging Face Hub at runtime (no version
+# checks, no downloads, no "unauthenticated requests" warning). To download a
+# NEW model later, start once with the env var HF_HUB_OFFLINE=0.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -97,11 +105,27 @@ def _warmup_docling():
         print(f"⚠️  Docling warmup skipped: {e}")
 
 
+def _warmup_reranker():
+    """Pre-load the always-on BGE cross-encoder in a background thread so the
+    FIRST query doesn't pay the one-time model-load latency (~15s)."""
+    try:
+        import os
+        os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+        from sentence_transformers import CrossEncoder
+        from app.services.retrieval.rerank import _BGE_DEFAULT, _LOCAL_MODELS
+        if _BGE_DEFAULT not in _LOCAL_MODELS:
+            _LOCAL_MODELS[_BGE_DEFAULT] = CrossEncoder(_BGE_DEFAULT)
+        print("✅ Reranker warmed up (BGE v2-m3)")
+    except Exception as e:
+        print(f"⚠️  Reranker warmup skipped: {e}")
+
+
 @app.on_event("startup")
 async def startup():
     test_connection()
     import threading
     threading.Thread(target=_warmup_docling, daemon=True).start()
+    threading.Thread(target=_warmup_reranker, daemon=True).start()
 
 
 @app.get("/")

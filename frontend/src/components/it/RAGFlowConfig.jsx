@@ -1,5 +1,6 @@
 import React from "react";
 import "../../styles/it/ragflow.css";
+import { chunkSummary } from "./rag/pipelineConfig";
 
 /**
  * RAGFlowConfig — view-only RAG pipeline flow (Langflow style).
@@ -26,13 +27,15 @@ const RAGFlowConfig = ({ space, onClose }) => {
       case "docs":
         return `${space.num_documents || 0} docs · ${space.num_chunks || 0} chunks`;
       case "chunk":
-        return `${space.chunk_strategy} · ${space.chunk_size}`;
+        return chunkSummary(space);
       case "embed":
         return (space.embedding_model || "—").split("/").pop();
       case "llm":
         return space.llm_model || space.llm_provider || "—";
-      case "retrieval":
-        return `${Math.round((space.semantic_weight || 0.7) * 100)}% sem · top-${space.top_k}`;
+      case "retrieval": {
+        const mode = (space.retrieval_params || {}).search_mode || "hybrid";
+        return `${mode} · top-${space.top_k}`;
+      }
       case "eval":
         return "Not evaluated";
       default:

@@ -99,6 +99,7 @@ export default function App() {
             <Route path="/it/rag" element={<RAGSpacesPage />} />
             <Route path="/it/rag/:spaceId" element={<RAGSpacesPage />} />
             <Route path="/it/agents" element={<ITAgentsPage />} />
+            <Route path="/it/agents/:agentId" element={<ITAgentsPage />} />
             <Route
               path="/it/api-agents"
               element={<ComingSoon title="API Agent" />}
@@ -124,6 +125,7 @@ export default function App() {
           <Route element={<DashboardLayout />}>
             <Route path="/user" element={<UserDashboard />} />
             <Route path="/user/agents" element={<UserAgentsPage />} />
+            <Route path="/user/agents/:agentId" element={<UserAgentsPage />} />
             <Route
               path="/user/history"
               element={<ComingSoon title="Chat History" />}

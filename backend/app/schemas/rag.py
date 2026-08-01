@@ -134,6 +134,10 @@ class UpdateRAGSpaceRequest(BaseModel):
     search_engine:      Optional[str] = None
     semantic_weight:    Optional[float] = None
     reranking_enabled:  Optional[bool] = None
+    # Re-ranker own key (Voyage rerank-2.5) — plaintext in, encrypted at rest
+    reranker_api_key:   Optional[str] = None
+    # Evaluation judge own key — plaintext in, encrypted at rest
+    judge_api_key:      Optional[str] = None
     # Retrieval Pipeline overrides (visual pipeline UI) — dict of
     # RetrievalConfig fields (see services/retrieval/config.py)
     retrieval_params:   Optional[dict] = None

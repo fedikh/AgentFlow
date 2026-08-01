@@ -13,11 +13,16 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 class Base(DeclarativeBase):
     pass
 
-# The chunk_vectors_<dim> models use vector/halfvec column types, so the
-# pgvector extension must exist BEFORE create_all() creates their tables.
+# Extensions must exist BEFORE create_all() creates the tables that use them:
+#   vector  → chunk_vectors_<dim> models (vector/halfvec column types)
+#   pg_trgm → chunks trigram index (fuzzy keyword search)
 event.listen(
     Base.metadata, "before_create",
     DDL("CREATE EXTENSION IF NOT EXISTS vector"),
+)
+event.listen(
+    Base.metadata, "before_create",
+    DDL("CREATE EXTENSION IF NOT EXISTS pg_trgm"),
 )
 
 def get_db():

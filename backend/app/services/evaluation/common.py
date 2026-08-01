@@ -36,24 +36,6 @@ PLAIN_TYPES = [
 ]
 TYPE_BY_LABEL = {label.lower(): slug for label, slug in PLAIN_TYPES}
 
-# Rough $/1M tokens (input, output) for COST ESTIMATES (not billing data).
-_PRICES = {
-    "gpt-5": (10.0, 30.0), "gpt-4o-mini": (0.15, 0.60), "gpt-4o": (2.5, 10.0),
-    "gpt-4.1-mini": (0.4, 1.6), "gpt-4.1": (2.0, 8.0),
-    "claude-opus": (5.0, 25.0), "claude-sonnet": (3.0, 15.0), "claude-haiku": (1.0, 5.0),
-    "gemini-2.5-pro": (1.25, 10.0), "gemini-2.5-flash": (0.30, 2.50),
-    "gemini-3": (2.0, 12.0),
-}
-
-
-def price_for(model: str):
-    m = (model or "").lower()
-    for k, v in _PRICES.items():
-        if k in m:
-            return v
-    return (0.0, 0.0)          # local / groq / unknown → free estimate
-
-
 def json_from(text: str):
     """Best-effort JSON object/array extraction from an LLM reply."""
     m = re.search(r"[\[{].*[\]}]", text or "", re.S)

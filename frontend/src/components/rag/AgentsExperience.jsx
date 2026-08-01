@@ -1,9 +1,30 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { listSpaces, queryRAG, listPublicDocuments } from "../../services/ragApi";
 import DocViewerModal from "../user/DocViewerModal";
+import { ArrowLeft, Bot, FileText, Search, Send } from "lucide-react";
 import "../../styles/it/rag.css";
+import "../../styles/it/spacesgrid.css";
 import "../../styles/user/userAgents.css";
-import "../../styles/it/chat.css";
+import "../../styles/user/agentChat.css";
+
+/* ── same icons as the RAG workspace grid ── */
+const IcDoc = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <path d="M14 3v5h5M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+  </svg>
+);
+const IcLayers = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2 2 7l10 5 10-5-10-5ZM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+  </svg>
+);
+const IcArrow = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+const monoInitial = (name = "?") => name.trim().charAt(0).toUpperCase() || "?";
 
 const fmtSize = (b) => {
   if (!b) return "";
@@ -17,18 +38,6 @@ const SUGGESTS = [
   "What topics are covered?",
   "List the key points",
 ];
-
-const IcSend = () => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-    <path
-      d="M12 19V5M6 11l6-6 6 6"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
 
 const meInitials = (() => {
   try {
@@ -45,24 +54,29 @@ const meInitials = (() => {
  * AgentsExperience — the deployed-agent chat + documents view.
  *
  * Shared by the end-user page and the IT "Deployed Agents" preview so both show
- * the exact same experience. When `onlyDeployed` is set (IT preview), the agent
- * list is filtered to ACTIVE spaces (IT's list includes drafts too).
+ * the exact same experience (same design system as the RAG workspace). When
+ * `onlyDeployed` is set (IT preview), the agent list is filtered to ACTIVE.
  */
 const AgentsExperience = ({
   title = "My AI Agents",
   subtitle = "Ask questions about your department's documents",
   emptyText = "No agents available yet.",
   onlyDeployed = false,
+  basePath = "/user/agents",
 }) => {
+  const { agentId } = useParams();
+  const navigate = useNavigate();
   const [agents, setAgents] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [agentSearch, setAgentSearch] = useState("");
   const [question, setQuestion] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [querying, setQuerying] = useState(false);
   const [docs, setDocs] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [docSearch, setDocSearch] = useState("");
   const [viewerDoc, setViewerDoc] = useState(null);
   const chatEndRef = useRef(null);
 
@@ -97,22 +111,41 @@ const AgentsExperience = ({
     setChatHistory([]);
     setQuestion("");
     setDocs([]);
+    setDocSearch("");
     if (agent.status === "EDITING") return; // offline for updates — skip docs
     setLoadingDocs(true);
     try {
       setDocs(await listPublicDocuments(agent.id));
-    } catch (e) {
+    } catch {
       /* documents optional — chat still works */
     } finally {
       setLoadingDocs(false);
     }
   };
-  const goBack = () => {
-    setSelected(null);
-    setChatHistory([]);
-    setDocs([]);
-    setViewerDoc(null);
-  };
+
+  // The URL is the source of truth for which agent is open — refresh and the
+  // browser back button both land where they should. Cards navigate; this
+  // effect loads/clears the state to match the :agentId param.
+  useEffect(() => {
+    if (loading) return;
+    if (!agentId) {
+      if (selected) {
+        setSelected(null);
+        setChatHistory([]);
+        setDocs([]);
+        setViewerDoc(null);
+      }
+      return;
+    }
+    if (selected?.id === agentId) return;
+    const a = agents.find((x) => x.id === agentId);
+    if (a) selectAgent(a);
+    else navigate(basePath, { replace: true });   // unknown/forbidden id
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId, agents, loading]);
+
+  const openAgent = (agent) => navigate(`${basePath}/${agent.id}`);
+  const goBack = () => navigate(basePath);
 
   const fmt = (t) =>
     t
@@ -126,7 +159,7 @@ const AgentsExperience = ({
             /^### (.+)$/gm,
             '<div style="font-size:14px;font-weight:600;margin:8px 0 4px">$1</div>',
           )
-          .replace(/^[•\-\*] (.+)$/gm, '<div style="padding-left:12px">• $1</div>')
+          .replace(/^[•\-*] (.+)$/gm, '<div style="padding-left:12px">• $1</div>')
           .replace(/\n/g, "<br>")
       : "";
 
@@ -142,7 +175,7 @@ const AgentsExperience = ({
         ...h,
         { role: "assistant", content: res.answer, sources: res.sources },
       ]);
-    } catch (e) {
+    } catch {
       setChatHistory((h) => [
         ...h,
         {
@@ -155,6 +188,28 @@ const AgentsExperience = ({
     }
   };
 
+  /* an answer source → the matching document → open it in the viewer */
+  const openSource = (src) => {
+    const d = docs.find((x) => x.file_name === src.document);
+    if (d) setViewerDoc(d);
+  };
+
+  const filteredAgents = useMemo(() => {
+    const q = agentSearch.trim().toLowerCase();
+    if (!q) return agents;
+    return agents.filter(
+      (a) =>
+        (a.name || "").toLowerCase().includes(q) ||
+        (a.description || "").toLowerCase().includes(q),
+    );
+  }, [agents, agentSearch]);
+
+  const filteredDocs = useMemo(() => {
+    const q = docSearch.trim().toLowerCase();
+    if (!q) return docs;
+    return docs.filter((d) => (d.file_name || "").toLowerCase().includes(q));
+  }, [docs, docSearch]);
+
   if (loading)
     return (
       <div className="rag-page">
@@ -162,169 +217,208 @@ const AgentsExperience = ({
       </div>
     );
 
-  // ═══ PAGE 1: Agent cards ═══
-  if (!selected)
+  // ═══ PAGE 1: Agent cards — same design as the RAG workspace grid ═══
+  if (!selected) {
+    // group agents by department, exactly like the workspace does
+    const deptNames = [...new Set(filteredAgents.map((a) => a.department_name || "General"))];
     return (
       <div className="rag-page" style={{ display: "block" }}>
         <div className="rag-main">
           {error && <div className="rag-toast rag-toast-error">{error}</div>}
 
-          <div className="rag-header">
+          <div className="sg-head">
             <div>
-              <div className="rag-header-title">{title}</div>
-              <div className="rag-header-desc">{subtitle}</div>
+              <h1 className="sg-title">{title}</h1>
+              <p className="sg-sub">{subtitle}</p>
             </div>
+            {agents.length > 3 && (
+              <input
+                className="rag-cfg-select"
+                style={{ width: 240 }}
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="🔍 Search agents…"
+              />
+            )}
           </div>
 
-          {agents.length === 0 ? (
-            <div className="rag-empty-state" style={{ padding: 60 }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
-                No agents available yet
+          <div className="rag-grid">
+            {agents.length === 0 ? (
+              <div className="sg-empty">
+                <div className="sg-empty-ic">🤖</div>
+                <div className="sg-empty-title">No agents available yet</div>
+                <div className="sg-empty-sub">{emptyText}</div>
               </div>
-              <div style={{ fontSize: 13 }}>{emptyText}</div>
-            </div>
-          ) : (
-            <div className="ua-grid">
-              {agents.map((a) => (
-                <button
-                  key={a.id}
-                  className="ua-card"
-                  onClick={() => selectAgent(a)}
-                >
-                  <div className="ua-card-top">
-                    <div className="ua-avatar">🤖</div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div className="ua-card-name">{a.name}</div>
+            ) : filteredAgents.length === 0 ? (
+              <div className="sg-empty">
+                <div className="sg-empty-title">No agent matches “{agentSearch}”</div>
+                <div className="sg-empty-sub">Try a different search.</div>
+              </div>
+            ) : (
+              deptNames.map((dept) => {
+                const ds = filteredAgents.filter(
+                  (a) => (a.department_name || "General") === dept,
+                );
+                return (
+                  <section key={dept} className="sg-section">
+                    <div className="sg-section-head">
+                      <span className="sg-section-name">{dept}</span>
+                      <span className="sg-section-count">{ds.length}</span>
+                      <span className="sg-section-rule" />
                     </div>
-                    {a.status === "EDITING" && (
-                      <span className="ua-badge-editing">Updating…</span>
-                    )}
-                  </div>
-                  <div className="ua-card-desc">
-                    {a.description || "AI assistant powered by your documents"}
-                  </div>
-                  <div className="ua-card-foot">
-                    <span>📄 {a.num_documents || 0} docs</span>
-                    <span>🧩 {a.num_chunks || 0} chunks</span>
-                    <span className="ua-cta">Open →</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+                    <div className="sg-grid">
+                      {ds.map((a) => {
+                        const editing = a.status === "EDITING";
+                        return (
+                          <button
+                            key={a.id}
+                            className="sg-card"
+                            onClick={() => openAgent(a)}
+                          >
+                            <div className="sg-card-head">
+                              <span className="sg-mono">{monoInitial(a.name)}</span>
+                              <div className="sg-card-titles">
+                                <div className="sg-name-row">
+                                  <div className="sg-card-name">{a.name}</div>
+                                </div>
+                              </div>
+                              <span className="sg-status-wrap">
+                                <span className={`sg-status ${editing ? "editing" : "active"}`}>
+                                  {editing ? "UPDATING…" : "ONLINE"}
+                                </span>
+                              </span>
+                            </div>
+                            <div className="sg-card-desc">
+                              {a.description || "AI assistant powered by your documents"}
+                            </div>
+                            <div className="sg-card-foot">
+                              <span className="sg-stat">
+                                <IcDoc /> {a.num_documents || 0} docs
+                              </span>
+                              <span className="sg-stat">
+                                <IcLayers /> {a.num_chunks || 0} chunks
+                              </span>
+                              <span className="sg-open">
+                                <IcArrow />
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
     );
+  }
 
-  // ═══ PAGE 2: Chat with agent + documents ═══
+  // ═══ PAGE 2: Chat with agent + documents (black / white / blue) ═══
   const editing = selected.status === "EDITING";
   return (
-    <div className="chat-page">
+    <div className="ac-page">
       {error && <div className="rag-toast rag-toast-error">{error}</div>}
 
-      <div className="chat-header">
-        <div className="chat-header-left">
-          <button className="rag-btn rag-btn-sm" onClick={goBack}>
-            ← Back
-          </button>
-          <span className="chat-agent-av">🤖</span>
-          <div style={{ minWidth: 0 }}>
-            <div className="chat-agent-name">{selected.name}</div>
-            <div className="chat-agent-desc">
-              {selected.description || "AI assistant powered by your documents"}
-            </div>
+      {/* header */}
+      <div className="ac-head">
+        <button className="ac-back" onClick={goBack}>
+          <ArrowLeft size={14} /> Back
+        </button>
+        <span className="ac-mono">{monoInitial(selected.name)}</span>
+        <div style={{ minWidth: 0 }}>
+          <div className="ac-head-name">{selected.name}</div>
+          <div className="ac-head-sub">
+            <span className="ac-dot" />
+            {editing
+              ? "Updating…"
+              : selected.description || "AI assistant powered by your documents"}
           </div>
         </div>
       </div>
 
       {editing ? (
-        <div className="chat-body">
-          <div className="cx-empty">
-            <div className="cx-empty-ic">🛠️</div>
-            <div className="cx-empty-t">This agent is being updated</div>
-            <div className="cx-empty-s">
-              Your IT team is making changes. Please check back soon.
-            </div>
+        <div className="ac-editing">
+          <div className="ac-empty-ic"><Bot size={26} /></div>
+          <div className="ac-empty-t">This agent is being updated</div>
+          <div className="ac-empty-s">
+            Your IT team is making changes. Please check back soon.
           </div>
         </div>
       ) : (
-        <div className="chat-body">
-          {/* Chat column */}
-          <div className="chat-main">
-            <div className="cx-stream">
+        <div className="ac-body">
+          {/* chat column */}
+          <div className="ac-chat">
+            <div className="ac-stream">
               {chatHistory.length === 0 && (
-                <div className="cx-empty">
-                  <div className="cx-empty-ic">🤖</div>
-                  <div className="cx-empty-t">Chat with {selected.name}</div>
-                  <div className="cx-empty-s">
-                    Ask anything about this agent's documents — I'll answer and
-                    cite the sources I used.
+                <div className="ac-empty">
+                  <div className="ac-empty-ic"><Bot size={26} /></div>
+                  <div className="ac-empty-t">Chat with {selected.name}</div>
+                  <div className="ac-empty-s">
+                    Ask anything about this agent's documents — answers cite
+                    the sources they used.
                   </div>
-                  <div className="cx-suggests">
+                  <div className="ac-suggests">
                     {SUGGESTS.map((s) => (
-                      <button
-                        key={s}
-                        className="cx-suggest"
-                        onClick={() => handleQuery(s)}
-                      >
+                      <button key={s} className="ac-suggest" onClick={() => handleQuery(s)}>
                         {s}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
-              {chatHistory.map((m, i) => (
-                <div
-                  key={i}
-                  className={`cx-row ${m.role === "user" ? "me" : ""}`}
-                >
-                  <span
-                    className={`cx-avatar ${m.role === "user" ? "me" : "ai"}`}
-                  >
-                    {m.role === "user" ? meInitials : "🤖"}
-                  </span>
-                  <div
-                    className={`cx-bubble ${m.role === "user" ? "me" : "ai"}`}
-                  >
-                    {m.role === "user" ? (
-                      m.content
-                    ) : (
-                      <div
-                        dangerouslySetInnerHTML={{ __html: fmt(m.content) }}
-                      />
-                    )}
-                    {m.sources?.length > 0 && (
-                      <div className="cx-sources">
-                        <div className="cx-sources-t">Sources</div>
-                        <div className="cx-source-list">
-                          {m.sources.map((s, j) => (
-                            <span key={j} className="cx-source" title={s.document}>
-                              📄 {s.document} · p.{s.page}
-                            </span>
-                          ))}
+
+              {chatHistory.map((m, i) => {
+                const me = m.role === "user";
+                return (
+                  <div key={i} className={`ac-row ${me ? "me" : ""}`}>
+                    <span className={`ac-av ${me ? "me" : "ai"}`}>
+                      {me ? meInitials : <Bot size={15} />}
+                    </span>
+                    <div className={`ac-bubble ${me ? "me" : "ai"}`}>
+                      {me ? (
+                        m.content
+                      ) : (
+                        <div dangerouslySetInnerHTML={{ __html: fmt(m.content) }} />
+                      )}
+                      {m.sources?.length > 0 && (
+                        <div className="ac-sources">
+                          <div className="ac-sources-t">Sources</div>
+                          <div>
+                            {m.sources.map((s, j) => (
+                              <button
+                                key={j}
+                                className="ac-source"
+                                onClick={() => openSource(s)}
+                                title={`Open ${s.document}`}
+                              >
+                                <FileText size={11} />
+                                <span className="ac-source-name">{s.document}</span>
+                                <span className="ac-source-page">p.{s.page}</span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+
               {querying && (
-                <div className="cx-row">
-                  <span className="cx-avatar ai">🤖</span>
-                  <div className="cx-typing">
-                    <span className="cx-dot" />
-                    <span className="cx-dot" />
-                    <span className="cx-dot" />
-                  </div>
+                <div className="ac-row">
+                  <span className="ac-av ai"><Bot size={15} /></span>
+                  <div className="ac-typing"><i /><i /><i /></div>
                 </div>
               )}
               <div ref={chatEndRef} />
             </div>
 
-            <div className="cx-composer">
+            <div className="ac-composer">
               <input
-                className="cx-input"
+                className="ac-input"
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleQuery()}
@@ -332,51 +426,61 @@ const AgentsExperience = ({
                 disabled={querying}
               />
               <button
-                className="cx-send"
+                className="ac-send"
                 onClick={() => handleQuery()}
                 disabled={querying || !question.trim()}
                 aria-label="Send"
               >
-                <IcSend />
+                <Send size={16} />
               </button>
             </div>
           </div>
 
-          {/* Documents sidebar */}
-          <aside className="ua-docs">
-            <div className="ua-docs-head">
-              📚 Documents
-              <span
-                style={{ marginLeft: "auto", color: "#94a3b8", fontWeight: 500 }}
-              >
-                {docs.length}
-              </span>
+          {/* documents sidebar */}
+          <aside className="ac-side">
+            <div className="ac-side-head">
+              <FileText size={15} /> Documents
+              <span className="ac-side-count">{docs.length}</span>
             </div>
-            <div className="ua-docs-list">
-              {loadingDocs && <div className="ua-docs-empty">Loading…</div>}
+            {docs.length > 0 && (
+              <div className="ac-search">
+                <Search size={13} />
+                <input
+                  value={docSearch}
+                  onChange={(e) => setDocSearch(e.target.value)}
+                  placeholder="Search documents…"
+                />
+              </div>
+            )}
+            <div className="ac-docs">
+              {loadingDocs && <div className="ac-docs-empty">Loading…</div>}
               {!loadingDocs && docs.length === 0 && (
-                <div className="ua-docs-empty">No documents to preview.</div>
+                <div className="ac-docs-empty">No documents to preview.</div>
               )}
               {!loadingDocs &&
-                docs.map((d) => (
+                filteredDocs.map((d) => (
                   <button
                     key={d.id}
-                    className="ua-doc"
+                    className="ac-doc"
                     onClick={() => setViewerDoc(d)}
                     title={`Open ${d.file_name}`}
                   >
-                    <span className="ua-doc-ic">
-                      {(d.file_type || "").toLowerCase() === "pdf" ? "📕" : "📄"}
+                    <span className="ac-ext">
+                      {(d.file_type || "file").toUpperCase()}
                     </span>
-                    <span className="ua-doc-txt">
-                      <span className="ua-doc-name">{d.file_name}</span>
-                      <span className="ua-doc-meta">
-                        {(d.file_type || "file").toUpperCase()}
-                        {d.file_size ? ` · ${fmtSize(d.file_size)}` : ""}
+                    <span style={{ minWidth: 0 }}>
+                      <span className="ac-doc-name">{d.file_name}</span>
+                      <span className="ac-doc-meta">
+                        {fmtSize(d.file_size) || (d.file_type || "file").toUpperCase()}
                       </span>
                     </span>
                   </button>
                 ))}
+              {!loadingDocs && docs.length > 0 && filteredDocs.length === 0 && (
+                <div className="ac-docs-empty">
+                  No document matches “{docSearch}”.
+                </div>
+              )}
             </div>
           </aside>
         </div>
