@@ -35,8 +35,10 @@ class RetrievedChunk:
 
 
 class BaseRetriever(ABC):
-    """Common interface. Implementations run in worker threads with their
-    OWN db session (injected factory) — side-effect free."""
+    """Common interface. Implementations run inside a pipeline BRANCH and get
+    the branch's db session via `session_factory` — the branch owns the
+    session's lifecycle (one pooled connection per branch, closed by the
+    branch), so retrievers must NOT close what the factory returns."""
 
     name: str = "base"
 

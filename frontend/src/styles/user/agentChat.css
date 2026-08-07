@@ -572,3 +572,248 @@
 @media (max-width: 920px) {
   .ac-side { display: none; }
 }
+
+/* ── conversations rail (persistent chat history) ── */
+.ac-hist {
+  width: 236px;
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 10px;
+  border-right: 1px solid var(--ac-line);
+  background: #fff;
+}
+.ac-hist-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--ac-blue);
+  border-radius: 10px;
+  background: var(--ac-blue);
+  color: #fff;
+  font: 600 12.5px system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ac-hist-new:hover {
+  background: var(--ac-blue-dark);
+}
+.ac-hist-new:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ac-hist-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ac-hist-empty {
+  font: 400 12px/1.5 system-ui, sans-serif;
+  color: var(--ac-faint);
+  padding: 8px 6px;
+}
+.ac-hist-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  color: var(--ac-ink-2);
+  font: 500 12.5px system-ui, sans-serif;
+  cursor: pointer;
+  user-select: none;
+}
+.ac-hist-item:hover {
+  background: var(--ac-surface);
+}
+.ac-hist-item.active {
+  background: var(--ac-blue-tint);
+  border-color: #dbeafe;
+  color: var(--ac-blue-dark);
+}
+.ac-hist-ic {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.ac-hist-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.ac-hist-time {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  color: var(--ac-faint);
+  font-variant-numeric: tabular-nums;
+}
+.ac-hist-actions {
+  display: none;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.ac-hist-item:hover .ac-hist-actions {
+  display: inline-flex;
+}
+.ac-hist-item:hover .ac-hist-time {
+  display: none;
+}
+.ac-hist-actions button {
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  color: var(--ac-muted);
+  padding: 3px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ac-hist-actions button:hover {
+  color: var(--ac-blue);
+  background: #fff;
+}
+.ac-hist-rename {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--ac-blue);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font: 500 12.5px system-ui, sans-serif;
+  color: var(--ac-ink);
+  outline: none;
+}
+.ac-hist-loading {
+  font: 400 12.5px system-ui, sans-serif;
+  color: var(--ac-faint);
+  text-align: center;
+  padding: 18px 0;
+}
+@media (max-width: 1000px) {
+  .ac-hist {
+    display: none;
+  }
+}
+
+/* ── rendered answer markdown (AnswerBody) ── */
+.ac-md {
+  font-size: 13.5px;
+  line-height: 1.62;
+  color: var(--ac-ink);
+}
+.ac-md > *:first-child { margin-top: 0; }
+.ac-md > *:last-child { margin-bottom: 0; }
+
+.ac-md p { margin: 0 0 9px; }
+.ac-md strong { font-weight: 700; color: var(--ac-ink); }
+.ac-md em { font-style: italic; }
+
+/* headings — kept close in size to body text: a chat bubble is not a document */
+.ac-md h1,
+.ac-md h2,
+.ac-md h3,
+.ac-md h4 {
+  font-weight: 700;
+  color: var(--ac-ink);
+  line-height: 1.35;
+  margin: 14px 0 6px;
+}
+.ac-md h1 { font-size: 15.5px; }
+.ac-md h2 { font-size: 14.5px; }
+.ac-md h3,
+.ac-md h4 { font-size: 13.5px; }
+
+/* lists — bullets AND numbers, nesting supported */
+.ac-md ul,
+.ac-md ol {
+  margin: 0 0 9px;
+  padding-left: 20px;
+}
+.ac-md li { margin: 3px 0; }
+.ac-md li::marker { color: var(--ac-blue); }
+.ac-md ul ul,
+.ac-md ol ol,
+.ac-md ul ol,
+.ac-md ol ul { margin: 3px 0; }
+
+/* tables — scroll inside the bubble instead of stretching it */
+.ac-md-tablewrap {
+  overflow-x: auto;
+  margin: 0 0 10px;
+  border: 1px solid var(--ac-line);
+  border-radius: 9px;
+}
+.ac-md table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+.ac-md thead th {
+  background: var(--ac-surface);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+.ac-md th,
+.ac-md td {
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--ac-line);
+  vertical-align: top;
+}
+.ac-md tbody tr:last-child td { border-bottom: none; }
+
+/* code */
+.ac-md code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  background: var(--ac-surface);
+  border: 1px solid var(--ac-line);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.ac-md pre {
+  margin: 0 0 10px;
+  padding: 11px 13px;
+  background: var(--ac-ink);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+.ac-md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* quotes, rules, links */
+.ac-md blockquote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--ac-blue);
+  color: var(--ac-ink-2);
+}
+.ac-md hr {
+  border: none;
+  border-top: 1px solid var(--ac-line);
+  margin: 12px 0;
+}
+.ac-md a {
+  color: var(--ac-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ac-md a:hover { color: var(--ac-blue-dark); }
+
+/* inside the black user bubble the palette must invert (rare, but possible) */
+.ac-bubble.me .ac-md,
+.ac-bubble.me .ac-md strong { color: #fff; }

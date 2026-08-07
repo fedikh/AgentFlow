@@ -1,0 +1,121 @@
+employee_id,full_name,email,department,job_title,level,salary_band,employment_type,location,region,hire_date,status,manager_id
+E0001,Sofia Wójcik,sofia.wójcik@nordstar.example.com,HR,HRBP (Associate),L2-Associate,S2,FTE,"Manchester, UK",UK,2018-10-16,Active,E0086
+E0002,Ethan Davis,ethan.davis@nordstar.example.com,Finance,Financial Analyst (Director),L6-Director,S6,FTE,Remote (US),US,2020-02-04,Active,
+E0003,Adam Kowalska,adam.kowalska@nordstar.example.com,Data Science,Data Analyst (Lead),L4-Lead,S4,FTE,Remote (UK),UK,2020-10-05,Active,E0085
+E0004,Anna Jackson,anna.jackson@nordstar.example.com,IT,IT Support (Senior),L3-Senior,S3,FTE,"Austin, US",US,2021-06-01,Active,E0062
+E0005,Krzysztof Wójcik,krzysztof.wójcik@nordstar.example.com,Marketing,Content Strategist (Manager),L5-Manager,S5,Contractor,"New York, US",US,2022-10-17,Active,E0058
+E0006,Lucas Williams,lucas.williams@nordstar.example.com,Finance,Controller (Senior),L3-Senior,S3,FTE,Remote (UK),UK,2021-09-12,Active,E0061
+E0007,Noah Nowak,noah.nowak@nordstar.example.com,HR,HR Specialist (Senior),L3-Senior,S3,Contractor,"London, UK",UK,2018-10-10,Active,E0086
+E0008,Tomasz Taylor,tomasz.taylor@nordstar.example.com,Marketing,Content Strategist (Manager),L5-Manager,S5,FTE,"Gdansk, PL",PL,2020-08-20,Active,E0058
+E0009,Liam Taylor,liam.taylor@nordstar.example.com,Finance,Financial Analyst (Director),L6-Director,S6,FTE,Remote (US),US,2020-05-21,Active,E0002
+E0010,Krzysztof Lewandowski,krzysztof.lewandowski@nordstar.example.com,Data Science,Data Analyst (Junior),L1-Junior,S1,Contractor,"New York, US",US,2021-03-07,Active,E0085
+E0011,Katarzyna Kamińska,katarzyna.kamińska@nordstar.example.com,Marketing,Content Strategist (Director),L6-Director,S6,FTE,"London, UK",UK,2024-11-07,Active,E0008
+E0012,Ola Kowalski,ola.kowalski@nordstar.example.com,Data Science,Data Scientist (Manager),L5-Manager,S5,FTE,Remote (UK),UK,2022-06-12,On Leave,E0085
+E0013,Krzysztof Johnson,krzysztof.johnson@nordstar.example.com,Data Science,Data Scientist (Manager),L5-Manager,S5,FTE,"Gdansk, PL",PL,2018-03-03,Active,E0100
+E0014,Agnieszka Taylor,agnieszka.taylor@nordstar.example.com,IT,Systems Engineer (Manager),L5-Manager,S5,FTE,"Austin, US",US,2024-04-28,Probation,E0062
+E0015,Mateusz Lewandowski,mateusz.lewandowski@nordstar.example.com,HR,People Partner (Director),L6-Director,S6,Contractor,"Krakow, PL",PL,2021-06-16,Active,E0086
+E0016,Paweł Zieliński,pawel.zieliński@nordstar.example.com,Legal,Contracts Manager (Manager),L5-Manager,S5,Part-time,"Warsaw, PL",PL,2019-08-24,Active,E0025
+E0017,Magda Martin,magda.martin@nordstar.example.com,Sales,Account Exec (Manager),L5-Manager,S5,FTE,Remote (UK),UK,2019-06-15,Active,E0039
+E0018,Olivia Moore,olivia.moore@nordstar.example.com,HR,Talent Acquisition (Senior),L3-Senior,S3,FTE,Remote (US),US,2021-09-17,Active,E0069
+E0019,Amelia White,amelia.white@nordstar.example.com,Sales,Account Exec (Junior),L1-Junior,S1,Contractor,"London, UK",UK,2018-07-11,Active,E0039
+E0020,Łukasz Harris,lukasz.harris@nordstar.example.com,Finance,Financial Analyst (Associate),L2-Associate,S2,FTE,Remote (UK),UK,2023-10-22,Active,E0061
+E0021,Mateusz Martin,mateusz.martin@nordstar.example.com,Operations,Workforce Planner (Manager),L5-Manager,S5,FTE,"London, UK",UK,2025-08-21,Active,E0070
+E0022,Liam Taylor,liam.taylor@nordstar.example.com,Marketing,Content Strategist (Manager),L5-Manager,S5,FTE,Remote (PL),PL,2020-02-29,Active,E0008
+E0023,Anna Rodriguez,anna.rodriguez@nordstar.example.com,Data Science,Data Analyst (Associate),L2-Associate,S2,FTE,Remote (US),US,2024-09-19,Active,E0085
+E0024,Katarzyna Thompson,katarzyna.thompson@nordstar.example.com,HR,HRBP (Junior),L1-Junior,S1,FTE,"New York, US",US,2023-02-01,Active,E0069
+E0025,Agnieszka Thomas,agnieszka.thomas@nordstar.example.com,Legal,Compliance Specialist (Director),L6-Director,S6,FTE,"London, UK",UK,2018-09-24,Active,
+E0026,Michał Brown,michal.brown@nordstar.example.com,Operations,Ops Coordinator (Director),L6-Director,S6,FTE,Remote (PL),PL,2024-11-20,Active,E0070
+E0027,Krzysztof Thomas,krzysztof.thomas@nordstar.example.com,Marketing,Marketing Specialist (Associate),L2-Associate,S2,FTE,"Krakow, PL",PL,2022-09-03,Active,E0058
+E0028,Ewa Lewandowski,ewa.lewandowski@nordstar.example.com,Legal,Compliance Specialist (Junior),L1-Junior,S1,Contractor,"London, UK",UK,2023-10-25,Active,E0103
+E0029,Sofia Davis,sofia.davis@nordstar.example.com,HR,HRBP (Associate),L2-Associate,S2,FTE,"Krakow, PL",PL,2023-01-15,Active,E0069
+E0030,Krzysztof Thompson,krzysztof.thompson@nordstar.example.com,HR,HR Specialist (Lead),L4-Lead,S4,Part-time,"Gdansk, PL",PL,2020-08-13,On Leave,E0086
+E0031,Ava Jones,ava.jones@nordstar.example.com,Sales,Sales Ops Specialist (Director),L6-Director,S6,Part-time,"Austin, US",US,2023-11-16,Active,E0039
+E0032,Łukasz Kowalski,lukasz.kowalski@nordstar.example.com,Data Science,Data Analyst (Associate),L2-Associate,S2,FTE,"Manchester, UK",UK,2023-09-21,Active,E0085
+E0033,Piotr Wiśniewska,piotr.wiśniewska@nordstar.example.com,HR,HRBP (Lead),L4-Lead,S4,FTE,Remote (US),US,2023-05-04,Active,E0069
+E0034,Ewa Nowak,ewa.nowak@nordstar.example.com,Finance,Financial Analyst (Lead),L4-Lead,S4,Part-time,"London, UK",UK,2024-01-12,Active,E0002
+E0035,Adam Wiśniewska,adam.wiśniewska@nordstar.example.com,Finance,Controller (Director),L6-Director,S6,FTE,"Austin, US",US,2021-03-10,Probation,E0002
+E0036,Julia Wilson,julia.wilson@nordstar.example.com,Marketing,Content Strategist (Senior),L3-Senior,S3,FTE,"London, UK",UK,2024-11-17,Active,E0058
+E0037,Piotr Moore,piotr.moore@nordstar.example.com,Finance,Controller (Lead),L4-Lead,S4,Part-time,"Warsaw, PL",PL,2018-10-06,Active,E0002
+E0038,Julia Miller,julia.miller@nordstar.example.com,Sales,Account Exec (Senior),L3-Senior,S3,Contractor,"Gdansk, PL",PL,2021-10-14,Active,E0039
+E0039,Tomasz Harris,tomasz.harris@nordstar.example.com,Sales,Sales Ops Specialist (Director),L6-Director,S6,FTE,Remote (US),US,2023-11-11,Active,
+E0040,Liam Wójcik,liam.wójcik@nordstar.example.com,IT,Systems Engineer (Junior),L1-Junior,S1,FTE,"Manchester, UK",UK,2019-05-21,Active,E0114
+E0041,Adam Kamińska,adam.kamińska@nordstar.example.com,Marketing,Performance Marketer (Director),L6-Director,S6,Contractor,"London, UK",UK,2023-04-24,Active,E0058
+E0042,Ethan Moore,ethan.moore@nordstar.example.com,HR,Talent Acquisition (Director),L6-Director,S6,Contractor,"Krakow, PL",PL,2018-02-19,Active,E0069
+E0043,Olivia Kowalski,olivia.kowalski@nordstar.example.com,Sales,Sales Rep (Director),L6-Director,S6,FTE,"Gdansk, PL",PL,2022-06-09,Active,E0039
+E0044,Magda Nowak,magda.nowak@nordstar.example.com,IT,IT Support (Junior),L1-Junior,S1,FTE,Remote (UK),UK,2019-04-21,Active,E0114
+E0045,Beata Mazur,beata.mazur@nordstar.example.com,Marketing,Marketing Specialist (Senior),L3-Senior,S3,FTE,"Warsaw, PL",PL,2025-02-13,Active,E0008
+E0046,Olivia Davis,olivia.davis@nordstar.example.com,Operations,Ops Coordinator (Director),L6-Director,S6,Part-time,Remote (US),US,2020-04-18,Active,E0070
+E0047,Ava White,ava.white@nordstar.example.com,IT,Systems Engineer (Junior),L1-Junior,S1,FTE,"Austin, US",US,2021-05-14,Active,E0114
+E0048,Paweł White,pawel.white@nordstar.example.com,Data Science,ML Engineer (Associate),L2-Associate,S2,FTE,"Manchester, UK",UK,2018-01-28,Active,E0100
+E0049,Marta Kamińska,marta.kamińska@nordstar.example.com,Legal,Legal Counsel (Lead),L4-Lead,S4,FTE,"New York, US",US,2019-10-23,Active,E0025
+E0050,Ola Martin,ola.martin@nordstar.example.com,Finance,Controller (Senior),L3-Senior,S3,FTE,"Manchester, UK",UK,2025-04-06,Probation,E0002
+E0051,Marcin Smith,marcin.smith@nordstar.example.com,HR,HRBP (Senior),L3-Senior,S3,FTE,"Krakow, PL",PL,2020-08-14,Active,E0086
+E0052,Adam Brown,adam.brown@nordstar.example.com,Marketing,Performance Marketer (Lead),L4-Lead,S4,Part-time,"New York, US",US,2018-12-09,Active,E0008
+E0053,Jakub Kamińska,jakub.kamińska@nordstar.example.com,Sales,Sales Rep (Director),L6-Director,S6,FTE,"Warsaw, PL",PL,2023-09-06,Active,E0039
+E0054,Emma Thomas,emma.thomas@nordstar.example.com,Data Science,Data Analyst (Lead),L4-Lead,S4,Part-time,"New York, US",US,2021-05-06,Active,E0100
+E0055,Liam Martin,liam.martin@nordstar.example.com,Finance,AP/AR Specialist (Manager),L5-Manager,S5,FTE,"Manchester, UK",UK,2021-04-20,Active,E0061
+E0056,Zuzanna Davis,zuzanna.davis@nordstar.example.com,IT,Cloud Engineer (Lead),L4-Lead,S4,Part-time,"London, UK",UK,2025-03-28,Active,E0114
+E0057,Ewa Martinez,ewa.martinez@nordstar.example.com,Sales,Account Exec (Manager),L5-Manager,S5,FTE,"Austin, US",US,2019-12-31,Active,E0039
+E0058,Jakub Martinez,jakub.martinez@nordstar.example.com,Marketing,Content Strategist (Director),L6-Director,S6,FTE,Remote (PL),PL,2023-05-17,Active,
+E0059,Ethan White,ethan.white@nordstar.example.com,IT,Cloud Engineer (Senior),L3-Senior,S3,FTE,"Krakow, PL",PL,2024-08-02,Active,E0062
+E0060,Amelia Jackson,amelia.jackson@nordstar.example.com,Data Science,Data Analyst (Associate),L2-Associate,S2,FTE,"Manchester, UK",UK,2018-02-28,Active,E0085
+E0061,Łukasz Martinez,lukasz.martinez@nordstar.example.com,Finance,Controller (Lead),L4-Lead,S4,FTE,Remote (PL),PL,2025-06-14,Active,E0002
+E0062,Krzysztof Dąbrowska,krzysztof.dąbrowska@nordstar.example.com,IT,IT Support (Manager),L5-Manager,S5,FTE,"Warsaw, PL",PL,2025-06-12,Active,E0114
+E0063,Beata Davis,beata.davis@nordstar.example.com,Data Science,Data Analyst (Lead),L4-Lead,S4,Contractor,"Krakow, PL",PL,2025-02-16,Active,E0085
+E0064,Marcin Martinez,marcin.martinez@nordstar.example.com,Marketing,Performance Marketer (Manager),L5-Manager,S5,Contractor,Remote (PL),PL,2022-06-05,Active,E0008
+E0065,Marcin Jones,marcin.jones@nordstar.example.com,IT,IT Support (Lead),L4-Lead,S4,Contractor,Remote (PL),PL,2024-10-16,Active,E0114
+E0066,Olivia Miller,olivia.miller@nordstar.example.com,Legal,Compliance Specialist (Senior),L3-Senior,S3,FTE,"London, UK",UK,2020-11-05,Active,E0103
+E0067,Piotr Smith,piotr.smith@nordstar.example.com,Finance,Financial Analyst (Associate),L2-Associate,S2,FTE,"Gdansk, PL",PL,2019-05-10,Active,E0061
+E0068,Katarzyna Brown,katarzyna.brown@nordstar.example.com,Operations,Operations Manager (Manager),L5-Manager,S5,FTE,"New York, US",US,2022-05-09,Active,E0070
+E0069,Olivia Rodriguez,olivia.rodriguez@nordstar.example.com,HR,Talent Acquisition (Director),L6-Director,S6,FTE,Remote (US),US,2021-08-02,Active,
+E0070,Krzysztof Martin,krzysztof.martin@nordstar.example.com,Operations,Workforce Planner (Director),L6-Director,S6,FTE,Remote (UK),UK,2024-05-28,On Leave,
+E0071,Łukasz Dąbrowska,lukasz.dąbrowska@nordstar.example.com,Sales,Account Exec (Lead),L4-Lead,S4,FTE,"Austin, US",US,2025-02-21,Active,E0039
+E0072,Krzysztof Thomas,krzysztof.thomas@nordstar.example.com,IT,Cloud Engineer (Associate),L2-Associate,S2,FTE,Remote (PL),PL,2022-01-22,Active,E0114
+E0073,Liam Kowalska,liam.kowalska@nordstar.example.com,Finance,AP/AR Specialist (Associate),L2-Associate,S2,FTE,"Austin, US",US,2020-07-23,Active,E0002
+E0074,Julia Jones,julia.jones@nordstar.example.com,Marketing,Content Strategist (Lead),L4-Lead,S4,Contractor,"New York, US",US,2022-05-15,Active,E0058
+E0075,Katarzyna Garcia,katarzyna.garcia@nordstar.example.com,HR,People Partner (Junior),L1-Junior,S1,FTE,Remote (UK),UK,2018-05-31,Active,E0069
+E0076,Sofia Wiśniewska,sofia.wiśniewska@nordstar.example.com,HR,HR Specialist (Associate),L2-Associate,S2,FTE,"London, UK",UK,2020-04-26,Active,E0069
+E0077,Liam Wójcik,liam.wójcik@nordstar.example.com,Data Science,Data Scientist (Director),L6-Director,S6,Contractor,Remote (PL),PL,2019-07-11,Active,E0085
+E0078,Emma Anderson,emma.anderson@nordstar.example.com,Finance,Financial Analyst (Senior),L3-Senior,S3,FTE,"Gdansk, PL",PL,2021-02-20,Active,E0061
+E0079,Lucas Williams,lucas.williams@nordstar.example.com,Operations,Workforce Planner (Junior),L1-Junior,S1,FTE,"London, UK",UK,2024-09-04,Active,E0070
+E0080,Noah Jackson,noah.jackson@nordstar.example.com,Sales,Sales Ops Specialist (Junior),L1-Junior,S1,Contractor,Remote (US),US,2021-07-15,Active,E0039
+E0081,Liam Johnson,liam.johnson@nordstar.example.com,Finance,AP/AR Specialist (Director),L6-Director,S6,FTE,Remote (UK),UK,2022-05-09,Active,E0061
+E0082,Magda Brown,magda.brown@nordstar.example.com,Marketing,Marketing Specialist (Director),L6-Director,S6,FTE,Remote (PL),PL,2023-06-30,Probation,E0058
+E0083,Ola Martinez,ola.martinez@nordstar.example.com,Legal,Contracts Manager (Manager),L5-Manager,S5,FTE,Remote (PL),PL,2020-05-24,Active,E0025
+E0084,Katarzyna Lewandowski,katarzyna.lewandowski@nordstar.example.com,Legal,Contracts Manager (Manager),L5-Manager,S5,FTE,"London, UK",UK,2023-03-09,Active,E0025
+E0085,Ewa Garcia,ewa.garcia@nordstar.example.com,Data Science,Data Scientist (Manager),L5-Manager,S5,FTE,"New York, US",US,2024-04-29,Active,E0100
+E0086,Ola Davis,ola.davis@nordstar.example.com,HR,HR Specialist (Manager),L5-Manager,S5,FTE,Remote (UK),UK,2022-03-14,Active,E0069
+E0087,Olivia Dąbrowska,olivia.dąbrowska@nordstar.example.com,Legal,Legal Counsel (Lead),L4-Lead,S4,FTE,Remote (PL),PL,2022-03-06,Active,E0025
+E0088,Zuzanna Wilson,zuzanna.wilson@nordstar.example.com,Marketing,Performance Marketer (Manager),L5-Manager,S5,FTE,Remote (PL),PL,2023-10-25,Active,E0008
+E0089,Noah Jones,noah.jones@nordstar.example.com,Sales,Account Exec (Senior),L3-Senior,S3,FTE,"Manchester, UK",UK,2019-10-20,Active,E0039
+E0090,Emma Davis,emma.davis@nordstar.example.com,IT,Cloud Engineer (Associate),L2-Associate,S2,FTE,"London, UK",UK,2024-04-02,Probation,E0062
+E0091,Mateusz Martinez,mateusz.martinez@nordstar.example.com,Sales,Sales Rep (Associate),L2-Associate,S2,FTE,"Krakow, PL",PL,2019-08-27,Active,E0039
+E0092,Noah Davis,noah.davis@nordstar.example.com,IT,Systems Engineer (Junior),L1-Junior,S1,FTE,"Manchester, UK",UK,2025-06-18,Probation,E0062
+E0093,Sofia Martin,sofia.martin@nordstar.example.com,Legal,Contracts Manager (Manager),L5-Manager,S5,FTE,"Krakow, PL",PL,2022-08-01,Active,E0025
+E0094,Beata Lewandowski,beata.lewandowski@nordstar.example.com,Legal,Compliance Specialist (Junior),L1-Junior,S1,FTE,"Krakow, PL",PL,2024-02-11,Active,E0025
+E0095,Beata Kowalski,beata.kowalski@nordstar.example.com,IT,Systems Engineer (Senior),L3-Senior,S3,Part-time,Remote (US),US,2018-12-21,Active,E0114
+E0096,Paweł Martinez,pawel.martinez@nordstar.example.com,Data Science,Data Scientist (Lead),L4-Lead,S4,Part-time,Remote (UK),UK,2020-12-22,Active,E0085
+E0097,Paweł Mazur,pawel.mazur@nordstar.example.com,HR,HR Specialist (Director),L6-Director,S6,Part-time,Remote (US),US,2019-12-22,Active,E0086
+E0098,Ola Wilson,ola.wilson@nordstar.example.com,Finance,Financial Analyst (Associate),L2-Associate,S2,FTE,"Gdansk, PL",PL,2019-05-26,Active,E0061
+E0099,Tomasz Anderson,tomasz.anderson@nordstar.example.com,Legal,Legal Counsel (Manager),L5-Manager,S5,FTE,"Manchester, UK",UK,2025-07-11,Active,E0103
+E0100,Katarzyna Wilson,katarzyna.wilson@nordstar.example.com,Data Science,ML Engineer (Director),L6-Director,S6,FTE,"Manchester, UK",UK,2019-11-11,Active,
+E0101,Marcin Dąbrowska,marcin.dąbrowska@nordstar.example.com,IT,Systems Engineer (Associate),L2-Associate,S2,FTE,"Manchester, UK",UK,2021-02-02,Active,E0114
+E0102,Amelia Rodriguez,amelia.rodriguez@nordstar.example.com,Sales,Sales Rep (Junior),L1-Junior,S1,FTE,Remote (PL),PL,2025-06-28,Active,E0039
+E0103,Ola Miller,ola.miller@nordstar.example.com,Legal,Contracts Manager (Lead),L4-Lead,S4,Contractor,Remote (PL),PL,2021-04-04,Active,E0025
+E0104,Anna Nowak,anna.nowak@nordstar.example.com,Data Science,Data Analyst (Manager),L5-Manager,S5,Part-time,Remote (US),US,2025-03-07,Active,E0100
+E0105,Jakub Wiśniewska,jakub.wiśniewska@nordstar.example.com,IT,Cloud Engineer (Manager),L5-Manager,S5,FTE,Remote (PL),PL,2020-10-05,Active,E0114
+E0106,Jakub Brown,jakub.brown@nordstar.example.com,Legal,Compliance Specialist (Lead),L4-Lead,S4,FTE,"Krakow, PL",PL,2021-03-30,Active,E0103
+E0107,Isabella Zieliński,isabella.zieliński@nordstar.example.com,Marketing,Content Strategist (Director),L6-Director,S6,FTE,"Austin, US",US,2022-02-18,Active,E0058
+E0108,Marcin Wiśniewska,marcin.wiśniewska@nordstar.example.com,Legal,Compliance Specialist (Senior),L3-Senior,S3,FTE,"Krakow, PL",PL,2022-03-05,Active,E0025
+E0109,Amelia Kowalska,amelia.kowalska@nordstar.example.com,Legal,Legal Counsel (Manager),L5-Manager,S5,FTE,"Austin, US",US,2023-03-26,Active,E0103
+E0110,Olivia Wiśniewska,olivia.wiśniewska@nordstar.example.com,Data Science,Data Analyst (Manager),L5-Manager,S5,Part-time,"Manchester, UK",UK,2022-07-22,On Leave,E0085
+E0111,Łukasz Wójcik,lukasz.wójcik@nordstar.example.com,HR,HRBP (Associate),L2-Associate,S2,FTE,Remote (US),US,2017-10-18,Active,E0069
+E0112,Katarzyna Dąbrowska,katarzyna.dąbrowska@nordstar.example.com,Finance,Controller (Junior),L1-Junior,S1,Contractor,Remote (PL),PL,2023-03-26,Probation,E0061
+E0113,Zuzanna Miller,zuzanna.miller@nordstar.example.com,Sales,Sales Rep (Lead),L4-Lead,S4,FTE,"Austin, US",US,2023-10-28,Active,E0039
+E0114,Julia Moore,julia.moore@nordstar.example.com,IT,IT Support (Director),L6-Director,S6,FTE,"Krakow, PL",PL,2023-05-03,Active,
+E0115,Anna Mazur,anna.mazur@nordstar.example.com,Sales,Sales Ops Specialist (Manager),L5-Manager,S5,FTE,Remote (US),US,2019-04-23,Active,E0039
+E0116,Łukasz Johnson,lukasz.johnson@nordstar.example.com,Marketing,Content Strategist (Manager),L5-Manager,S5,FTE,Remote (UK),UK,2021-04-02,Active,E0058
+E0117,Noah Dąbrowska,noah.dąbrowska@nordstar.example.com,Operations,Ops Coordinator (Lead),L4-Lead,S4,FTE,"London, UK",UK,2022-12-12,Active,E0070
+E0118,Ava Williams,ava.williams@nordstar.example.com,Operations,Ops Coordinator (Lead),L4-Lead,S4,FTE,"Gdansk, PL",PL,2024-04-05,Active,E0070
+E0119,Magda Martin,magda.martin@nordstar.example.com,Legal,Compliance Specialist (Manager),L5-Manager,S5,FTE,"Krakow, PL",PL,2019-04-05,Active,E0025
+E0120,Sofia Kowalski,sofia.kowalski@nordstar.example.com,Finance,AP/AR Specialist (Senior),L3-Senior,S3,FTE,Remote (PL),PL,2022-02-06,Active,E0002

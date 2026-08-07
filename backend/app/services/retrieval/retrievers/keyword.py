@@ -54,7 +54,7 @@ class KeywordRetriever(BaseRetriever):
         candidates = [q.text, *q.variants]
         candidates.append(" OR ".join(q.text.split()))
 
-        db = self.session_factory()
+        db = self.session_factory()          # branch-owned — not closed here
         try:
             rows = []
             for qtext in candidates:
@@ -68,8 +68,6 @@ class KeywordRetriever(BaseRetriever):
         except Exception as e:
             logger.warning(f"[RETRIEVAL/keyword] query failed: {e}")
             rows = []
-        finally:
-            db.close()
 
         return [
             RetrievedChunk(

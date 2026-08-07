@@ -39,7 +39,11 @@ class RetrievalConfig:
     fetch_k: int = 30                    # vector candidates before fusion
     keyword_k: int = 30                  # keyword candidates before fusion
     rerank_top_n: int = 10               # candidates sent to the cross-encoder
+    rerank_char_cap: int = 600           # chars of each chunk the reranker reads
+                                         # (CPU time grows with length; relevance
+                                         # signal is concentrated at the start)
     reranker_api_key: str = ""           # resolved at query time (space → provider → env)
+    embed_cache_ttl: int = 3600          # query-embedding cache (0 = off)
     context_token_budget: int = 3000     # ≈ chars/4
     parallel: bool = True
     timeout_s: float = 8.0

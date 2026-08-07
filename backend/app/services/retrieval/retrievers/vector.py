@@ -26,18 +26,15 @@ class VectorRetriever(BaseRetriever):
             return []
         from app.services import pgvector_store
 
-        db = self.session_factory()
+        db = self.session_factory()          # branch-owned — not closed here
+        # pgvector ≥ 0.8: keep walking the HNSW graph until enough rows
+        # survive the rag_space_id filter (no-op on older versions)
         try:
-            # pgvector ≥ 0.8: keep walking the HNSW graph until enough rows
-            # survive the rag_space_id filter (no-op on older versions)
-            try:
-                db.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
-            except Exception:
-                db.rollback()
-            rows = pgvector_store.search(
-                db, self.space.id, q.embedding, max(k, int(self.cfg.fetch_k)))
-        finally:
-            db.close()
+            db.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+        except Exception:
+            db.rollback()
+        rows = pgvector_store.search(
+            db, self.space.id, q.embedding, max(k, int(self.cfg.fetch_k)))
 
         return [
             RetrievedChunk(

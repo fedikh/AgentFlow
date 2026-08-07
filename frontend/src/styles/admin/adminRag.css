@@ -415,3 +415,41 @@
   .arag-layout { grid-template-columns: 1fr; }
   .arag-spec-grid { grid-template-columns: 1fr; }
 }
+
+/* ── admin lifecycle action buttons ── */
+.arag-act {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 9px;
+  padding: 7px 14px;
+  font: 600 12.5px system-ui, sans-serif;
+  color: #0f172a;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.arag-act:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+.arag-act:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.arag-act-danger {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.arag-act-danger:hover {
+  background: #fef2f2;
+  border-color: #dc2626;
+  color: #b91c1c;
+}
+.arag-act-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.arag-act-primary:hover {
+  background: #1d4ed8;
+  color: #fff;
+}

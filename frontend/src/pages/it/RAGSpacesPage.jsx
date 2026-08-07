@@ -52,6 +52,7 @@ import ConfigPanel from "../../components/it/rag/ConfigPanel";
 import EvaluationPanel from "../../components/it/rag/EvaluationPanel";
 import DocModal from "../../components/it/rag/DocModal";
 import VersionsPanel from "../../components/it/rag/VersionsPanel";
+import ApiAccessPanel from "../../components/it/rag/ApiAccessPanel";
 import DeployModal from "../../components/it/rag/DeployModal";
 import { buildMatrix, matrixToCells, matrixToPositional, normCell } from "../../components/it/rag/tableModel";
 
@@ -1412,22 +1413,29 @@ const RAGSpacesPage = () => {
           )}
 
           {panel === "versions" && (
-            <VersionsPanel
-              space={activeSpace}
-              versions={versions}
-              loading={loadingVersions}
-              canBuild={activeSpace.can_build !== false}
-              isOwner={activeSpace.is_owner === true}
-              editable={editable}
-              onSaveVersion={handleSaveVersion}
-              onApplyVersion={handleApplyVersion}
-              onDeployVersion={(v) =>
-                setDeployModal({ mode: "version", version: v })
-              }
-              onDeleteVersion={handleDeleteVersion}
-              onReindex={handleProcessAll}
-              reindexing={processing}
-            />
+            <>
+              <VersionsPanel
+                space={activeSpace}
+                versions={versions}
+                loading={loadingVersions}
+                canBuild={activeSpace.can_build !== false}
+                isOwner={activeSpace.is_owner === true}
+                editable={editable}
+                onSaveVersion={handleSaveVersion}
+                onApplyVersion={handleApplyVersion}
+                onDeployVersion={(v) =>
+                  setDeployModal({ mode: "version", version: v })
+                }
+                onDeleteVersion={handleDeleteVersion}
+                onReindex={handleProcessAll}
+                reindexing={processing}
+              />
+              {/* after deploy: machine access for other enterprise apps */}
+              <ApiAccessPanel
+                space={activeSpace}
+                canManage={activeSpace.can_build !== false}
+              />
+            </>
           )}
 
           {panel !== "uploads" &&

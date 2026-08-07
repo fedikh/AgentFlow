@@ -105,9 +105,10 @@ def _bge(cfg, query, chunks):
         logger.info(f"[RETRIEVAL/rerank] loading local model {name}…")
         _LOCAL_MODELS[name] = CrossEncoder(name)
     model = _LOCAL_MODELS[name]
-    # 1000-char cap: cross-encoder relevance saturates well before that, and
-    # scoring time grows with passage length (CPU)
-    scores = model.predict([(query, c.content[:1000]) for c in chunks])
+    # char cap (cfg.rerank_char_cap): CPU time grows with passage length and
+    # the relevance signal is concentrated at the start of a chunk
+    cap = int(getattr(cfg, "rerank_char_cap", 600) or 600)
+    scores = model.predict([(query, c.content[:cap]) for c in chunks])
     ranked = sorted(range(len(chunks)), key=lambda i: float(scores[i]), reverse=True)
     lo, hi = float(min(scores)), float(max(scores))
     span = (hi - lo) or 1.0

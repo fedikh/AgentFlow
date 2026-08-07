@@ -1,8 +1,28 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { listSpaces, queryRAG, listPublicDocuments } from "../../services/ragApi";
+import {
+  listSpaces,
+  listPublicDocuments,
+  listChatSessions,
+  getChatSession,
+  sendChatMessage,
+  updateChatSession,
+  deleteChatSession,
+} from "../../services/ragApi";
 import DocViewerModal from "../user/DocViewerModal";
-import { ArrowLeft, Bot, FileText, Search, Send } from "lucide-react";
+import AnswerBody from "./AnswerBody";
+import {
+  Archive,
+  ArrowLeft,
+  Bot,
+  FileText,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Search,
+  Send,
+  Trash2,
+} from "lucide-react";
 import "../../styles/it/rag.css";
 import "../../styles/it/spacesgrid.css";
 import "../../styles/user/userAgents.css";
@@ -38,6 +58,17 @@ const SUGGESTS = [
   "What topics are covered?",
   "List the key points",
 ];
+
+const timeAgo = (iso) => {
+  if (!iso) return "";
+  const d = new Date(String(iso).replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return "";
+  const s = (Date.now() - d.getTime()) / 1000;
+  if (s < 60) return "now";
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+};
 
 const meInitials = (() => {
   try {
@@ -78,6 +109,11 @@ const AgentsExperience = ({
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [docSearch, setDocSearch] = useState("");
   const [viewerDoc, setViewerDoc] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [sessionId, setSessionId] = useState(null);
+  const [loadingChat, setLoadingChat] = useState(false);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameVal, setRenameVal] = useState("");
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -112,6 +148,9 @@ const AgentsExperience = ({
     setQuestion("");
     setDocs([]);
     setDocSearch("");
+    setSessions([]);
+    setSessionId(null);
+    setRenamingId(null);
     if (agent.status === "EDITING") return; // offline for updates — skip docs
     setLoadingDocs(true);
     try {
@@ -120,6 +159,75 @@ const AgentsExperience = ({
       /* documents optional — chat still works */
     } finally {
       setLoadingDocs(false);
+    }
+    // conversation history — reopen the most recent one for continuity
+    try {
+      const list = await listChatSessions(agent.id);
+      setSessions(list);
+      if (list.length > 0) openSession(list[0]);
+    } catch {
+      /* chat history optional — a fresh chat still works */
+    }
+  };
+
+  /* ── persistent conversations ── */
+  const openSession = async (s) => {
+    setSessionId(s.id);
+    setChatHistory([]);
+    setLoadingChat(true);
+    try {
+      const res = await getChatSession(s.id);
+      setChatHistory(
+        (res.messages || []).map((m) => ({
+          role: m.role,
+          content: m.content,
+          sources: m.sources,
+        })),
+      );
+    } catch {
+      setChatHistory([]);
+    } finally {
+      setLoadingChat(false);
+    }
+  };
+
+  const newChat = () => {
+    setSessionId(null);
+    setChatHistory([]);
+    setQuestion("");
+  };
+
+  const commitRename = async (s) => {
+    const t = renameVal.trim();
+    setRenamingId(null);
+    if (!t || t === s.title) return;
+    setSessions((l) => l.map((x) => (x.id === s.id ? { ...x, title: t } : x)));
+    try {
+      await updateChatSession(s.id, { title: t });
+    } catch {
+      /* optimistic — next reload shows the server state */
+    }
+  };
+
+  const archiveSession = async (s) => {
+    setSessions((l) => l.filter((x) => x.id !== s.id));
+    if (sessionId === s.id) newChat();
+    try {
+      await updateChatSession(s.id, { archived: true });
+    } catch {
+      /* optimistic */
+    }
+  };
+
+  const removeSession = async (s) => {
+    if (!window.confirm(`Delete the conversation “${s.title || "New chat"}”?`))
+      return;
+    setSessions((l) => l.filter((x) => x.id !== s.id));
+    if (sessionId === s.id) newChat();
+    try {
+      await deleteChatSession(s.id);
+    } catch {
+      /* optimistic */
     }
   };
 
@@ -134,6 +242,8 @@ const AgentsExperience = ({
         setChatHistory([]);
         setDocs([]);
         setViewerDoc(null);
+        setSessions([]);
+        setSessionId(null);
       }
       return;
     }
@@ -147,22 +257,6 @@ const AgentsExperience = ({
   const openAgent = (agent) => navigate(`${basePath}/${agent.id}`);
   const goBack = () => navigate(basePath);
 
-  const fmt = (t) =>
-    t
-      ? t
-          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-          .replace(
-            /^## (.+)$/gm,
-            '<div style="font-size:15px;font-weight:600;margin:10px 0 4px">$1</div>',
-          )
-          .replace(
-            /^### (.+)$/gm,
-            '<div style="font-size:14px;font-weight:600;margin:8px 0 4px">$1</div>',
-          )
-          .replace(/^[•\-*] (.+)$/gm, '<div style="padding-left:12px">• $1</div>')
-          .replace(/\n/g, "<br>")
-      : "";
-
   const handleQuery = async (preset) => {
     const q = (typeof preset === "string" ? preset : question).trim();
     if (!q || !selected || querying) return;
@@ -170,7 +264,10 @@ const AgentsExperience = ({
     setChatHistory((h) => [...h, { role: "user", content: q }]);
     setQuerying(true);
     try {
-      const res = await queryRAG(selected.id, q);
+      const res = await sendChatMessage(selected.id, q, sessionId);
+      setSessionId(res.session.id);
+      // the answered session jumps to the top of the history rail
+      setSessions((l) => [res.session, ...l.filter((x) => x.id !== res.session.id)]);
       setChatHistory((h) => [
         ...h,
         { role: "assistant", content: res.answer, sources: res.sources },
@@ -349,10 +446,78 @@ const AgentsExperience = ({
         </div>
       ) : (
         <div className="ac-body">
+          {/* conversations rail */}
+          <aside className="ac-hist">
+            <button className="ac-hist-new" onClick={newChat} disabled={querying}>
+              <Plus size={14} /> New chat
+            </button>
+            <div className="ac-hist-list">
+              {sessions.length === 0 && (
+                <div className="ac-hist-empty">
+                  No conversations yet — your chats are saved automatically.
+                </div>
+              )}
+              {sessions.map((s) => (
+                <div
+                  key={s.id}
+                  className={`ac-hist-item ${s.id === sessionId ? "active" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => renamingId !== s.id && openSession(s)}
+                  onKeyDown={(e) => e.key === "Enter" && renamingId !== s.id && openSession(s)}
+                >
+                  {renamingId === s.id ? (
+                    <input
+                      className="ac-hist-rename"
+                      value={renameVal}
+                      autoFocus
+                      onChange={(e) => setRenameVal(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitRename(s);
+                        if (e.key === "Escape") setRenamingId(null);
+                      }}
+                      onBlur={() => commitRename(s)}
+                    />
+                  ) : (
+                    <>
+                      <MessageSquare size={13} className="ac-hist-ic" />
+                      <span className="ac-hist-title">{s.title || "New chat"}</span>
+                      <span className="ac-hist-time">{timeAgo(s.last_message_at)}</span>
+                      <span
+                        className="ac-hist-actions"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          title="Rename"
+                          onClick={() => {
+                            setRenamingId(s.id);
+                            setRenameVal(s.title || "");
+                          }}
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button title="Archive" onClick={() => archiveSession(s)}>
+                          <Archive size={12} />
+                        </button>
+                        <button title="Delete" onClick={() => removeSession(s)}>
+                          <Trash2 size={12} />
+                        </button>
+                      </span>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </aside>
+
           {/* chat column */}
           <div className="ac-chat">
             <div className="ac-stream">
-              {chatHistory.length === 0 && (
+              {loadingChat && (
+                <div className="ac-hist-loading">Loading conversation…</div>
+              )}
+              {chatHistory.length === 0 && !loadingChat && (
                 <div className="ac-empty">
                   <div className="ac-empty-ic"><Bot size={26} /></div>
                   <div className="ac-empty-t">Chat with {selected.name}</div>
@@ -378,11 +543,7 @@ const AgentsExperience = ({
                       {me ? meInitials : <Bot size={15} />}
                     </span>
                     <div className={`ac-bubble ${me ? "me" : "ai"}`}>
-                      {me ? (
-                        m.content
-                      ) : (
-                        <div dangerouslySetInnerHTML={{ __html: fmt(m.content) }} />
-                      )}
+                      {me ? m.content : <AnswerBody text={m.content} />}
                       {m.sources?.length > 0 && (
                         <div className="ac-sources">
                           <div className="ac-sources-t">Sources</div>

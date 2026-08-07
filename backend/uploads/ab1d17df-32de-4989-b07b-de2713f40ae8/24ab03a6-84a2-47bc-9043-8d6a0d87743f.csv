@@ -1,0 +1,481 @@
+employee_id,course,status,score,completed_at
+E0001,Code of Conduct 2025,Completed,,2025-01-22
+E0001,IT Security 2025,Assigned,86,2025-01-07
+E0001,Anti-Harassment 2025,Assigned,,
+E0001,GDPR Basics 2025,Assigned,,
+E0002,Code of Conduct 2025,Completed,,
+E0002,IT Security 2025,Assigned,80,2025-01-07
+E0002,Anti-Harassment 2025,Assigned,,2025-01-19
+E0002,GDPR Basics 2025,Overdue,,2025-01-28
+E0003,Code of Conduct 2025,Assigned,73,2025-01-02
+E0003,IT Security 2025,Completed,69,2025-01-01
+E0003,Anti-Harassment 2025,Overdue,,2025-01-20
+E0003,GDPR Basics 2025,Completed,68,
+E0004,Code of Conduct 2025,Assigned,89,2025-01-23
+E0004,IT Security 2025,Completed,,2025-02-05
+E0004,Anti-Harassment 2025,Completed,,2025-01-01
+E0004,GDPR Basics 2025,Assigned,70,2025-01-22
+E0005,Code of Conduct 2025,Completed,,2025-01-27
+E0005,IT Security 2025,Completed,75,2025-01-18
+E0005,Anti-Harassment 2025,Completed,,2025-01-31
+E0005,GDPR Basics 2025,Completed,77,2025-01-18
+E0006,Code of Conduct 2025,Assigned,,2025-01-27
+E0006,IT Security 2025,Completed,,2025-01-25
+E0006,Anti-Harassment 2025,Completed,,2025-01-23
+E0006,GDPR Basics 2025,Completed,74,2025-01-06
+E0007,Code of Conduct 2025,Assigned,,2025-02-02
+E0007,IT Security 2025,Completed,66,
+E0007,Anti-Harassment 2025,Completed,,2025-01-20
+E0007,GDPR Basics 2025,Completed,,
+E0008,Code of Conduct 2025,Completed,,
+E0008,IT Security 2025,Overdue,,2025-01-15
+E0008,Anti-Harassment 2025,Completed,,2025-01-21
+E0008,GDPR Basics 2025,Overdue,,2025-02-04
+E0009,Code of Conduct 2025,Assigned,67,
+E0009,IT Security 2025,Completed,100,
+E0009,Anti-Harassment 2025,Completed,77,2025-01-16
+E0009,GDPR Basics 2025,Completed,61,
+E0010,Code of Conduct 2025,Completed,86,2025-01-02
+E0010,IT Security 2025,Assigned,,2025-01-01
+E0010,Anti-Harassment 2025,Completed,79,2025-01-19
+E0010,GDPR Basics 2025,Completed,76,2025-01-08
+E0011,Code of Conduct 2025,Assigned,64,
+E0011,IT Security 2025,Assigned,90,2025-02-10
+E0011,Anti-Harassment 2025,Completed,,2025-01-30
+E0011,GDPR Basics 2025,Completed,,
+E0012,Code of Conduct 2025,Completed,,
+E0012,IT Security 2025,Completed,,2025-01-16
+E0012,Anti-Harassment 2025,Overdue,,2025-01-25
+E0012,GDPR Basics 2025,Completed,,2025-01-14
+E0013,Code of Conduct 2025,Completed,66,2025-01-08
+E0013,IT Security 2025,Completed,,2025-02-03
+E0013,Anti-Harassment 2025,Completed,,2025-01-31
+E0013,GDPR Basics 2025,Overdue,86,
+E0014,Code of Conduct 2025,Completed,,2025-02-01
+E0014,IT Security 2025,Completed,,
+E0014,Anti-Harassment 2025,Completed,61,2025-01-27
+E0014,GDPR Basics 2025,Completed,78,2025-01-15
+E0015,Code of Conduct 2025,Assigned,67,
+E0015,IT Security 2025,Completed,60,
+E0015,Anti-Harassment 2025,Completed,,2025-01-30
+E0015,GDPR Basics 2025,Completed,,
+E0016,Code of Conduct 2025,Assigned,88,2025-01-28
+E0016,IT Security 2025,Completed,,
+E0016,Anti-Harassment 2025,Completed,74,
+E0016,GDPR Basics 2025,Completed,79,2025-01-01
+E0017,Code of Conduct 2025,Completed,,2025-01-01
+E0017,IT Security 2025,Completed,,2025-02-09
+E0017,Anti-Harassment 2025,Completed,,
+E0017,GDPR Basics 2025,Completed,68,
+E0018,Code of Conduct 2025,Overdue,,
+E0018,IT Security 2025,Completed,71,
+E0018,Anti-Harassment 2025,Assigned,60,
+E0018,GDPR Basics 2025,Completed,79,2025-02-10
+E0019,Code of Conduct 2025,Completed,,2025-01-30
+E0019,IT Security 2025,Completed,,2025-01-16
+E0019,Anti-Harassment 2025,Completed,,2025-01-16
+E0019,GDPR Basics 2025,Completed,95,2025-02-04
+E0020,Code of Conduct 2025,Completed,85,
+E0020,IT Security 2025,Completed,67,2025-02-06
+E0020,Anti-Harassment 2025,Completed,,2025-02-07
+E0020,GDPR Basics 2025,Overdue,80,2025-01-29
+E0021,Code of Conduct 2025,Completed,80,2025-01-20
+E0021,IT Security 2025,Completed,,2025-01-23
+E0021,Anti-Harassment 2025,Completed,61,2025-02-03
+E0021,GDPR Basics 2025,Completed,,2025-01-19
+E0022,Code of Conduct 2025,Completed,65,2025-01-29
+E0022,IT Security 2025,Assigned,,2025-01-05
+E0022,Anti-Harassment 2025,Assigned,,2025-01-11
+E0022,GDPR Basics 2025,Completed,,2025-01-29
+E0023,Code of Conduct 2025,Overdue,76,2025-01-15
+E0023,IT Security 2025,Overdue,78,2025-01-20
+E0023,Anti-Harassment 2025,Completed,64,
+E0023,GDPR Basics 2025,Completed,,2025-02-08
+E0024,Code of Conduct 2025,Overdue,99,
+E0024,IT Security 2025,Overdue,,
+E0024,Anti-Harassment 2025,Assigned,95,2025-02-02
+E0024,GDPR Basics 2025,Completed,66,2025-01-02
+E0025,Code of Conduct 2025,Completed,72,
+E0025,IT Security 2025,Assigned,80,2025-01-24
+E0025,Anti-Harassment 2025,Completed,,2025-01-12
+E0025,GDPR Basics 2025,Completed,82,2025-01-11
+E0026,Code of Conduct 2025,Assigned,72,2025-01-12
+E0026,IT Security 2025,Completed,,
+E0026,Anti-Harassment 2025,Completed,95,
+E0026,GDPR Basics 2025,Completed,65,2025-01-19
+E0027,Code of Conduct 2025,Completed,,2025-01-09
+E0027,IT Security 2025,Assigned,,2025-01-07
+E0027,Anti-Harassment 2025,Completed,90,
+E0027,GDPR Basics 2025,Completed,,
+E0028,Code of Conduct 2025,Completed,76,2025-01-13
+E0028,IT Security 2025,Completed,,2025-01-13
+E0028,Anti-Harassment 2025,Completed,,2025-01-22
+E0028,GDPR Basics 2025,Completed,99,2025-02-06
+E0029,Code of Conduct 2025,Assigned,,2025-01-21
+E0029,IT Security 2025,Completed,99,2025-01-14
+E0029,Anti-Harassment 2025,Completed,,2025-02-07
+E0029,GDPR Basics 2025,Completed,,2025-01-18
+E0030,Code of Conduct 2025,Completed,77,2025-01-10
+E0030,IT Security 2025,Completed,,2025-01-25
+E0030,Anti-Harassment 2025,Overdue,,
+E0030,GDPR Basics 2025,Completed,,2025-01-28
+E0031,Code of Conduct 2025,Overdue,88,
+E0031,IT Security 2025,Assigned,,2025-02-10
+E0031,Anti-Harassment 2025,Completed,,2025-01-01
+E0031,GDPR Basics 2025,Completed,,2025-02-08
+E0032,Code of Conduct 2025,Completed,75,2025-01-19
+E0032,IT Security 2025,Completed,91,2025-02-04
+E0032,Anti-Harassment 2025,Completed,95,
+E0032,GDPR Basics 2025,Completed,100,2025-01-12
+E0033,Code of Conduct 2025,Completed,98,2025-02-10
+E0033,IT Security 2025,Completed,,
+E0033,Anti-Harassment 2025,Assigned,,2025-01-31
+E0033,GDPR Basics 2025,Completed,96,2025-01-26
+E0034,Code of Conduct 2025,Assigned,69,2025-01-19
+E0034,IT Security 2025,Completed,84,2025-01-07
+E0034,Anti-Harassment 2025,Completed,99,
+E0034,GDPR Basics 2025,Assigned,,2025-01-27
+E0035,Code of Conduct 2025,Overdue,,2025-01-15
+E0035,IT Security 2025,Completed,89,2025-02-01
+E0035,Anti-Harassment 2025,Completed,,2025-01-08
+E0035,GDPR Basics 2025,Overdue,,
+E0036,Code of Conduct 2025,Completed,79,2025-01-31
+E0036,IT Security 2025,Completed,71,
+E0036,Anti-Harassment 2025,Completed,70,2025-01-08
+E0036,GDPR Basics 2025,Overdue,80,2025-01-21
+E0037,Code of Conduct 2025,Completed,97,2025-01-23
+E0037,IT Security 2025,Overdue,,2025-01-26
+E0037,Anti-Harassment 2025,Completed,90,
+E0037,GDPR Basics 2025,Assigned,,
+E0038,Code of Conduct 2025,Assigned,60,2025-01-20
+E0038,IT Security 2025,Completed,79,2025-02-09
+E0038,Anti-Harassment 2025,Completed,84,2025-01-09
+E0038,GDPR Basics 2025,Assigned,64,2025-01-03
+E0039,Code of Conduct 2025,Completed,,2025-01-21
+E0039,IT Security 2025,Assigned,100,
+E0039,Anti-Harassment 2025,Completed,,2025-02-01
+E0039,GDPR Basics 2025,Assigned,,
+E0040,Code of Conduct 2025,Completed,,2025-01-31
+E0040,IT Security 2025,Completed,95,2025-01-03
+E0040,Anti-Harassment 2025,Assigned,87,
+E0040,GDPR Basics 2025,Completed,,2025-02-01
+E0041,Code of Conduct 2025,Assigned,,2025-02-01
+E0041,IT Security 2025,Completed,,
+E0041,Anti-Harassment 2025,Completed,89,2025-01-12
+E0041,GDPR Basics 2025,Overdue,67,2025-01-23
+E0042,Code of Conduct 2025,Completed,,2025-01-24
+E0042,IT Security 2025,Completed,,
+E0042,Anti-Harassment 2025,Completed,77,2025-01-14
+E0042,GDPR Basics 2025,Completed,,2025-01-09
+E0043,Code of Conduct 2025,Completed,72,2025-01-24
+E0043,IT Security 2025,Completed,,
+E0043,Anti-Harassment 2025,Overdue,98,2025-01-20
+E0043,GDPR Basics 2025,Completed,,2025-02-02
+E0044,Code of Conduct 2025,Assigned,,2025-01-12
+E0044,IT Security 2025,Completed,,2025-01-28
+E0044,Anti-Harassment 2025,Completed,,
+E0044,GDPR Basics 2025,Completed,92,2025-01-02
+E0045,Code of Conduct 2025,Overdue,,
+E0045,IT Security 2025,Completed,,2025-02-07
+E0045,Anti-Harassment 2025,Overdue,,2025-02-01
+E0045,GDPR Basics 2025,Completed,,2025-02-10
+E0046,Code of Conduct 2025,Overdue,77,2025-02-10
+E0046,IT Security 2025,Assigned,71,
+E0046,Anti-Harassment 2025,Completed,,2025-02-06
+E0046,GDPR Basics 2025,Assigned,63,2025-01-13
+E0047,Code of Conduct 2025,Assigned,62,
+E0047,IT Security 2025,Assigned,,2025-01-10
+E0047,Anti-Harassment 2025,Assigned,,2025-01-15
+E0047,GDPR Basics 2025,Completed,,2025-02-03
+E0048,Code of Conduct 2025,Overdue,79,2025-02-02
+E0048,IT Security 2025,Assigned,,2025-01-08
+E0048,Anti-Harassment 2025,Completed,,2025-01-21
+E0048,GDPR Basics 2025,Completed,,2025-01-27
+E0049,Code of Conduct 2025,Completed,,2025-01-31
+E0049,IT Security 2025,Assigned,66,2025-02-04
+E0049,Anti-Harassment 2025,Completed,,
+E0049,GDPR Basics 2025,Overdue,,
+E0050,Code of Conduct 2025,Assigned,92,
+E0050,IT Security 2025,Completed,,
+E0050,Anti-Harassment 2025,Completed,92,2025-02-06
+E0050,GDPR Basics 2025,Completed,83,
+E0051,Code of Conduct 2025,Assigned,93,
+E0051,IT Security 2025,Completed,66,
+E0051,Anti-Harassment 2025,Completed,68,2025-01-31
+E0051,GDPR Basics 2025,Assigned,,2025-01-26
+E0052,Code of Conduct 2025,Completed,,2025-01-06
+E0052,IT Security 2025,Overdue,,
+E0052,Anti-Harassment 2025,Completed,,2025-02-08
+E0052,GDPR Basics 2025,Completed,78,
+E0053,Code of Conduct 2025,Assigned,,2025-02-06
+E0053,IT Security 2025,Assigned,92,2025-01-21
+E0053,Anti-Harassment 2025,Overdue,,2025-01-27
+E0053,GDPR Basics 2025,Completed,80,
+E0054,Code of Conduct 2025,Overdue,,2025-01-27
+E0054,IT Security 2025,Overdue,62,2025-02-01
+E0054,Anti-Harassment 2025,Completed,90,2025-01-26
+E0054,GDPR Basics 2025,Completed,,
+E0055,Code of Conduct 2025,Completed,85,
+E0055,IT Security 2025,Completed,98,2025-01-01
+E0055,Anti-Harassment 2025,Overdue,68,2025-01-20
+E0055,GDPR Basics 2025,Completed,95,2025-01-03
+E0056,Code of Conduct 2025,Completed,,2025-01-11
+E0056,IT Security 2025,Overdue,,2025-01-28
+E0056,Anti-Harassment 2025,Overdue,,2025-02-01
+E0056,GDPR Basics 2025,Assigned,96,2025-01-31
+E0057,Code of Conduct 2025,Completed,92,2025-02-09
+E0057,IT Security 2025,Completed,,2025-01-20
+E0057,Anti-Harassment 2025,Completed,83,2025-01-24
+E0057,GDPR Basics 2025,Completed,84,2025-01-30
+E0058,Code of Conduct 2025,Assigned,,2025-01-14
+E0058,IT Security 2025,Completed,,2025-01-29
+E0058,Anti-Harassment 2025,Completed,,2025-01-18
+E0058,GDPR Basics 2025,Overdue,,2025-01-03
+E0059,Code of Conduct 2025,Assigned,96,
+E0059,IT Security 2025,Completed,87,2025-01-28
+E0059,Anti-Harassment 2025,Completed,69,
+E0059,GDPR Basics 2025,Completed,93,2025-02-01
+E0060,Code of Conduct 2025,Completed,79,2025-01-09
+E0060,IT Security 2025,Completed,64,2025-01-28
+E0060,Anti-Harassment 2025,Assigned,74,
+E0060,GDPR Basics 2025,Assigned,76,
+E0061,Code of Conduct 2025,Assigned,66,
+E0061,IT Security 2025,Completed,86,
+E0061,Anti-Harassment 2025,Completed,69,2025-02-08
+E0061,GDPR Basics 2025,Completed,88,2025-01-02
+E0062,Code of Conduct 2025,Assigned,96,2025-01-05
+E0062,IT Security 2025,Completed,,2025-01-11
+E0062,Anti-Harassment 2025,Completed,95,
+E0062,GDPR Basics 2025,Completed,,2025-01-15
+E0063,Code of Conduct 2025,Completed,79,
+E0063,IT Security 2025,Completed,,
+E0063,Anti-Harassment 2025,Completed,,2025-01-22
+E0063,GDPR Basics 2025,Completed,,
+E0064,Code of Conduct 2025,Overdue,98,
+E0064,IT Security 2025,Completed,,
+E0064,Anti-Harassment 2025,Completed,64,2025-02-07
+E0064,GDPR Basics 2025,Overdue,,
+E0065,Code of Conduct 2025,Completed,84,2025-01-05
+E0065,IT Security 2025,Completed,61,
+E0065,Anti-Harassment 2025,Completed,83,
+E0065,GDPR Basics 2025,Completed,,2025-01-06
+E0066,Code of Conduct 2025,Completed,,2025-01-22
+E0066,IT Security 2025,Completed,82,2025-02-05
+E0066,Anti-Harassment 2025,Completed,85,2025-01-03
+E0066,GDPR Basics 2025,Overdue,95,2025-01-02
+E0067,Code of Conduct 2025,Completed,,
+E0067,IT Security 2025,Assigned,71,2025-01-18
+E0067,Anti-Harassment 2025,Completed,,2025-02-02
+E0067,GDPR Basics 2025,Overdue,85,2025-01-01
+E0068,Code of Conduct 2025,Completed,74,2025-01-01
+E0068,IT Security 2025,Completed,78,2025-02-03
+E0068,Anti-Harassment 2025,Completed,86,
+E0068,GDPR Basics 2025,Completed,86,2025-01-08
+E0069,Code of Conduct 2025,Completed,90,2025-01-17
+E0069,IT Security 2025,Overdue,,2025-01-11
+E0069,Anti-Harassment 2025,Overdue,93,2025-01-11
+E0069,GDPR Basics 2025,Completed,,2025-02-03
+E0070,Code of Conduct 2025,Completed,,2025-01-15
+E0070,IT Security 2025,Completed,,2025-01-02
+E0070,Anti-Harassment 2025,Assigned,93,2025-02-04
+E0070,GDPR Basics 2025,Overdue,72,2025-01-29
+E0071,Code of Conduct 2025,Assigned,73,
+E0071,IT Security 2025,Completed,,2025-01-11
+E0071,Anti-Harassment 2025,Completed,,2025-02-06
+E0071,GDPR Basics 2025,Completed,,
+E0072,Code of Conduct 2025,Assigned,70,2025-01-17
+E0072,IT Security 2025,Assigned,,2025-01-26
+E0072,Anti-Harassment 2025,Completed,65,2025-02-10
+E0072,GDPR Basics 2025,Completed,88,
+E0073,Code of Conduct 2025,Assigned,,2025-01-05
+E0073,IT Security 2025,Completed,,2025-01-21
+E0073,Anti-Harassment 2025,Completed,,
+E0073,GDPR Basics 2025,Completed,,2025-01-29
+E0074,Code of Conduct 2025,Completed,,2025-02-10
+E0074,IT Security 2025,Overdue,,
+E0074,Anti-Harassment 2025,Completed,100,2025-01-07
+E0074,GDPR Basics 2025,Completed,,
+E0075,Code of Conduct 2025,Completed,,2025-01-18
+E0075,IT Security 2025,Completed,,
+E0075,Anti-Harassment 2025,Completed,,
+E0075,GDPR Basics 2025,Completed,,2025-01-04
+E0076,Code of Conduct 2025,Completed,81,2025-01-22
+E0076,IT Security 2025,Completed,,2025-01-02
+E0076,Anti-Harassment 2025,Completed,,
+E0076,GDPR Basics 2025,Completed,67,
+E0077,Code of Conduct 2025,Assigned,77,2025-01-25
+E0077,IT Security 2025,Assigned,,2025-01-23
+E0077,Anti-Harassment 2025,Assigned,90,2025-01-27
+E0077,GDPR Basics 2025,Completed,,
+E0078,Code of Conduct 2025,Completed,84,2025-01-11
+E0078,IT Security 2025,Assigned,,
+E0078,Anti-Harassment 2025,Completed,,2025-01-18
+E0078,GDPR Basics 2025,Completed,80,
+E0079,Code of Conduct 2025,Completed,,2025-02-04
+E0079,IT Security 2025,Assigned,,2025-01-28
+E0079,Anti-Harassment 2025,Completed,67,2025-01-01
+E0079,GDPR Basics 2025,Completed,89,
+E0080,Code of Conduct 2025,Assigned,,2025-01-15
+E0080,IT Security 2025,Completed,94,
+E0080,Anti-Harassment 2025,Assigned,77,2025-01-28
+E0080,GDPR Basics 2025,Overdue,,2025-02-05
+E0081,Code of Conduct 2025,Completed,,2025-02-08
+E0081,IT Security 2025,Completed,,2025-02-10
+E0081,Anti-Harassment 2025,Completed,90,
+E0081,GDPR Basics 2025,Completed,96,2025-01-23
+E0082,Code of Conduct 2025,Assigned,67,2025-02-08
+E0082,IT Security 2025,Completed,,2025-02-07
+E0082,Anti-Harassment 2025,Completed,79,2025-01-14
+E0082,GDPR Basics 2025,Completed,90,
+E0083,Code of Conduct 2025,Assigned,75,2025-01-20
+E0083,IT Security 2025,Completed,,2025-02-05
+E0083,Anti-Harassment 2025,Completed,,2025-01-07
+E0083,GDPR Basics 2025,Assigned,84,2025-01-30
+E0084,Code of Conduct 2025,Completed,,2025-01-25
+E0084,IT Security 2025,Completed,,
+E0084,Anti-Harassment 2025,Completed,,2025-01-28
+E0084,GDPR Basics 2025,Completed,82,2025-01-26
+E0085,Code of Conduct 2025,Completed,,2025-01-02
+E0085,IT Security 2025,Completed,,2025-01-14
+E0085,Anti-Harassment 2025,Completed,60,
+E0085,GDPR Basics 2025,Overdue,,
+E0086,Code of Conduct 2025,Overdue,,2025-01-15
+E0086,IT Security 2025,Completed,68,2025-01-30
+E0086,Anti-Harassment 2025,Completed,94,
+E0086,GDPR Basics 2025,Completed,,2025-01-10
+E0087,Code of Conduct 2025,Overdue,66,
+E0087,IT Security 2025,Completed,65,
+E0087,Anti-Harassment 2025,Overdue,,2025-02-07
+E0087,GDPR Basics 2025,Completed,,2025-01-13
+E0088,Code of Conduct 2025,Completed,,2025-02-03
+E0088,IT Security 2025,Completed,82,2025-02-09
+E0088,Anti-Harassment 2025,Completed,,2025-01-05
+E0088,GDPR Basics 2025,Completed,63,2025-01-12
+E0089,Code of Conduct 2025,Overdue,,2025-01-05
+E0089,IT Security 2025,Assigned,,2025-01-27
+E0089,Anti-Harassment 2025,Assigned,,2025-02-04
+E0089,GDPR Basics 2025,Overdue,96,2025-01-26
+E0090,Code of Conduct 2025,Completed,,
+E0090,IT Security 2025,Completed,88,2025-01-11
+E0090,Anti-Harassment 2025,Assigned,87,
+E0090,GDPR Basics 2025,Overdue,96,2025-02-05
+E0091,Code of Conduct 2025,Completed,75,2025-01-09
+E0091,IT Security 2025,Completed,,
+E0091,Anti-Harassment 2025,Assigned,,2025-02-08
+E0091,GDPR Basics 2025,Overdue,,2025-01-22
+E0092,Code of Conduct 2025,Assigned,,
+E0092,IT Security 2025,Completed,,2025-01-24
+E0092,Anti-Harassment 2025,Completed,67,2025-01-26
+E0092,GDPR Basics 2025,Completed,87,2025-02-03
+E0093,Code of Conduct 2025,Completed,73,2025-01-04
+E0093,IT Security 2025,Completed,,
+E0093,Anti-Harassment 2025,Overdue,68,2025-02-10
+E0093,GDPR Basics 2025,Assigned,,2025-01-08
+E0094,Code of Conduct 2025,Completed,,2025-01-18
+E0094,IT Security 2025,Completed,,2025-02-10
+E0094,Anti-Harassment 2025,Completed,,2025-01-16
+E0094,GDPR Basics 2025,Completed,,2025-02-10
+E0095,Code of Conduct 2025,Completed,,2025-01-04
+E0095,IT Security 2025,Assigned,79,2025-01-26
+E0095,Anti-Harassment 2025,Completed,,
+E0095,GDPR Basics 2025,Completed,,2025-01-14
+E0096,Code of Conduct 2025,Overdue,,2025-02-06
+E0096,IT Security 2025,Completed,,
+E0096,Anti-Harassment 2025,Completed,,
+E0096,GDPR Basics 2025,Overdue,73,
+E0097,Code of Conduct 2025,Completed,97,
+E0097,IT Security 2025,Assigned,60,2025-01-13
+E0097,Anti-Harassment 2025,Completed,,
+E0097,GDPR Basics 2025,Overdue,82,2025-01-19
+E0098,Code of Conduct 2025,Completed,92,
+E0098,IT Security 2025,Assigned,,2025-01-18
+E0098,Anti-Harassment 2025,Assigned,100,2025-01-29
+E0098,GDPR Basics 2025,Overdue,99,2025-01-24
+E0099,Code of Conduct 2025,Completed,,2025-02-03
+E0099,IT Security 2025,Completed,78,2025-01-09
+E0099,Anti-Harassment 2025,Completed,91,
+E0099,GDPR Basics 2025,Completed,97,2025-01-18
+E0100,Code of Conduct 2025,Completed,86,
+E0100,IT Security 2025,Assigned,77,2025-01-27
+E0100,Anti-Harassment 2025,Completed,81,2025-01-24
+E0100,GDPR Basics 2025,Completed,,2025-01-13
+E0101,Code of Conduct 2025,Assigned,,2025-01-28
+E0101,IT Security 2025,Assigned,,
+E0101,Anti-Harassment 2025,Completed,70,
+E0101,GDPR Basics 2025,Completed,63,2025-01-23
+E0102,Code of Conduct 2025,Assigned,,2025-02-06
+E0102,IT Security 2025,Completed,,2025-01-10
+E0102,Anti-Harassment 2025,Overdue,,2025-01-05
+E0102,GDPR Basics 2025,Completed,,2025-01-17
+E0103,Code of Conduct 2025,Completed,,2025-02-04
+E0103,IT Security 2025,Completed,,
+E0103,Anti-Harassment 2025,Completed,,2025-01-08
+E0103,GDPR Basics 2025,Completed,,2025-01-08
+E0104,Code of Conduct 2025,Completed,94,
+E0104,IT Security 2025,Overdue,100,
+E0104,Anti-Harassment 2025,Completed,,
+E0104,GDPR Basics 2025,Assigned,77,2025-01-29
+E0105,Code of Conduct 2025,Completed,81,2025-02-08
+E0105,IT Security 2025,Overdue,,
+E0105,Anti-Harassment 2025,Completed,,2025-01-18
+E0105,GDPR Basics 2025,Completed,,2025-01-30
+E0106,Code of Conduct 2025,Overdue,97,2025-02-08
+E0106,IT Security 2025,Assigned,78,2025-02-05
+E0106,Anti-Harassment 2025,Assigned,70,2025-01-15
+E0106,GDPR Basics 2025,Completed,74,2025-01-03
+E0107,Code of Conduct 2025,Assigned,,2025-01-28
+E0107,IT Security 2025,Completed,,2025-01-04
+E0107,Anti-Harassment 2025,Completed,,2025-02-04
+E0107,GDPR Basics 2025,Completed,75,2025-01-23
+E0108,Code of Conduct 2025,Assigned,63,2025-01-01
+E0108,IT Security 2025,Completed,74,
+E0108,Anti-Harassment 2025,Completed,96,
+E0108,GDPR Basics 2025,Completed,,2025-01-13
+E0109,Code of Conduct 2025,Completed,,2025-01-05
+E0109,IT Security 2025,Completed,,
+E0109,Anti-Harassment 2025,Completed,,
+E0109,GDPR Basics 2025,Overdue,,
+E0110,Code of Conduct 2025,Completed,85,2025-01-10
+E0110,IT Security 2025,Assigned,90,2025-01-12
+E0110,Anti-Harassment 2025,Completed,,
+E0110,GDPR Basics 2025,Completed,,
+E0111,Code of Conduct 2025,Completed,,2025-01-17
+E0111,IT Security 2025,Completed,81,
+E0111,Anti-Harassment 2025,Completed,,2025-01-05
+E0111,GDPR Basics 2025,Completed,64,2025-02-09
+E0112,Code of Conduct 2025,Completed,,2025-01-02
+E0112,IT Security 2025,Completed,,2025-01-09
+E0112,Anti-Harassment 2025,Assigned,67,2025-01-26
+E0112,GDPR Basics 2025,Assigned,75,2025-01-23
+E0113,Code of Conduct 2025,Overdue,,2025-02-10
+E0113,IT Security 2025,Completed,97,2025-01-23
+E0113,Anti-Harassment 2025,Completed,100,2025-01-21
+E0113,GDPR Basics 2025,Completed,,2025-01-09
+E0114,Code of Conduct 2025,Completed,,2025-01-03
+E0114,IT Security 2025,Completed,,
+E0114,Anti-Harassment 2025,Completed,,
+E0114,GDPR Basics 2025,Completed,86,2025-02-07
+E0115,Code of Conduct 2025,Completed,87,2025-01-18
+E0115,IT Security 2025,Assigned,97,2025-02-07
+E0115,Anti-Harassment 2025,Assigned,60,2025-01-07
+E0115,GDPR Basics 2025,Completed,89,2025-01-31
+E0116,Code of Conduct 2025,Completed,68,2025-01-24
+E0116,IT Security 2025,Overdue,73,2025-01-01
+E0116,Anti-Harassment 2025,Completed,98,2025-01-17
+E0116,GDPR Basics 2025,Completed,,2025-02-10
+E0117,Code of Conduct 2025,Completed,,2025-01-12
+E0117,IT Security 2025,Completed,72,2025-01-05
+E0117,Anti-Harassment 2025,Completed,,2025-02-04
+E0117,GDPR Basics 2025,Assigned,98,2025-02-02
+E0118,Code of Conduct 2025,Completed,,2025-01-01
+E0118,IT Security 2025,Completed,,2025-01-08
+E0118,Anti-Harassment 2025,Overdue,66,
+E0118,GDPR Basics 2025,Completed,,2025-01-25
+E0119,Code of Conduct 2025,Completed,,2025-01-31
+E0119,IT Security 2025,Completed,71,
+E0119,Anti-Harassment 2025,Completed,,2025-02-06
+E0119,GDPR Basics 2025,Completed,73,2025-01-27
+E0120,Code of Conduct 2025,Completed,71,2025-02-09
+E0120,IT Security 2025,Assigned,,2025-01-24
+E0120,Anti-Harassment 2025,Completed,74,2025-01-20
+E0120,GDPR Basics 2025,Completed,63,2025-02-04

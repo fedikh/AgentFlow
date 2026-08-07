@@ -26,10 +26,16 @@ If the context doesn't contain relevant information, say so clearly.
 Always cite your sources at the end."""
 
 
-def _build_system_prompt(space, context: str, sources_info: str) -> str:
-    """Use the space's custom prompt if present, else the default."""
+def _build_system_prompt(space, context: str, sources_info: str,
+                         history: str = "") -> str:
+    """Use the space's custom prompt if present, else the default. `history`
+    is the chat layer's memory block (conversation summary + recent
+    messages) — the LLM keeps continuity without receiving the whole
+    transcript."""
     base = getattr(space, "system_prompt", None) or DEFAULT_SYSTEM_PROMPT
-    return f"""{base}
+    memory = (f"\n\nCONVERSATION SO FAR (for continuity — answer only the "
+              f"CURRENT question):\n{history}" if history else "")
+    return f"""{base}{memory}
 
 CONTEXT:
 {context}
@@ -38,7 +44,8 @@ SOURCES AVAILABLE:
 {sources_info}"""
 
 
-def generate_answer(db, space, question: str, context: str, sources_info: str) -> str:
+def generate_answer(db, space, question: str, context: str, sources_info: str,
+                    history: str = "") -> str:
     """
     Generate an answer using the space's configured LLM provider.
     Falls back to GROQ free model if no paid provider/key is set.
@@ -48,7 +55,7 @@ def generate_answer(db, space, question: str, context: str, sources_info: str) -
 
     llm = get_llm(**config)
 
-    system_prompt = _build_system_prompt(space, context, sources_info)
+    system_prompt = _build_system_prompt(space, context, sources_info, history)
     messages = [SystemMessage(content=system_prompt), HumanMessage(content=question)]
 
     response = llm.invoke(messages)

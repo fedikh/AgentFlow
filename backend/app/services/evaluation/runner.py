@@ -32,8 +32,9 @@ from sqlalchemy.orm import Session
 
 from app.models.evaluation import EvalCase, EvalRun
 from .common import logger, eval_params
-from .scoring import (avg, case_cost, fallback_scores, judge_correctness,
-                      judge_llm, ragas_scores, relevant, score_case)
+from .scoring import (avg, case_cost, fallback_scores, hit_rate,
+                      judge_correctness, judge_llm, ragas_scores, relevant,
+                      score_case)
 
 _WORKERS = 3      # parallel cases; swap the executor for Celery to scale out
 
@@ -138,13 +139,13 @@ def _recommend(m: dict, space) -> list:
     """Weak metrics → concrete config actions. Pure rules, no AI."""
     recs = []
     r, g, p = m.get("retrieval", {}), m.get("generation", {}), m.get("performance", {})
-    recall, precision = r.get("recall_at_k"), r.get("precision_at_k")
+    hit, precision = r.get("hit_rate", r.get("recall_at_k")), r.get("precision_at_k")
     faith = g.get("faithfulness")
 
-    if recall is not None and recall < 0.7:
-        recs.append("Low recall — retrieval misses the right chunks: raise fetch_k / "
+    if hit is not None and hit < 0.7:
+        recs.append("Low hit rate — retrieval misses the right documents: raise fetch_k / "
                     "keyword_k in Advanced, enable query enhancement, or revisit chunking.")
-    if recall is not None and recall >= 0.8 and faith is not None and faith < 0.75:
+    if hit is not None and hit >= 0.8 and faith is not None and faith < 0.75:
         recs.append("Retrieval works, GENERATION is the problem — tighten the system "
                     "prompt (answer only from context) or use a stronger LLM.")
     if precision is not None and precision < 0.3:
@@ -157,7 +158,7 @@ def _recommend(m: dict, space) -> list:
         recs.append("Low context recall — needed facts missing from context: raise "
                     "top_k / fetch_k.")
     by_cat = m.get("by_category", {})
-    def weak(cat, key="recall_at_k", thr=0.6):
+    def weak(cat, key="hit_rate", thr=0.6):
         v = by_cat.get(cat, {}).get(key)
         return v is not None and v < thr
     if weak("exact_id") or weak("entity_lookup"):
@@ -211,8 +212,9 @@ def _run_case(space_id: str, case, has_judge: bool, llm_model: str) -> dict:
         row["retrieval_ms"] = round((time.perf_counter() - t) * 1000, 1)
         row["timings"] = r.get("timings_ms")
 
-        # 1) retrieval — ranx (deterministic math)
-        row.update(score_case(items, case))
+        # 1) retrieval — ranx (deterministic math), fixed K = the space's
+        # Top-K so precision@K means one thing across the whole run
+        row.update(score_case(items, case, k=getattr(space, "top_k", 0) or 0))
         row["expected"] = {"document": case.expected_document, "page": case.expected_page}
         row["top_sources"] = [
             {"document": it["document"], "page": it["page"], "score": it["score"],
@@ -294,7 +296,7 @@ def run_evaluation(db: Session, space, org_id: str, progress=None) -> dict:
         "cases": len(per_case),
         "labeled_cases": len(labeled),
         "retrieval": {
-            "recall_at_k": avg("recall_at_k", labeled),
+            "hit_rate": hit_rate(labeled),
             "precision_at_k": avg("precision_at_k", labeled),
             "mrr": avg("mrr", labeled),
             "ndcg": avg("ndcg", labeled),
@@ -327,7 +329,7 @@ def run_evaluation(db: Session, space, org_id: str, progress=None) -> dict:
         lab = [r for r in rows if r.get("hit") is not None]
         by_cat[cat] = {
             "cases": len(rows),
-            "recall_at_k": avg("recall_at_k", lab),
+            "hit_rate": hit_rate(lab),
             "mrr": avg("mrr", lab),
             "faithfulness": avg("faithfulness", rows),
             "correctness": avg("correctness", rows),

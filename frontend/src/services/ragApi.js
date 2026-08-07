@@ -44,6 +44,32 @@ export const setPublish = (id, isPrivate) =>
   req("PUT", `/rag/spaces/${id}/publish`, { is_private: isPrivate });
 export const pauseDeployment = (id) => req("POST", `/rag/spaces/${id}/pause`);
 
+// ── Dashboards ──
+export const getItDashboard = () => req("GET", "/dashboard/it");
+export const getAdminDashboard = () => req("GET", "/dashboard/admin");
+export const getUserDashboard = () => req("GET", "/dashboard/user");
+
+// ── Agent API keys (machine access for external apps) — owner/admin ──
+export const listApiKeys = (spaceId) =>
+  req("GET", `/rag/spaces/${spaceId}/api-keys`);
+export const createApiKey = (spaceId, { name, expires_days = null } = {}) =>
+  req("POST", `/rag/spaces/${spaceId}/api-keys`, { name, expires_days });
+export const revokeApiKey = (spaceId, keyId) =>
+  req("DELETE", `/rag/spaces/${spaceId}/api-keys/${keyId}`);
+
+// ── Chat sessions (persistent conversations with deployed agents) ──
+export const listChatSessions = (spaceId, archived = false) =>
+  req("GET", `/chat/agents/${spaceId}/sessions${archived ? "?archived=true" : ""}`);
+export const getChatSession = (sessionId) =>
+  req("GET", `/chat/sessions/${sessionId}`);
+// sessionId null → the backend creates the session and returns it with the answer
+export const sendChatMessage = (spaceId, question, sessionId = null) =>
+  req("POST", `/chat/agents/${spaceId}/messages`, { question, session_id: sessionId });
+export const updateChatSession = (sessionId, d) =>
+  req("PATCH", `/chat/sessions/${sessionId}`, d);
+export const deleteChatSession = (sessionId) =>
+  req("DELETE", `/chat/sessions/${sessionId}`);
+
 // ── Documents ──
 export const listDocuments = (s) => req("GET", `/rag/spaces/${s}/documents`);
 export const deleteDocument = (s, d) =>

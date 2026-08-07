@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     # This is just the safety cap on how many images are described per page.
     WEB_IMAGE_VISION_MAX: int = 20      # cap images described per page (cost guard)
 
+    # ── Chat cache (Upstash Redis REST) — empty = cache disabled ──
+    UPSTASH_REDIS_REST_URL: str = ""
+    UPSTASH_REDIS_REST_TOKEN: str = ""
+
     # ── Cleaning pipeline toggles ──
     CLEAN_REMOVE_NOISE: bool = True         # page numbers, headers/footers, watermarks
     CLEAN_DEDUP: bool = True                # drop duplicate sections/paragraphs

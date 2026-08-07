@@ -2281,11 +2281,16 @@ def hybrid_search(db, space_id, query_text, query_embedding, top_k):
 # QUERY — now uses the LLM Factory (provider resolved per space)
 # ══════════════════════════════════════════════════════
 
-def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: User = None) -> dict:
+def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: User = None,
+          history: str = "") -> dict:
     """Query the RAG space — hybrid search + configurable LLM (via factory).
 
     Batch 1: enforces per-user access control. ADMIN/IT bypass; a USER must be a
     department member and either unrestricted or in the space's allowed list.
+
+    `history` (chat layer): conversation memory block (summary + recent
+    messages) injected into GENERATION only — retrieval always runs on
+    data.question, which the chat layer has already condensed if needed.
     """
     space = _find_space(db, space_id, org_id)
 
@@ -2339,7 +2344,8 @@ def query(db: Session, space_id: str, org_id: str, data: QueryRequest, user: Use
 
     # ── LLM Factory: resolves provider/model/key/prompt from the space ──
     _t_answer = _time.perf_counter()
-    answer = generate_answer(db, space, data.question, context, sources_text)
+    answer = generate_answer(db, space, data.question, context, sources_text,
+                             history=history)
     _answer_ms = round((_time.perf_counter() - _t_answer) * 1000, 1)
 
     from urllib.parse import quote

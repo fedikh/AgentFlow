@@ -8,8 +8,6 @@ import { getEmbeddingModels } from "../../../services/ragApi";
  * (SavedConfigBar) read from here, so they can never drift apart.
  */
 
-const pct = (v) => `${Math.round((Number(v) || 0) * 100)}%`;
-
 const FT_LABEL = {
   pdf: "PDF", docx: "Word", pptx: "PowerPoint", txt: "Text", md: "Markdown",
   markdown: "Markdown", json: "JSON", xml: "XML", csv: "CSV", xlsx: "Excel",
@@ -241,19 +239,6 @@ export function buildPipelineSections(space, providers = [], overrides = {}) {
       title: "Retrieval",
       tag: "Search",
       ...retrievalSection(space),
-    },
-    {
-      key: "eval",
-      accent: "#f59e0b",
-      title: "Evaluation",
-      tag: "Test",
-      how: "Manually test the whole configuration: ask questions in the Evaluation tab and inspect the answer and retrieved sources before deploying.",
-      summary: "Manual test chat",
-      rows: [
-        ["Method", "Manual test chat"],
-        ["Shows sources", "Yes"],
-        ["Space status", space.status || "DRAFT"],
-      ],
     },
   ];
 }

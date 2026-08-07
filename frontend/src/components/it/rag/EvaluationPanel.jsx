@@ -18,7 +18,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
  *   🤖 Auto        labeled dataset → one experiment run → the three metric
  *                  families side by side (NO composite overall score — any
  *                  weighting would be arbitrary):
- *                    retrieval   ranx (Recall@K, Precision@K, MRR, NDCG)
+ *                    retrieval   ranx (Hit rate@K, Precision@K, MRR, NDCG)
  *                    generation  Ragas + independent judge (faithfulness,
  *                                relevancy, context precision/recall,
  *                                correctness with a reason)
@@ -46,12 +46,16 @@ const ms = (v) => (v == null ? "—" : v >= 1000 ? `${(v / 1000).toFixed(1)}s` :
 const money = (v) => (v == null ? "—" : v < 0.001 ? "<$0.001" : `$${v.toFixed(3)}`);
 
 /* Metrics arrive nested ({retrieval:{...}}) from new runs; legacy runs were
- * flat. One accessor serves both so old experiments stay readable. */
-const families = (m = {}) => ({
-  retrieval: m.retrieval || {
+ * flat and reported "recall_at_k" (renamed hit_rate — with a single
+ * document-level gold label it always equaled the hit rate). One accessor
+ * serves every generation of stored run. */
+const families = (m = {}) => {
+  const r = m.retrieval || {
     recall_at_k: m.recall_at_k, precision_at_k: m.precision_at_k,
     mrr: m.mrr, ndcg: m.ndcg,
-  },
+  };
+  return {
+  retrieval: { ...r, hit_rate: r.hit_rate ?? r.recall_at_k },
   generation: m.generation || {
     faithfulness: m.faithfulness, answer_relevancy: m.answer_relevancy,
     context_precision: m.context_precision, context_recall: m.context_recall,
@@ -62,7 +66,149 @@ const families = (m = {}) => ({
     est_tokens_per_query: m.est_tokens_per_query,
     est_cost_per_query: m.est_cost_per_query,
   },
-});
+  };
+};
+
+/* ── experiment comparison (pick 2 in the Experiments tab) ── */
+
+/* what we compare: [label, family, key, higherIsBetter, formatter] */
+const COMPARE_METRICS = [
+  ["Hit rate@K", "retrieval", "hit_rate", true, pct],
+  ["Precision@K", "retrieval", "precision_at_k", true, pct],
+  ["MRR", "retrieval", "mrr", true, pct],
+  ["NDCG", "retrieval", "ndcg", true, pct],
+  ["Faithfulness", "generation", "faithfulness", true, pct],
+  ["Answer relevancy", "generation", "answer_relevancy", true, pct],
+  ["Context precision", "generation", "context_precision", true, pct],
+  ["Context recall", "generation", "context_recall", true, pct],
+  ["Correctness (judge)", "generation", "correctness", true, pct],
+  ["Retrieval latency", "performance", "avg_retrieval_ms", false, ms],
+  ["Answer latency", "performance", "avg_answer_ms", false, ms],
+  ["Cost / query", "performance", "est_cost_per_query", false, money],
+];
+
+/* flatten a run's config snapshot into label → display string */
+const flatCfg = (c = {}) => {
+  const emb = c.embedding || {}, llm = c.llm || {},
+    ret = c.retrieval || {}, ch = c.chunking || {};
+  const chunkDetail = ch.files
+    ? Object.entries(ch.files).map(([f, s]) => `${f}: ${s}`).join(" · ")
+    : typeof ch.strategies === "object"
+      ? Object.entries(ch.strategies || {}).map(([t, s]) => `${t}: ${s}`).join(" · ")
+      : String(ch.strategies || "");
+  return {
+    "Embedding model": `${emb.model || "—"}${emb.company_provider ? " (company)" : ""}`,
+    "LLM model": `${llm.model || "—"}${llm.company_provider ? " (company)" : ""}`,
+    "Temperature": String(llm.temperature ?? "—"),
+    "Max tokens": String(llm.max_tokens ?? "—"),
+    "System prompt": llm.system_prompt || "—",
+    "Chunking": `${ch.mode || "—"}${chunkDetail ? ` — ${chunkDetail}` : ""}`,
+    "Search mode": String(ret.search_mode || "—"),
+    "Top K": String(ret.top_k ?? "—"),
+    "Query enhancement": ret.query_enhancement ? "on" : "off",
+    "Re-ranker": `${ret.reranker || "—"} (top ${ret.rerank_top_n ?? "—"})`,
+    "RRF k / fetch / keyword": `${ret.rrf_k ?? "—"} / ${ret.fetch_k ?? "—"} / ${ret.keyword_k ?? "—"}`,
+    "Judge": String(c.judge || "—"),
+  };
+};
+
+function DeltaPill({ a, b, higherBetter }) {
+  if (a == null || b == null || a === b)
+    return <span style={{ color: "#94a3b8", fontSize: 11 }}>{a === b && a != null ? "=" : "—"}</span>;
+  const improved = higherBetter ? b > a : b < a;
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700,
+      color: improved ? "#16a34a" : "#dc2626",
+    }}>
+      {b > a ? "▲" : "▼"} {improved ? "better" : "worse"}
+    </span>
+  );
+}
+
+function CompareView({ a, b }) {
+  const fa = families(a.metrics), fb = families(b.metrics);
+  const rows = COMPARE_METRICS
+    .map(([label, fam, key, higher, fmtV]) => ({
+      label, higher, fmt: fmtV, va: fa[fam]?.[key], vb: fb[fam]?.[key],
+    }))
+    .filter((r) => r.va != null || r.vb != null);
+  const wins = rows.filter((r) => r.va != null && r.vb != null && r.va !== r.vb &&
+    (r.higher ? r.vb > r.va : r.vb < r.va)).length;
+  const losses = rows.filter((r) => r.va != null && r.vb != null && r.va !== r.vb &&
+    (r.higher ? r.vb < r.va : r.vb > r.va)).length;
+
+  const ca = flatCfg(a.config), cb = flatCfg(b.config);
+  const cfgDiff = Object.keys(ca).filter((k) => ca[k] !== cb[k]);
+
+  const d = (r) => new Date(r.created_at).toLocaleString();
+  const verdict = wins > losses
+    ? { text: `B is the better experiment — ahead on ${wins} metric${wins > 1 ? "s" : ""}, behind on ${losses}.`, color: "#166534", bg: "#f0fdf4" }
+    : losses > wins
+      ? { text: `A is the better experiment — B regressed on ${losses} metric${losses > 1 ? "s" : ""}, improved on ${wins}.`, color: "#991b1b", bg: "#fef2f2" }
+      : { text: "Tied — the change made no measurable difference.", color: "#475569", bg: "#f1f5f9" };
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", display: "grid", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ fontWeight: 700, fontSize: 13.5, color: ink.primary }}>Comparison</div>
+        <div style={{ fontSize: 11.5, color: ink.muted }}>
+          <strong>A</strong> = {d(a)} ({a.num_cases} cases) · <strong>B</strong> = {d(b)} ({b.num_cases} cases)
+        </div>
+      </div>
+
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: verdict.color, background: verdict.bg, borderRadius: 9, padding: "8px 12px" }}>
+        {verdict.text}
+      </div>
+
+      {/* what changed between the two configs — the "why" */}
+      <div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: ink.muted, textTransform: "uppercase", letterSpacing: ".03em", marginBottom: 6 }}>
+          What changed
+        </div>
+        {cfgDiff.length === 0 ? (
+          <div style={{ fontSize: 12, color: ink.muted }}>
+            Configurations are identical — differences come from LLM/judge variance only.
+          </div>
+        ) : (
+          <table className="ev-table">
+            <thead><tr><th>Setting</th><th>A</th><th>B</th></tr></thead>
+            <tbody>
+              {cfgDiff.map((k) => (
+                <tr key={k}>
+                  <td style={{ fontWeight: 600 }}>{k}</td>
+                  <td>{ca[k]}</td>
+                  <td style={{ fontWeight: 600, color: "#1d4ed8" }}>{cb[k]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* metric-by-metric result */}
+      <table className="ev-table">
+        <thead><tr><th>Metric</th><th>A</th><th>B</th><th>Result</th></tr></thead>
+        <tbody>
+          {rows.map((r) => {
+            const improved = r.va != null && r.vb != null && r.va !== r.vb &&
+              (r.higher ? r.vb > r.va : r.vb < r.va);
+            return (
+              <tr key={r.label}>
+                <td>{r.label}</td>
+                <td>{r.va != null ? r.fmt(r.va) : "—"}</td>
+                <td style={improved ? { fontWeight: 700, color: "#166534" } : undefined}>
+                  {r.vb != null ? r.fmt(r.vb) : "—"}
+                </td>
+                <td><DeltaPill a={r.va} b={r.vb} higherBetter={r.higher} /></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /* ── chart pieces (single-series horizontal bars; value = direct label) ── */
 const ink = { primary: "#0f172a", muted: "#64748b", track: "#eef2f5" };
@@ -136,7 +282,7 @@ function RunResults({ run }) {
               </div>
               <div style={{ fontSize: 12, color: ink.muted, marginTop: 4, lineHeight: 1.5 }}>
                 {m.labeled_cases ?? 0} of {m.cases} cases have an{" "}
-                <strong>expected document</strong> label. Recall@K, Precision@K,
+                <strong>expected document</strong> label. Hit rate@K, Precision@K,
                 MRR and NDCG need it — add the document (and page) each answer
                 comes from in the Test dataset, then re-run.
               </div>
@@ -144,7 +290,7 @@ function RunResults({ run }) {
           </div>
         ) : (
           <MetricBars title="Retrieval" hue="#2563eb" poweredBy={powered.retrieval}
-            rows={[["Recall@K", f.retrieval.recall_at_k],
+            rows={[["Hit rate@K", f.retrieval.hit_rate],
                    ["Precision@K", f.retrieval.precision_at_k],
                    ["MRR", f.retrieval.mrr],
                    ["NDCG", f.retrieval.ndcg]]} />
@@ -170,12 +316,12 @@ function RunResults({ run }) {
         <div className="ev-src">
           <div className="ev-src-t">By question type</div>
           <table className="ev-table">
-            <thead><tr><th>Type</th><th>Cases</th><th>Recall@K</th><th>MRR</th><th>Faithfulness</th><th>Correctness</th></tr></thead>
+            <thead><tr><th>Type</th><th>Cases</th><th>Hit rate@K</th><th>MRR</th><th>Faithfulness</th><th>Correctness</th></tr></thead>
             <tbody>
               {cats.map((c) => (
                 <tr key={c}>
                   <td>{c}</td><td>{byCat[c].cases}</td>
-                  <td>{pct(byCat[c].recall_at_k)}</td><td>{pct(byCat[c].mrr)}</td>
+                  <td>{pct(byCat[c].hit_rate ?? byCat[c].recall_at_k)}</td><td>{pct(byCat[c].mrr)}</td>
                   <td>{pct(byCat[c].faithfulness)}</td><td>{pct(byCat[c].correctness)}</td>
                 </tr>
               ))}
@@ -313,6 +459,13 @@ const EvaluationPanel = ({
   const pollRef = useRef(null);
   const [openRun, setOpenRun] = useState(null);     // latest run (auto tab)
   const [openExp, setOpenExp] = useState(null);     // selected experiment
+  const [compareIds, setCompareIds] = useState([]); // up to 2 runs to compare
+
+  const toggleCompare = (id) =>
+    setCompareIds((l) =>
+      l.includes(id) ? l.filter((x) => x !== id)
+        : l.length < 2 ? [...l, id]
+        : [l[1], id]);                              // 3rd pick replaces the oldest
 
   const loadCases = () => {
     if (!spaceId) return;
@@ -776,28 +929,49 @@ const EvaluationPanel = ({
             <div className="rag-cfg-hint">No experiments yet — run one from the Auto evaluation tab.</div>
           )}
           {runs.length > 0 && (
-            <table className="ev-table">
-              <thead><tr><th>Date</th><th>Cases</th><th>Duration</th><th>Recall@K</th><th>Faithfulness</th><th>Correctness</th><th></th></tr></thead>
-              <tbody>
-                {runs.map((r) => {
-                  const f = families(r.metrics);
-                  const active = openExp?.id === r.id;
-                  return (
-                    <tr key={r.id} style={active ? { background: "#eff6ff" } : undefined}>
-                      <td>{new Date(r.created_at).toLocaleString()}</td>
-                      <td>{r.num_cases}</td>
-                      <td>{ms(r.duration_ms)}</td>
-                      <td>{pct(f.retrieval.recall_at_k)}</td>
-                      <td>{pct(f.generation.faithfulness)}</td>
-                      <td>{pct(f.generation.correctness)}</td>
-                      <td><button className="ev-suggest" onClick={() => viewExperiment(r)}>
-                        {active ? "viewing" : "view"}</button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <>
+              <div className="rag-cfg-hint" style={{ margin: 0 }}>
+                Tick <strong>two</strong> experiments to compare them — the comparison
+                shows what changed in the config and which run wins, metric by metric.
+              </div>
+              <table className="ev-table">
+                <thead><tr><th>Compare</th><th>Date</th><th>Cases</th><th>Duration</th><th>Hit rate@K</th><th>Faithfulness</th><th>Correctness</th><th></th></tr></thead>
+                <tbody>
+                  {runs.map((r) => {
+                    const f = families(r.metrics);
+                    const active = openExp?.id === r.id;
+                    const ticked = compareIds.includes(r.id);
+                    return (
+                      <tr key={r.id} style={active || ticked ? { background: "#eff6ff" } : undefined}>
+                        <td>
+                          <input type="checkbox" checked={ticked}
+                                 onChange={() => toggleCompare(r.id)} />
+                          {ticked && (
+                            <strong style={{ marginLeft: 6, color: "#1d4ed8" }}>
+                              {compareIds[0] === r.id ? "A" : "B"}
+                            </strong>
+                          )}
+                        </td>
+                        <td>{new Date(r.created_at).toLocaleString()}</td>
+                        <td>{r.num_cases}</td>
+                        <td>{ms(r.duration_ms)}</td>
+                        <td>{pct(f.retrieval.hit_rate)}</td>
+                        <td>{pct(f.generation.faithfulness)}</td>
+                        <td>{pct(f.generation.correctness)}</td>
+                        <td><button className="ev-suggest" onClick={() => viewExperiment(r)}>
+                          {active ? "viewing" : "view"}</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </>
           )}
+          {compareIds.length === 2 && (() => {
+            const ra = runs.find((r) => r.id === compareIds[0]);
+            const rb = runs.find((r) => r.id === compareIds[1]);
+            return ra && rb ? <CompareView a={ra} b={rb} /> : null;
+          })()}
           {openExp && (
             <>
               <ConfigCard config={openExp.config} />

@@ -6,7 +6,7 @@ import "../../../styles/it/flowview.css";
 
 /**
  * FlowPanel — the "View flow" page. Two synced parts:
- *   1. A horizontal pipeline rail (Documents → … → Evaluation).
+ *   1. A horizontal pipeline rail (Documents → … → Retrieval).
  *   2. Detail cards showing HOW each stage works and the exact config saved.
  * Clicking a node highlights and scrolls to its detail card.
  */

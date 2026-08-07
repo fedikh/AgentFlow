@@ -1,0 +1,61 @@
+booking_id,traveler_id,city_from,city_to,start_date,class
+TB-15794,E0088,Krakow,Warsaw,2025-01-25,Economy
+TB-75101,E0044,Berlin,London,2025-01-24,Premium Economy
+TB-55820,E0083,Berlin,London,2025-01-08,Economy
+TB-97777,E0001,New York,Paris,2025-01-07,Economy
+TB-66048,E0120,New York,Krakow,2025-02-04,Economy
+TB-70440,E0031,Warsaw,New York,2025-01-28,Economy
+TB-45129,E0079,Berlin,Paris,2025-01-22,Economy
+TB-26518,E0027,Berlin,Warsaw,2025-01-09,Business
+TB-61426,E0065,London,New York,2025-02-08,Business
+TB-82349,E0076,London,Paris,2025-01-06,Premium Economy
+TB-29656,E0112,Warsaw,London,2025-01-06,Premium Economy
+TB-99935,E0076,Warsaw,Warsaw,2025-02-06,Economy
+TB-39033,E0034,Krakow,London,2025-01-14,Economy
+TB-29373,E0069,Berlin,Krakow,2025-01-29,Economy
+TB-14985,E0020,Paris,Paris,2025-01-29,Economy
+TB-21788,E0035,Berlin,New York,2025-01-11,Economy
+TB-66205,E0072,Krakow,Paris,2025-01-28,Premium Economy
+TB-92835,E0066,Krakow,Krakow,2025-01-05,Economy
+TB-43989,E0024,New York,Paris,2025-01-17,Economy
+TB-26403,E0101,Paris,Berlin,2025-01-16,Premium Economy
+TB-91964,E0100,Berlin,Paris,2025-01-15,Premium Economy
+TB-95872,E0070,Warsaw,Paris,2025-01-12,Economy
+TB-88862,E0051,London,Paris,2025-02-06,Economy
+TB-97147,E0036,London,London,2025-02-02,Economy
+TB-21449,E0090,Warsaw,Paris,2025-01-23,Economy
+TB-60854,E0053,Berlin,London,2025-01-20,Economy
+TB-97989,E0107,Paris,New York,2025-02-05,Premium Economy
+TB-40820,E0048,Paris,London,2025-02-05,Economy
+TB-85315,E0083,Berlin,Warsaw,2025-01-31,Economy
+TB-98156,E0044,Paris,Krakow,2025-01-05,Economy
+TB-93110,E0068,New York,Paris,2025-01-17,Premium Economy
+TB-45393,E0108,Paris,Paris,2025-01-12,Economy
+TB-82532,E0014,Warsaw,Krakow,2025-02-07,Premium Economy
+TB-10739,E0019,Berlin,Paris,2025-01-29,Economy
+TB-39813,E0019,London,London,2025-02-05,Economy
+TB-27646,E0007,New York,Warsaw,2025-01-07,Economy
+TB-49849,E0054,London,Paris,2025-01-11,Economy
+TB-25427,E0017,New York,Warsaw,2025-01-20,Economy
+TB-77676,E0054,New York,Berlin,2025-01-07,Premium Economy
+TB-10757,E0009,Krakow,Berlin,2025-02-03,Economy
+TB-11531,E0049,New York,London,2025-01-09,Economy
+TB-24848,E0081,Berlin,Krakow,2025-01-30,Premium Economy
+TB-38035,E0058,London,Berlin,2025-01-30,Economy
+TB-54406,E0044,Krakow,New York,2025-01-25,Economy
+TB-40618,E0068,Warsaw,Warsaw,2025-01-28,Economy
+TB-30516,E0056,Krakow,London,2025-01-24,Economy
+TB-11407,E0004,Berlin,Warsaw,2025-01-30,Economy
+TB-80317,E0001,New York,Paris,2025-02-01,Economy
+TB-89090,E0046,Berlin,Warsaw,2025-01-13,Economy
+TB-96119,E0082,Paris,Krakow,2025-01-12,Economy
+TB-14395,E0115,London,Krakow,2025-01-29,Premium Economy
+TB-39508,E0104,Paris,Krakow,2025-01-25,Economy
+TB-22363,E0113,Warsaw,New York,2025-01-18,Economy
+TB-94454,E0104,New York,London,2025-01-19,Economy
+TB-83584,E0007,Berlin,New York,2025-01-25,Economy
+TB-32631,E0045,Krakow,Paris,2025-01-07,Economy
+TB-80040,E0021,Krakow,New York,2025-01-05,Economy
+TB-96622,E0105,Berlin,Warsaw,2025-02-06,Economy
+TB-55471,E0007,New York,Paris,2025-01-12,Economy
+TB-24675,E0059,Paris,Krakow,2025-02-08,Economy

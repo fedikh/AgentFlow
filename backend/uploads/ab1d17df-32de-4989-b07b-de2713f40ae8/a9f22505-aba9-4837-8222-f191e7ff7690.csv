@@ -1,0 +1,481 @@
+employee_id,course_name,required,assigned_date,due_date,completed_date,status
+E0001,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-27,Completed
+E0001,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0001,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-05-02,Completed
+E0001,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0002,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0002,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0002,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-11,Completed
+E0002,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-03,Completed
+E0003,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-24,Completed
+E0003,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-12,Completed
+E0003,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-24,Completed
+E0003,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-13,Completed
+E0004,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0004,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-22,Completed
+E0004,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0004,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-24,Completed
+E0005,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-20,Completed
+E0005,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0005,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-28,Completed
+E0005,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0006,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-02,Completed
+E0006,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-05,Completed
+E0006,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-14,Completed
+E0006,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-29,Completed
+E0007,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0007,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-21,Completed
+E0007,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-12,Completed
+E0007,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-13,Completed
+E0008,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-22,Completed
+E0008,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-14,Completed
+E0008,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-15,Completed
+E0008,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-29,Completed
+E0009,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-11,Completed
+E0009,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0009,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-30,Completed
+E0009,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0010,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-21,Completed
+E0010,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-21,Completed
+E0010,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-05,Completed
+E0010,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0011,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0011,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-17,Completed
+E0011,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-18,Completed
+E0011,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0012,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0012,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-04,Completed
+E0012,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0012,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-26,Completed
+E0013,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-19,Completed
+E0013,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-22,Completed
+E0013,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-12,Completed
+E0013,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-12,Completed
+E0014,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-14,Completed
+E0014,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0014,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0014,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-07,Completed
+E0015,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-15,Completed
+E0015,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-26,Completed
+E0015,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-19,Completed
+E0015,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-28,Completed
+E0016,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0016,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-27,Completed
+E0016,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-20,Completed
+E0016,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-02,Completed
+E0017,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-02,Completed
+E0017,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-16,Completed
+E0017,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-04,Completed
+E0017,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-26,Completed
+E0018,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-12,Completed
+E0018,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0018,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-19,Completed
+E0018,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-11,Completed
+E0019,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-21,Completed
+E0019,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-31,Completed
+E0019,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-10,Completed
+E0019,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-05,Completed
+E0020,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-01-30,Completed
+E0020,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0020,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-25,Completed
+E0020,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-22,Completed
+E0021,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-17,Completed
+E0021,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-11,Completed
+E0021,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-02,Completed
+E0021,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-10,Completed
+E0022,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-11,Completed
+E0022,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-03,Completed
+E0022,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-24,Completed
+E0022,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-26,Completed
+E0023,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0023,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-06,Completed
+E0023,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0023,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-06,Completed
+E0024,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0024,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-18,Completed
+E0024,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-24,Completed
+E0024,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-19,Completed
+E0025,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-01-29,Completed
+E0025,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-20,Completed
+E0025,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-02,Completed
+E0025,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-26,Completed
+E0026,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-08,Completed
+E0026,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-25,Completed
+E0026,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-15,Completed
+E0026,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-08,Completed
+E0027,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0027,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-25,Completed
+E0027,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0027,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-10,Completed
+E0028,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-10,Completed
+E0028,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0028,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-24,Completed
+E0028,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-30,Completed
+E0029,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-17,Completed
+E0029,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-08,Completed
+E0029,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-02,Completed
+E0029,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0030,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-09,Completed
+E0030,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0030,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-04,Completed
+E0030,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0031,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-13,Completed
+E0031,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0031,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-08,Completed
+E0031,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-20,Completed
+E0032,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-28,Completed
+E0032,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-28,Completed
+E0032,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-11,Completed
+E0032,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-03,Completed
+E0033,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0033,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-22,Completed
+E0033,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-26,Completed
+E0033,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-22,Completed
+E0034,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-03,Completed
+E0034,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-06,Completed
+E0034,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-01,Completed
+E0034,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-19,Completed
+E0035,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0035,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-12,Completed
+E0035,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-27,Completed
+E0035,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0036,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-07,Completed
+E0036,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-22,Completed
+E0036,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0036,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-19,Completed
+E0037,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-03,Completed
+E0037,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-13,Completed
+E0037,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-24,Completed
+E0037,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-08,Completed
+E0038,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-06,Completed
+E0038,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0038,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-04,Completed
+E0038,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-04,Completed
+E0039,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-23,Completed
+E0039,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-02,Completed
+E0039,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-07,Completed
+E0039,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-20,Completed
+E0040,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-01-30,Completed
+E0040,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-08,Completed
+E0040,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-06,Completed
+E0040,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0041,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-25,Completed
+E0041,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-14,Completed
+E0041,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-04,Completed
+E0041,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-13,Completed
+E0042,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0042,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-02,Completed
+E0042,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0042,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-11,Completed
+E0043,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-01-27,Completed
+E0043,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0043,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0043,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0044,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-16,Completed
+E0044,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-26,Completed
+E0044,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-23,Completed
+E0044,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0045,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-14,Completed
+E0045,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-07,Completed
+E0045,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-22,Completed
+E0045,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-10,Completed
+E0046,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-15,Completed
+E0046,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-19,Completed
+E0046,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-30,Completed
+E0046,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-28,Completed
+E0047,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0047,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-09,Completed
+E0047,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-24,Completed
+E0047,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-17,Completed
+E0048,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-24,Completed
+E0048,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-09,Completed
+E0048,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0048,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-25,Completed
+E0049,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-14,Completed
+E0049,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-23,Completed
+E0049,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-05-08,Completed
+E0049,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0050,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-01,Completed
+E0050,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-01,Completed
+E0050,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-05-12,Completed
+E0050,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0051,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0051,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-23,Completed
+E0051,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-26,Completed
+E0051,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0052,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-23,Completed
+E0052,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0052,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0052,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-07,Completed
+E0053,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0053,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-06,Completed
+E0053,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-25,Completed
+E0053,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-08,Completed
+E0054,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-31,Completed
+E0054,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-10,Completed
+E0054,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-05-11,Completed
+E0054,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-03,Completed
+E0055,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0055,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-06,Completed
+E0055,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-21,Completed
+E0055,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0056,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-18,Completed
+E0056,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-24,Completed
+E0056,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-05,Completed
+E0056,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-20,Completed
+E0057,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0057,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-08,Completed
+E0057,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0057,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-29,Completed
+E0058,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0058,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-15,Completed
+E0058,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-23,Completed
+E0058,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-10,Completed
+E0059,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-11,Completed
+E0059,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-03,Completed
+E0059,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-17,Completed
+E0059,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-06,Completed
+E0060,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-08,Completed
+E0060,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-04,Completed
+E0060,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-29,Completed
+E0060,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-16,Completed
+E0061,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-14,Completed
+E0061,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-28,Completed
+E0061,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-06,Completed
+E0061,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0062,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-06,Completed
+E0062,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0062,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0062,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0063,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-09,Completed
+E0063,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-20,Completed
+E0063,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0063,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-08,Completed
+E0064,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-01-18,Completed
+E0064,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-07,Completed
+E0064,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-15,Completed
+E0064,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-02,Completed
+E0065,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-21,Completed
+E0065,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-08,Completed
+E0065,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0065,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-21,Completed
+E0066,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-04,Completed
+E0066,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-02,Completed
+E0066,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0066,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-23,Completed
+E0067,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-01-21,Completed
+E0067,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-29,Completed
+E0067,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-03,Completed
+E0067,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-25,Completed
+E0068,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-14,Completed
+E0068,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-20,Completed
+E0068,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0068,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-04,Completed
+E0069,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-01-28,Completed
+E0069,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-27,Completed
+E0069,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0069,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-03,Completed
+E0070,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0070,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-22,Completed
+E0070,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0070,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-20,Completed
+E0071,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-27,Completed
+E0071,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0071,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-04,Completed
+E0071,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-22,Completed
+E0072,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-15,Completed
+E0072,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-05,Completed
+E0072,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-04,Completed
+E0072,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-23,Completed
+E0073,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-21,Completed
+E0073,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0073,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-16,Completed
+E0073,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-17,Completed
+E0074,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0074,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-12,Completed
+E0074,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-10,Completed
+E0074,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-27,Completed
+E0075,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0075,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0075,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-02,Completed
+E0075,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-09,Completed
+E0076,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-25,Completed
+E0076,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-14,Completed
+E0076,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-31,Completed
+E0076,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-24,Completed
+E0077,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-05,Completed
+E0077,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-05,Completed
+E0077,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-13,Completed
+E0077,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-30,Completed
+E0078,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0078,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-18,Completed
+E0078,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-10,Completed
+E0078,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-14,Completed
+E0079,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-21,Completed
+E0079,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-13,Completed
+E0079,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-05-04,Completed
+E0079,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-23,Completed
+E0080,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-23,Completed
+E0080,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-26,Completed
+E0080,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0080,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-05,Completed
+E0081,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-07,Completed
+E0081,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-25,Completed
+E0081,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-02,Completed
+E0081,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-07,Completed
+E0082,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0082,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0082,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0082,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0083,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-16,Completed
+E0083,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-23,Completed
+E0083,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-23,Completed
+E0083,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-16,Completed
+E0084,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-16,Completed
+E0084,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-18,Completed
+E0084,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-05-15,Completed
+E0084,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0085,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-21,Completed
+E0085,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-12,Completed
+E0085,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-05-10,Completed
+E0085,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0086,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0086,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0086,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0086,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-21,Completed
+E0087,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0087,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-14,Completed
+E0087,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-17,Completed
+E0087,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-12,Completed
+E0088,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-25,Completed
+E0088,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-28,Completed
+E0088,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-02,Completed
+E0088,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-20,Completed
+E0089,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-16,Completed
+E0089,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-11,Completed
+E0089,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-07,Completed
+E0089,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-28,Completed
+E0090,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-17,Completed
+E0090,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-13,Completed
+E0090,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0090,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-27,Completed
+E0091,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0091,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-09,Completed
+E0091,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0091,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0092,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-10,Completed
+E0092,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0092,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-21,Completed
+E0092,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0093,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0093,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-30,Completed
+E0093,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-20,Completed
+E0093,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-15,Completed
+E0094,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-13,Completed
+E0094,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-08,Completed
+E0094,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0094,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0095,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-03,Completed
+E0095,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-20,Completed
+E0095,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-21,Completed
+E0095,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0096,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0096,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0096,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-29,Completed
+E0096,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-14,Completed
+E0097,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0097,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-08,Completed
+E0097,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-20,Completed
+E0097,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0098,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-21,Completed
+E0098,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-09,Completed
+E0098,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0098,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-19,Completed
+E0099,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-17,Completed
+E0099,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-17,Completed
+E0099,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-27,Completed
+E0099,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-12,Completed
+E0100,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-07,Completed
+E0100,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-07,Completed
+E0100,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0100,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0101,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-01-27,Completed
+E0101,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-28,Completed
+E0101,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-02,Completed
+E0101,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-15,Completed
+E0102,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-18,Completed
+E0102,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-14,Completed
+E0102,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-27,Completed
+E0102,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-18,Completed
+E0103,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-18,Completed
+E0103,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-14,Completed
+E0103,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-11,Completed
+E0103,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-24,Completed
+E0104,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-13,Completed
+E0104,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-10,Completed
+E0104,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0104,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-14,Completed
+E0105,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-13,Completed
+E0105,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0105,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-13,Completed
+E0105,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-02,Completed
+E0106,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-15,Completed
+E0106,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-03,Completed
+E0106,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-15,Completed
+E0106,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-17,Completed
+E0107,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-28,Completed
+E0107,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-12,Completed
+E0107,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-13,Completed
+E0107,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-07,Completed
+E0108,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-24,Completed
+E0108,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-16,Completed
+E0108,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-05-13,Completed
+E0108,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-23,Completed
+E0109,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0109,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0109,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-25,Completed
+E0109,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-26,Completed
+E0110,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0110,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0110,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0110,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0111,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-11,Completed
+E0111,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-29,Completed
+E0111,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-01,Completed
+E0111,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-15,Completed
+E0112,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-03-28,Completed
+E0112,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-04-29,Completed
+E0112,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-18,Completed
+E0112,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-30,Completed
+E0113,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-12,Completed
+E0113,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-01-21,Completed
+E0113,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-04-15,Completed
+E0113,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-01-23,Completed
+E0114,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0114,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-15,Completed
+E0114,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-21,Completed
+E0114,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-24,Completed
+E0115,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-08,Completed
+E0115,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0115,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-03-10,Completed
+E0115,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-05-10,Completed
+E0116,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-05-07,Completed
+E0116,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0116,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-26,Completed
+E0116,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-10,Completed
+E0117,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0117,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-05-06,Completed
+E0117,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-07,Completed
+E0117,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0118,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-01,Completed
+E0118,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-02-13,Completed
+E0118,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0118,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-02-23,Completed
+E0119,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-04-18,Completed
+E0119,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,2025-03-25,Completed
+E0119,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-02-14,Completed
+E0119,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-03-01,Completed
+E0120,Code of Conduct 2025,mandatory,2025-01-15,2025-03-16,2025-02-09,Completed
+E0120,IT Security Awareness 2025,mandatory,2025-01-15,2025-03-16,,Overdue
+E0120,Anti-Harassment 2025,mandatory,2025-01-15,2025-03-16,2025-01-30,Completed
+E0120,GDPR Basics 2025,mandatory,2025-01-15,2025-03-16,2025-04-10,Completed

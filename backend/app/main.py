@@ -33,6 +33,12 @@ from app.models.evaluation import EvalCase, EvalRun  # noqa: F401
 # created by create_all like every other table (see models/chunk_vector.py)
 from app.models import chunk_vector  # noqa: F401
 
+# Chat layer — per-user sessions + messages with deployed agents
+from app.models.chat import ChatSession, ChatMessage  # noqa: F401
+
+# Agent API keys — machine access to deployed agents from other apps
+from app.models.api_key import AgentApiKey, AgentApiLog  # noqa: F401
+
 # Import rag — show error if it fails
 try:
     from app.routes import rag
@@ -81,6 +87,22 @@ else:
     print("❌ RAG module NOT loaded — check the error above")
 
 app.include_router(data_agent_router, prefix="/api")
+
+# Chat sessions + history for deployed agents (Upstash Redis cache optional —
+# set UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN in .env to enable)
+from app.routes.chat import router as chat_router
+app.include_router(chat_router, prefix="/api")
+
+# Agent API: public /v1 (API-key auth, for external enterprise apps) +
+# key management under /api/rag/spaces/{id}/api-keys (owner/admin)
+from app.routes.agent_api import router as agent_api_router, mgmt_router as api_keys_router
+app.include_router(agent_api_router)          # /v1/... — no /api prefix
+app.include_router(api_keys_router, prefix="/api")
+
+# Role dashboards (read-only aggregates)
+from app.routes.dashboard import router as dashboard_router
+app.include_router(dashboard_router, prefix="/api")
+
 app.include_router(models_routes.router)
 
 # API Providers (admin manages company LLM/embedding providers + keys)
@@ -105,6 +127,36 @@ def _warmup_docling():
         print(f"⚠️  Docling warmup skipped: {e}")
 
 
+def _warmup_embedder():
+    """Warm the retrieval cold path in a background thread — otherwise the
+    FIRST query after boot pays it and can even time out its branches:
+      - local embedding models: load into memory (measured: ~12s)
+      - API embeddings (company/own key): one tiny warmup call — imports the
+        client library and opens the connection pool (measured: ~5s cold)
+      - LLM client imports (query transform uses them): imported once here
+    """
+    try:
+        from app.database import SessionLocal
+        from app.models.rag_space import RAGSpace
+        from app.services.embedding_factory import embed_query
+        from app.services.llm_factory.factory import get_llm  # noqa: F401 — import cost only
+        db = SessionLocal()
+        seen = set()
+        for s in db.query(RAGSpace).filter(RAGSpace.status == "ACTIVE").all():
+            key = (str(getattr(s, "embedding_provider", "") or ""), s.embedding_model)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                embed_query(db, s, "warmup")
+                print(f"✅ Embedding warmed up ({s.embedding_model})")
+            except Exception as e:
+                print(f"⚠️  Embedding warmup failed for {s.embedding_model}: {e}")
+        db.close()
+    except Exception as e:
+        print(f"⚠️  Embedding warmup skipped: {e}")
+
+
 def _warmup_reranker():
     """Pre-load the always-on BGE cross-encoder in a background thread so the
     FIRST query doesn't pay the one-time model-load latency (~15s)."""
@@ -120,12 +172,26 @@ def _warmup_reranker():
         print(f"⚠️  Reranker warmup skipped: {e}")
 
 
+def _warmup_all():
+    """ONE background thread, warmups in sequence. Running them in parallel
+    threads raced each other (and early requests) on importing the shared ML
+    stack — Python then sees half-initialized modules ('cannot import name …
+    from partially initialized module accelerate.big_modeling'). Importing
+    the base stack first, once, makes every later import find it finished."""
+    try:
+        import torch, transformers, accelerate  # noqa: F401  fully init shared ML base
+    except Exception as e:
+        print(f"⚠️  ML base import warmup: {e}")
+    _warmup_docling()
+    _warmup_reranker()
+    _warmup_embedder()
+
+
 @app.on_event("startup")
 async def startup():
     test_connection()
     import threading
-    threading.Thread(target=_warmup_docling, daemon=True).start()
-    threading.Thread(target=_warmup_reranker, daemon=True).start()
+    threading.Thread(target=_warmup_all, daemon=True).start()
 
 
 @app.get("/")
