@@ -133,6 +133,9 @@ const UploadsPanel = ({
   spaceId,
   isOwner = true,
   editable = true,
+  // Extensions the file picker offers. Callers with a narrower pipeline
+  // (e.g. a Data Agent knowledge base) pass their own list.
+  accept = ".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.html,.htm,.json,.xml,.pptx",
 }) => {
   const { uploadingCount, loadedCount, extractedCount } = counts;
 
@@ -279,7 +282,7 @@ const UploadsPanel = ({
           ref={fileRef}
           onChange={handleUpload}
           style={{ display: "none" }}
-          accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.html,.htm,.json,.xml,.pptx"
+          accept={accept}
           multiple
         />
         {/* Folder picker: webkitdirectory makes the dialog select a folder and

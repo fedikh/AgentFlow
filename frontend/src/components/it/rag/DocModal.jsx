@@ -308,6 +308,7 @@ const DocModal = ({
   updateTable = () => {},
   setRawSource = () => {},
   spaceId,
+  canEdit = true,   // viewers that don't wire the editor pass false
 }) => {
   const [elementsView, setElementsView] = React.useState(false);
   if (!modal) return null;
@@ -370,7 +371,7 @@ const DocModal = ({
                         : "Tree"
                     : "JSON"}
                 </button>
-                {modalData?.status !== "INDEXED" && (
+                {canEdit && modalData?.status !== "INDEXED" && (
                   <button className="rag-btn rag-btn-sm" onClick={startEdit}>
                     ✎ Edit
                   </button>

@@ -211,6 +211,23 @@ export const getPublicDocumentText = (s, d) => req("GET", `/rag/spaces/${s}/publ
 export const evalRunStatus = (s, job) => req("GET", `/rag/spaces/${s}/eval/run-status/${job}`);
 export const evalRuns = (s) => req("GET", `/rag/spaces/${s}/eval/runs`);
 export const evalRunDetail = (s, id) => req("GET", `/rag/spaces/${s}/eval/runs/${id}`);
+export const evalRunDelete = (s, id) => req("DELETE", `/rag/spaces/${s}/eval/runs/${id}`);
+export const evalRunDiagnose = (s, id) => req("POST", `/rag/spaces/${s}/eval/runs/${id}/diagnose`);
+
+// ── Security evaluation: frozen corpus replayed in the real pipeline ──
+export const secCases = () => req("GET", `/rag/security/cases`);
+export const secStartRun = (s, categories, counts = null) =>
+  req("POST", `/rag/spaces/${s}/security/runs`, { categories, counts });
+export const secManualCheck = (s, body) => req("POST", `/rag/spaces/${s}/security/manual-check`, body);
+export const secManualBatch = (s, cases) => req("POST", `/rag/spaces/${s}/security/manual-batch`, { cases });
+export const secRuns = (s) => req("GET", `/rag/spaces/${s}/security/runs`);
+export const secRunStatus = (s, job) => req("GET", `/rag/spaces/${s}/security/run-status/${job}`);
+export const secRunDetail = (id) => req("GET", `/rag/security/runs/${id}`);
+export const secRunDelete = (id) => req("DELETE", `/rag/security/runs/${id}`);
+export const secRetryCase = (s, runId, caseId) =>
+  req("POST", `/rag/spaces/${s}/security/runs/${runId}/cases/${caseId}/retry`);
+export const secCompare = (a, b) => req("GET", `/rag/security/compare?a=${a}&b=${b}`);
+export const secApply = (s, configDiff) => req("POST", `/rag/spaces/${s}/security/apply`, { config_diff: configDiff });
 
 // NOTE: BASE already ends in "/api", and the models router is mounted at
 // "/api/models", so these paths must NOT repeat "/api" (else → /api/api/... 404).

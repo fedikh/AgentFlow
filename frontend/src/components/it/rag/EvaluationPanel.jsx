@@ -3,11 +3,16 @@ import {
   evalListCases, evalAddCase, evalDeleteCase, evalClearCases,
   evalUploadDatasetFile, evalTemplateExcel, evalExpertForm,
   evalGenerateCases, evalRunAsync, evalRunStatus, evalRuns, evalRunDetail,
+  evalRunDelete, evalRunDiagnose,
 } from "../../../services/ragApi";
+import {
+  Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
 import JudgeSelector from "./JudgeSelector";
+import SecurityPanel from "./SecurityPanel";
 import {
   FlaskConical, Bot, BarChart3, BookOpen, Scale, Upload, Sparkles,
-  FileSpreadsheet, FileText, Plus, Trash2, Play, Timer, Info,
+  FileSpreadsheet, FileText, Plus, Trash2, Play, Timer, Info, Shield,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
@@ -186,6 +191,9 @@ function CompareView({ a, b }) {
         )}
       </div>
 
+      {/* visual comparison: A vs B across the percentage metrics */}
+      <CompareChart rows={rows} />
+
       {/* metric-by-metric result */}
       <table className="ev-table">
         <thead><tr><th>Metric</th><th>A</th><th>B</th><th>Result</th></tr></thead>
@@ -206,6 +214,49 @@ function CompareView({ a, b }) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ── A-vs-B comparison chart (grouped horizontal bars, percentage metrics) ──
+   Two categorical series in the app's CVD-validated palette. Only the metrics
+   that share a 0–100% scale go here; latency/cost (different scale) stay in the
+   table — never a dual-axis chart. The table below is the exact-value view. */
+const CMP_A = "#2563EB", CMP_B = "#0D9488";
+function CompareChart({ rows }) {
+  const data = rows
+    .filter((r) => r.fmt === pct)
+    .map((r) => ({
+      metric: r.label.replace(" (judge)", ""),
+      A: r.va != null ? Math.round(r.va * 100) : null,
+      B: r.vb != null ? Math.round(r.vb * 100) : null,
+    }));
+  if (!data.length) return null;
+  return (
+    <div>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b", textTransform: "uppercase",
+                    letterSpacing: ".03em", marginBottom: 6 }}>
+        Metric comparison — A vs B
+      </div>
+      <div style={{ width: "100%", height: data.length * 40 + 44 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} layout="vertical" barGap={2} barCategoryGap="26%"
+                    margin={{ top: 4, right: 40, left: 6, bottom: 4 }}>
+            <CartesianGrid horizontal={false} stroke="#eef2f6" />
+            <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`}
+                   tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false}
+                   axisLine={{ stroke: "#e5e9f0" }} />
+            <YAxis type="category" dataKey="metric" width={132}
+                   tick={{ fontSize: 11.5, fill: "#0f172a" }} tickLine={false} axisLine={false} />
+            <Tooltip cursor={{ fill: "#f1f5f9" }}
+                     formatter={(v, name) => [v == null ? "—" : `${v}%`, name]}
+                     contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e5e9f0" }} />
+            <Legend iconSize={10} wrapperStyle={{ fontSize: 11.5 }} />
+            <Bar name="A" dataKey="A" fill={CMP_A} radius={[0, 4, 4, 0]} maxBarSize={13} />
+            <Bar name="B" dataKey="B" fill={CMP_B} radius={[0, 4, 4, 0]} maxBarSize={13} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -257,7 +308,101 @@ function StatTile({ label, value, sub }) {
 }
 
 /* ── one experiment's results: 2 bar charts + performance tiles + details ── */
-function RunResults({ run }) {
+function Diagnosis({ spaceId, run }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const famHue = { retrieval: "#2563eb", generation: "#8b5cf6", performance: "#0d9488" };
+
+  const runDiagnose = async () => {
+    setBusy(true); setError("");
+    try { setData(await evalRunDiagnose(spaceId, run.id)); }
+    catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const ruleRecs = run.metrics?.recommendations || [];
+  return (
+    <div className="ev-src" style={{ margin: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div className="ev-src-t" style={{ margin: 0 }}>Feedback &amp; recommendations</div>
+        <button type="button" onClick={runDiagnose} disabled={busy || !spaceId}
+          style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6,
+                   border: "1px solid #2563eb", background: "#fff", color: "#2563eb",
+                   borderRadius: 9, padding: "7px 13px", cursor: "pointer",
+                   font: "600 12.5px system-ui" }}>
+          {busy ? "Analyzing…" : data ? "Re-run diagnosis" : "Diagnose & recommend (AI)"}
+        </button>
+      </div>
+      {error && <div style={{ color: "#b91c1c", fontSize: 12.5, marginTop: 8 }}>{error}</div>}
+
+      {/* deterministic rule hints show until the AI diagnosis is requested */}
+      {!data && ruleRecs.length > 0 && (
+        <div className="rag-cfg-hint" style={{ margin: "8px 0 0" }}>
+          {ruleRecs.map((r, i) => <div key={i}>• {r}</div>)}
+        </div>
+      )}
+      {!data && ruleRecs.length === 0 && (
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>
+          Rules detect the weak metrics; the judge LLM explains why and suggests what to try.
+        </div>
+      )}
+
+      {data && (
+        <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+          {data.summary && (
+            <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{data.summary}</div>
+          )}
+          {data.status === "healthy" && (
+            <div style={{ fontSize: 12.5, color: "#15803d" }}>✓ No problem crossed a threshold.</div>
+          )}
+          {data.fallback_same_as_rag && (
+            <div style={{ fontSize: 11.5, color: "#a16207" }}>
+              No independent judge — explained with the RAG&apos;s own LLM.
+            </div>
+          )}
+          {(data.problems || []).map((p) => (
+            <div key={p.code} style={{ border: "1px solid #e2e8f0", borderRadius: 10,
+                                       padding: "11px 13px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%",
+                               background: famHue[p.family] || "#64748b", flexShrink: 0 }} />
+                <span style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{p.label}</span>
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#64748b" }}>{p.evidence}</span>
+              </div>
+              {p.why && (
+                <div style={{ fontSize: 12.5, color: "#475569", marginTop: 6 }}>{p.why}</div>
+              )}
+              <div style={{ marginTop: 8, display: "grid", gap: 5 }}>
+                {(p.recommendations || []).map((rec, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, fontSize: 12.5 }}>
+                    <span style={{ color: "#2563eb", fontWeight: 700 }}>→</span>
+                    <span style={{ color: "#0f172a" }}>
+                      <b>{rec.label}</b>
+                      {rec.detail ? <span style={{ color: "#64748b" }}> — {rec.detail}</span> : null}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          {(data.do_not_change || []).length > 0 && (
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              {data.do_not_change.map((d, i) => <div key={i}>· {d}</div>)}
+            </div>
+          )}
+          <div style={{ fontSize: 10.5, color: "#94a3b8" }}>
+            {data.engine === "rules"
+              ? "Rule-based (no LLM judge available)"
+              : `Rules detected the problems · explained by ${data.judge || "the judge LLM"}`}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunResults({ run, spaceId }) {
   const [showCases, setShowCases] = useState(false);
   if (!run?.metrics) return null;
   const m = run.metrics;
@@ -330,11 +475,7 @@ function RunResults({ run }) {
         </div>
       )}
 
-      {(m.recommendations || []).length > 0 && (
-        <div className="rag-cfg-hint" style={{ margin: 0 }}>
-          {(m.recommendations || []).map((r, i) => <div key={i}>• {r}</div>)}
-        </div>
-      )}
+      <Diagnosis spaceId={spaceId} run={run} />
 
       {(run.results || []).length > 0 && (
         <div>
@@ -366,6 +507,9 @@ function RunResults({ run }) {
 /* ── the experiment's full RAG configuration ── */
 function ConfigCard({ config = {} }) {
   const c = config;
+  const [showPrompt, setShowPrompt] = useState(false);
+  const promptText = c.llm?.system_prompt_text;
+  const promptIsDefault = c.llm?.system_prompt_is_default;
 
   // Chunking cell: mode + the per-format (or per-file) processor breakdown
   const chunkEntries =
@@ -420,6 +564,24 @@ function ConfigCard({ config = {} }) {
           ))}
         </tbody>
       </table>
+      {promptText && (
+        <div style={{ marginTop: 8 }}>
+          <button type="button" onClick={() => setShowPrompt((v) => !v)}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none",
+                     background: "none", padding: 0, cursor: "pointer", fontSize: 12,
+                     fontWeight: 600, color: "#2563eb" }}>
+            {showPrompt ? "▾" : "▸"} System prompt {promptIsDefault ? "(default)" : "(custom)"}
+          </button>
+          {showPrompt && (
+            <pre style={{ whiteSpace: "pre-wrap", background: "#f8fafc",
+                          border: "1px solid #e2e8f0", borderRadius: 9, padding: "11px 13px",
+                          fontSize: 11.5, color: "#475569", marginTop: 6, maxHeight: 260,
+                          overflow: "auto", fontFamily: "ui-monospace, monospace" }}>
+              {promptText}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -460,6 +622,7 @@ const EvaluationPanel = ({
   const [openRun, setOpenRun] = useState(null);     // latest run (auto tab)
   const [openExp, setOpenExp] = useState(null);     // selected experiment
   const [compareIds, setCompareIds] = useState([]); // up to 2 runs to compare
+  const [showExperiments, setShowExperiments] = useState(false); // reveal run history
 
   const toggleCompare = (id) =>
     setCompareIds((l) =>
@@ -481,7 +644,6 @@ const EvaluationPanel = ({
   };
   useEffect(() => {
     if (mode === "auto") { loadCases(); loadRuns(); }
-    if (mode === "experiments") loadRuns();
     setEvalError("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, spaceId]);
@@ -587,6 +749,15 @@ const EvaluationPanel = ({
     try { setOpenExp(await evalRunDetail(spaceId, r.id)); } catch { /* keep summary */ }
   };
 
+  const deleteExperiment = async (id) => {
+    if (!window.confirm("Delete this experiment? This cannot be undone.")) return;
+    setRuns((l) => l.filter((r) => r.id !== id));
+    setCompareIds((l) => l.filter((x) => x !== id));
+    if (openExp?.id === id) setOpenExp(null);
+    if (openRun?.id === id) setOpenRun(null);
+    try { await evalRunDelete(spaceId, id); } catch (e) { setEvalError(e.message); loadRuns(); }
+  };
+
   // ── manual-tab pairing ──
   const mruns = [];
   for (const m of chatHistory) {
@@ -617,10 +788,9 @@ const EvaluationPanel = ({
           { k: "manual", Icon: FlaskConical, title: "Manual", accent: "#2563eb",
             desc: "Ask by hand — answer, sources, latency" },
           { k: "auto", Icon: Bot, title: "Auto evaluation", accent: "#8b5cf6",
-            desc: "Dataset → ranx · Ragas · judge · cost" },
-          { k: "experiments", Icon: BarChart3, accent: "#f59e0b",
-            title: `Experiments${runs.length ? ` · ${runs.length}` : ""}`,
-            desc: "Every run: full config + scores" },
+            desc: "Dataset → run · scores · experiments" },
+          { k: "security", Icon: Shield, accent: "#059669", title: "Security",
+            desc: "Attack corpus · robustness · fixes" },
         ].map((m) => {
           const on = mode === m.k;
           return (
@@ -750,7 +920,7 @@ const EvaluationPanel = ({
       )}
 
       {/* ═══════════════ AUTO ═══════════════ */}
-      {mode === "auto" && (
+      {mode === "auto" && !showExperiments && (
         <div style={{ display: "grid", gap: 12 }}>
           {/* ── Test dataset card ── */}
           <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
@@ -913,18 +1083,58 @@ const EvaluationPanel = ({
             </div>
           )}
 
-          {openRun && <RunResults run={openRun} />}
+          {openRun && <RunResults run={openRun} spaceId={spaceId} />}
           {!openRun && runs.length > 0 && (
             <button className="rp2-expander" onClick={() => setOpenRun(runs[0]) || viewExperiment(runs[0])}>
               ▸ Show latest experiment ({new Date(runs[0].created_at).toLocaleString()})
             </button>
           )}
+
+          {/* ── Experiments — a button that opens the experiments page ── */}
+          {runs.length > 0 && (
+            <button type="button" onClick={() => setShowExperiments(true)}
+              style={{ display: "flex", alignItems: "center", gap: 9, width: "100%",
+                       textAlign: "left", cursor: "pointer", padding: "12px 14px",
+                       borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0" }}>
+              <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                             display: "flex", alignItems: "center", justifyContent: "center",
+                             background: "#f59e0b1a" }}>
+                <BarChart3 size={16} color="#f59e0b" />
+              </span>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "block", fontWeight: 700, fontSize: 13, color: "#0f172a" }}>
+                  Experiments
+                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: "#b45309",
+                                 background: "#f59e0b1a", borderRadius: 999, padding: "2px 9px" }}>
+                    {runs.length}
+                  </span>
+                </span>
+                <span style={{ display: "block", fontSize: 11.5, color: "#64748b", marginTop: 1 }}>
+                  Every run keeps its full config + scores — open to browse and compare.
+                </span>
+              </span>
+              <span style={{ color: "#94a3b8", fontSize: 14 }}>→</span>
+            </button>
+          )}
         </div>
       )}
 
-      {/* ═══════════════ EXPERIMENTS ═══════════════ */}
-      {mode === "experiments" && (
+      {/* ═══════════════ EXPERIMENTS PAGE (opened from Auto) ═══════════════ */}
+      {mode === "auto" && showExperiments && (
         <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button type="button" onClick={() => { setShowExperiments(false); setOpenExp(null); }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #e2e8f0",
+                       background: "#fff", borderRadius: 9, padding: "7px 12px", cursor: "pointer",
+                       font: "600 12.5px system-ui", color: "#0f172a" }}>
+              ← Back to evaluation
+            </button>
+            <BarChart3 size={16} color="#f59e0b" />
+            <span style={{ fontWeight: 800, fontSize: 15, color: "#0f172a" }}>Experiments</span>
+            <span style={{ fontSize: 11.5, color: "#64748b" }}>
+              {runs.length} run{runs.length === 1 ? "" : "s"}
+            </span>
+          </div>
           {runs.length === 0 && (
             <div className="rag-cfg-hint">No experiments yet — run one from the Auto evaluation tab.</div>
           )}
@@ -935,7 +1145,7 @@ const EvaluationPanel = ({
                 shows what changed in the config and which run wins, metric by metric.
               </div>
               <table className="ev-table">
-                <thead><tr><th>Compare</th><th>Date</th><th>Cases</th><th>Duration</th><th>Hit rate@K</th><th>Faithfulness</th><th>Correctness</th><th></th></tr></thead>
+                <thead><tr><th>Compare</th><th>Date</th><th>Cases</th><th>Duration</th><th>Hit rate@K</th><th>Faithfulness</th><th>Correctness</th><th></th><th></th></tr></thead>
                 <tbody>
                   {runs.map((r) => {
                     const f = families(r.metrics);
@@ -960,6 +1170,11 @@ const EvaluationPanel = ({
                         <td>{pct(f.generation.correctness)}</td>
                         <td><button className="ev-suggest" onClick={() => viewExperiment(r)}>
                           {active ? "viewing" : "view"}</button></td>
+                        <td><button title="Delete experiment" onClick={() => deleteExperiment(r.id)}
+                          style={{ display: "inline-flex", border: "1px solid #e2e8f0",
+                                   background: "#fff", borderRadius: 7, padding: "5px",
+                                   cursor: "pointer", color: "#94a3b8" }}>
+                          <Trash2 size={13} /></button></td>
                       </tr>
                     );
                   })}
@@ -975,10 +1190,15 @@ const EvaluationPanel = ({
           {openExp && (
             <>
               <ConfigCard config={openExp.config} />
-              <RunResults run={openExp} />
+              <RunResults run={openExp} spaceId={spaceId} />
             </>
           )}
         </div>
+      )}
+
+      {/* ═══════════════ SÉCURITÉ ═══════════════ */}
+      {mode === "security" && (
+        <SecurityPanel spaceId={spaceId} editable={editable} onError={setEvalError} />
       )}
     </div>
   );

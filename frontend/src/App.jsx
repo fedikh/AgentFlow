@@ -13,6 +13,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 // ── Admin pages ───────────────────────────────────────
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminRAGPage from "./pages/admin/AdminRAGPage";
+import AdminDataAgentPage from "./pages/admin/AdminDataAgentPage";
 import UsersPage from "./pages/admin/UsersPage";
 import ApiProvidersPage from "./pages/admin/ApiProvidersPage";
 
@@ -21,6 +22,7 @@ import ITDashboard from "./pages/it/ITDashboard";
 import RAGSpacesPage from "./pages/it/RAGSpacesPage";
 import ITAgentsPage from "./pages/it/ITAgentsPage";
 import DataAgentPage from "./pages/it/DataAgentPage";
+import DeployedDataAgentsPage from "./pages/it/DeployedDataAgentsPage";
 
 // ── User pages ────────────────────────────────────────
 import UserDashboard from "./pages/user/UserDashboard";
@@ -80,14 +82,11 @@ export default function App() {
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/rag" element={<AdminRAGPage />} />
+            <Route path="/admin/data-agents" element={<AdminDataAgentPage />} />
             <Route path="/admin/providers" element={<ApiProvidersPage />} />
             <Route
               path="/admin/settings"
               element={<ComingSoon title="Org Settings" />}
-            />
-            <Route
-              path="/admin/analytics"
-              element={<ComingSoon title="Analytics" />}
             />
           </Route>
         </Route>
@@ -100,11 +99,14 @@ export default function App() {
             <Route path="/it/rag/:spaceId" element={<RAGSpacesPage />} />
             <Route path="/it/agents" element={<ITAgentsPage />} />
             <Route path="/it/agents/:agentId" element={<ITAgentsPage />} />
-            <Route
-              path="/it/api-agents"
-              element={<ComingSoon title="API Agent" />}
-            />
             <Route path="/it/data-agent" element={<DataAgentPage />} />
+            {/* static "deployed" outranks the dynamic :sourceId in v6 */}
+            <Route path="/it/data-agent/deployed" element={<DeployedDataAgentsPage />} />
+            <Route
+              path="/it/data-agent/deployed/:sourceId"
+              element={<DeployedDataAgentsPage />}
+            />
+            <Route path="/it/data-agent/:sourceId" element={<DataAgentPage />} />
             <Route
               path="/it/workflows"
               element={<ComingSoon title="Workflows" />}
@@ -126,6 +128,21 @@ export default function App() {
             <Route path="/user" element={<UserDashboard />} />
             <Route path="/user/agents" element={<UserAgentsPage />} />
             <Route path="/user/agents/:agentId" element={<UserAgentsPage />} />
+            {/* Data agents for end users — the same page as the IT preview;
+                the backend role-scopes the list. */}
+            {["/user/data-agents", "/user/data-agents/:sourceId"].map((p) => (
+              <Route
+                key={p}
+                path={p}
+                element={
+                  <DeployedDataAgentsPage
+                    title="Data Agents"
+                    subtitle="Ask your department's databases in plain language"
+                    basePath="/user/data-agents"
+                  />
+                }
+              />
+            ))}
             <Route
               path="/user/history"
               element={<ComingSoon title="Chat History" />}

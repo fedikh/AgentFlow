@@ -31,7 +31,7 @@ const RightSidebar = ({ panel, setPanel, space = null, docsCount = null }) => {
         : "Split & build the index",
     llm: shortModel(space?.llm_model) || "Answer model",
     retrieval: space?.top_k
-      ? `top-k ${space.top_k} · ${(space.search_engine || "hybrid").toLowerCase()}`
+      ? `top-k ${space.top_k} · ${(space.retrieval_params?.search_mode || "hybrid").toLowerCase()}`
       : "Search settings",
   };
 

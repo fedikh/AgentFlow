@@ -47,7 +47,7 @@ const chunkRows = (space) => {
 
 /* Source precedence mirrors the selectors: a chosen COMPANY provider
  * (provider_id set) wins over a leftover own key. */
-function llmSource(space, providers) {
+export function llmSource(space, providers) {
   if (space.llm_provider_id) {
     const p = providers.find((x) => x.id === space.llm_provider_id);
     return {

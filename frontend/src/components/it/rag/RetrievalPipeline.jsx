@@ -52,7 +52,13 @@ const Radio = ({ options, value, onChange }) => (
   </div>
 );
 
-export default function RetrievalPipeline({ cfg, setC }) {
+/* hybridOnly   — search mode is fixed to hybrid (Data Agent: schema knowledge
+ *                needs both branches, so there is nothing to choose).
+ * rerankToggle — optional node rendered inside the re-ranker block by callers
+ *                where re-ranking is opt-in instead of always-on.
+ */
+export default function RetrievalPipeline({ cfg, setC, hybridOnly = false,
+                                            rerankToggle = null }) {
   const rp = { ...RP_DEFAULTS, ...(cfg.retrieval_params || {}) };
   const setMany = (obj) =>
     setC("retrieval_params", { ...(cfg.retrieval_params || {}), ...obj });
@@ -76,21 +82,43 @@ export default function RetrievalPipeline({ cfg, setC }) {
       {/* ── Search mode (switchable: keyword / vector / hybrid) ── */}
       <div className="rp2-block">
         <div className="rp2-block-t">Search mode</div>
-        <Radio
-          value={rp.search_mode}
-          onChange={(v) => setMany({ search_mode: v })}
-          options={[
-            { value: "vector", label: "Vector", desc: "Meaning (pgvector + HNSW)" },
-            { value: "hybrid", label: "Hybrid", desc: "Both + RRF merge", star: true },
-            { value: "keyword", label: "Keyword", desc: "Exact words (FTS)" },
-          ]}
-        />
+        {hybridOnly ? (
+          <div className="rp2-locked">
+            <span className="rp2-locked-badge">HYBRID</span>
+            <span>
+              <strong>Vector</strong> (pgvector + HNSW) and{" "}
+              <strong>keyword</strong> (FTS) always run together, merged with
+              Reciprocal Rank Fusion.
+            </span>
+          </div>
+        ) : (
+          <Radio
+            value={rp.search_mode}
+            onChange={(v) => setMany({ search_mode: v })}
+            options={[
+              { value: "vector", label: "Vector", desc: "Meaning (pgvector + HNSW)" },
+              { value: "hybrid", label: "Hybrid", desc: "Both + RRF merge", star: true },
+              { value: "keyword", label: "Keyword", desc: "Exact words (FTS)" },
+            ]}
+          />
+        )}
         <div className="rp2-hint">
-          <strong>Vector</strong> understands meaning ("vacation days" finds
-          "annual leave"). <strong>Keyword</strong> nails exact terms, IDs and
-          codes, in every indexed language. <strong>Hybrid</strong> runs both
-          and merges them with Reciprocal Rank Fusion — recommended for
-          enterprise documents.
+          {hybridOnly ? (
+            <>
+              Not a toggle here: table and column names are rare literal tokens
+              that embeddings match poorly, while business phrasing is invisible
+              to keyword search. Each branch covers the other&apos;s blind spot,
+              so turning either off could only lose recall.
+            </>
+          ) : (
+            <>
+              <strong>Vector</strong> understands meaning ("vacation days" finds
+              "annual leave"). <strong>Keyword</strong> nails exact terms, IDs and
+              codes, in every indexed language. <strong>Hybrid</strong> runs both
+              and merges them with Reciprocal Rank Fusion — recommended for
+              enterprise documents.
+            </>
+          )}
         </div>
       </div>
 
@@ -112,6 +140,7 @@ export default function RetrievalPipeline({ cfg, setC }) {
       {/* ── Re-ranker model ── */}
       <div className="rp2-block">
         <div className="rp2-block-t">Re-ranker model</div>
+        {rerankToggle}
         <Radio
           value={rerankKey}
           onChange={(v) => setMany(RERANK_MODELS[v].params)}
@@ -157,7 +186,8 @@ export default function RetrievalPipeline({ cfg, setC }) {
           </>
         )}
         <div className="rp2-hint">
-          Always on: a cross-encoder re-reads the top candidates together with
+          {rerankToggle ? "When enabled, a" : "Always on: a"} cross-encoder
+          re-reads the top candidates together with
           the question and re-orders them — the biggest quality win in the
           pipeline. <strong>BGE v2-m3</strong> runs locally and free;
           <strong> rerank-2.5</strong> answers in ~0.5s via the Voyage API.
