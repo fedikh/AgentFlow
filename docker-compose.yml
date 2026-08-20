@@ -1,0 +1,53 @@
+# ══════════════════════════════════════════════════════════════
+#  AgentFlow — full stack in three containers:
+#    db        PostgreSQL 16 with the pgvector extension preinstalled
+#    backend   FastAPI  (http://localhost:8000)
+#    frontend  React build served by nginx  (http://localhost:5173)
+#
+#  Run:   docker compose up --build
+#  Stop:  docker compose down            (add -v to also wipe the database)
+# ══════════════════════════════════════════════════════════════
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agentflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"          # host 5433 → container 5432 (avoids a local Postgres on 5432)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agentflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env         # your secrets (SECRET_KEY, FERNET_KEY, MAIL_*, API keys…)
+    environment:
+      # override DATABASE_URL so the app talks to the db CONTAINER, not localhost
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/agentflow
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads   # keep uploaded documents on the host
+      - appcache:/root/.cache            # cache HuggingFace / Docling / crawl4ai models
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"              # served at http://localhost:5173 (matches the backend CORS origin)
+
+volumes:
+  pgdata:
+  appcache:

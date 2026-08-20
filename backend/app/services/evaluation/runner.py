@@ -50,19 +50,31 @@ _JOBS_LOCK = threading.Lock()
 
 def _chunking_summary(db, space) -> dict:
     """The REAL chunking config — not just the legacy chunk_strategy column
-    (which defaults to 'recursive' and hid the actual setup).
+    (which defaults to 'recursive' and hides the actual setup).
 
-    PER_DOCUMENT → each file name with the strategy that chunked it.
-    SINGLE       → the per-format strategy map (pdf → heading, csv → row…)."""
+    Ground truth is `chosen_strategy` on each document — the strategy that
+    ACTUALLY produced its chunks at indexing time. Precedence:
+      PER_DOCUMENT mode        → each file with its strategy
+      per-format map (SINGLE)  → the pdf→…, csv→… map
+      else                     → the strategies that actually chunked the docs
+                                 (per document if they differ; the single one if
+                                 they agree; the space default only if unknown)."""
+    from sqlalchemy import text as _t
+    space_strat = getattr(space, "chunk_strategy", "") or "recursive"
+
+    # what actually chunked each document (chosen_strategy, else its override)
+    rows = db.execute(_t(
+        """SELECT file_name,
+                  COALESCE(NULLIF(chosen_strategy, ''), NULLIF(chunk_strategy, '')) AS s
+           FROM documents WHERE rag_space_id = :sid ORDER BY file_name"""),
+        {"sid": space.id}).fetchall()
+    per_file = {r.file_name: (r.s or space_strat) for r in rows}
+    actual = {r.s for r in rows if r.s}
+
     mode = str(getattr(space, "chunk_mode", "") or "SINGLE").upper()
     if mode == "PER_DOCUMENT":
-        from sqlalchemy import text as _t
-        rows = db.execute(_t(
-            """SELECT file_name, COALESCE(chosen_strategy, chunk_strategy) AS s
-               FROM documents WHERE rag_space_id = :sid ORDER BY file_name"""),
-            {"sid": space.id}).fetchall()
-        return {"mode": "Per document",
-                "files": {r.file_name: (r.s or "—") for r in rows}}
+        return {"mode": "Per document", "files": per_file}
+
     fmt_map = {}
     try:
         raw = getattr(space, "chunk_format_map", None)
@@ -73,8 +85,22 @@ def _chunking_summary(db, space) -> dict:
         return {"mode": "Single (per format)",
                 "strategies": {ft: (v or {}).get("strategy") or "—"
                                for ft, v in fmt_map.items()}}
-    return {"mode": "Single",
-            "strategies": getattr(space, "chunk_strategy", "") or "recursive"}
+
+    # no explicit per-format/per-document config → reflect what really happened
+    if len(actual) > 1:
+        return {"mode": "Per document", "files": per_file}
+    if len(actual) == 1:
+        return {"mode": "Single", "strategies": next(iter(actual))}
+    return {"mode": "Single", "strategies": space_strat}
+
+
+def _default_system_prompt() -> str:
+    """The platform default prompt (shown when the space set no custom one)."""
+    try:
+        from app.services.llm_factory.generate import DEFAULT_SYSTEM_PROMPT
+        return DEFAULT_SYSTEM_PROMPT
+    except Exception:
+        return ""
 
 
 def _config_snapshot(db, space, judge_used: str) -> dict:
@@ -98,6 +124,11 @@ def _config_snapshot(db, space, judge_used: str) -> dict:
             "temperature": getattr(space, "llm_temperature", 0.2),
             "max_tokens": getattr(space, "llm_max_tokens", 1024),
             "system_prompt": "custom" if getattr(space, "system_prompt", None) else "default",
+            # the EXACT prompt used (custom text, or the platform default) so the
+            # experiment card can show precisely what was evaluated
+            "system_prompt_text": (getattr(space, "system_prompt", None)
+                                   or _default_system_prompt()),
+            "system_prompt_is_default": not bool(getattr(space, "system_prompt", None)),
         },
         "chunking": _chunking_summary(db, space),
         "retrieval": {
@@ -443,3 +474,13 @@ def get_run(db: Session, space_id: str, run_id: str) -> dict:
     if not run:
         raise HTTPException(404, "Run not found")
     return _run_dict(run, include_results=True)
+
+
+def delete_run(db: Session, space_id: str, run_id: str) -> dict:
+    run = db.query(EvalRun).filter(EvalRun.id == run_id,
+                                   EvalRun.rag_space_id == space_id).first()
+    if not run:
+        raise HTTPException(404, "Run not found")
+    db.delete(run)
+    db.commit()
+    return {"deleted": True}

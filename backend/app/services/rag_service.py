@@ -55,6 +55,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# ── Data Agent knowledge base: a narrower format list than a RAG space ──
+# Its hidden space is a normal RAG space, so the restriction lives with the
+# upload code that enforces it (the panel shows the same list).
+DATA_AGENT_FORMATS_KIND = "data_agent_knowledge"
+DATA_AGENT_FORMATS = {".pdf", ".docx", ".txt", ".md", ".markdown", ".csv",
+                      ".html", ".htm"}
+
 # ── Embeddings (Batch 6: now resolved per-space via the embedding factory) ──
 # The factory picks the space's embedding source (own key → company provider →
 # local BGE-M3) and guards the 1024-dim pgvector column. Index-time and
@@ -345,9 +352,6 @@ def _space_dict(db, space, user=None):
         "llm_has_own_key": bool(getattr(space, 'llm_api_key_enc', None)),
         "llm_api_key_masked": _masked_own_key(space, 'llm_api_key_enc'),
         "top_k": space.top_k,
-        "search_engine": getattr(space, 'search_engine', 'HYBRID') or 'HYBRID',
-        "semantic_weight": getattr(space, 'semantic_weight', 0.7) if getattr(space, 'semantic_weight', None) is not None else 0.7,
-        "reranking_enabled": getattr(space, 'reranking_enabled', False) or False,
         "retrieval_params": _load_json(getattr(space, 'retrieval_params', None)),
         "eval_params": _load_json(getattr(space, 'eval_params', None)),
         "system_prompt": getattr(space, 'system_prompt', None),
@@ -388,7 +392,7 @@ _VERSION_CONFIG_COLUMNS = [
     "embedding_provider_id", "embedding_api_key_enc", "embedding_base_url",
     "llm_provider", "llm_model", "llm_temperature", "llm_max_tokens",
     "llm_provider_id", "llm_api_key_enc", "llm_base_url",
-    "top_k", "search_engine", "semantic_weight", "reranking_enabled",
+    "top_k",
     "retrieval_params", "reranker_api_key_enc",
     "system_prompt",
 ]
@@ -397,7 +401,7 @@ _VERSION_SECRET_KEYS = ("llm_api_key_enc", "embedding_api_key_enc",
 
 # Only these columns affect the built index. A change to any of them means the
 # stored chunks are stale and a full re-index is needed. Query-time fields
-# (llm_*, top_k, semantic_weight, reranking, system_prompt) do NOT.
+# (llm_*, top_k, retrieval_params, system_prompt) do NOT.
 _INDEX_COLUMNS = [
     "chunk_mode", "chunk_size", "chunk_overlap", "chunk_strategy",
     "chunk_params", "chunk_format_map",
@@ -688,7 +692,11 @@ def list_spaces(db: Session, org_id: str, user) -> list:
       IT    → spaces they own or collaborate on (+ legacy owner-less spaces).
       USER  → only DEPLOYED, published, department spaces they're allowed on.
     """
-    q = db.query(RAGSpace).filter(RAGSpace.organization_id == org_id)
+    # system_kind spaces (e.g. a Data Agent's knowledge base) use the RAG
+    # pipeline internally but are not RAG spaces to the user — never list them.
+    q = (db.query(RAGSpace)
+         .filter(RAGSpace.organization_id == org_id,
+                 RAGSpace.system_kind.is_(None)))
     role = _role_name(user)
 
     if role == "ADMIN":
@@ -1222,6 +1230,14 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
     if ext not in SUPPORTED_FORMATS:
         supported = ", ".join(SUPPORTED_FORMATS.keys())
         raise HTTPException(400, f"Format '{ext}' not supported. Accepted: {supported}")
+    # A Data Agent knowledge base takes a narrower set than a full RAG space —
+    # enforced here so the API can't be used to get around the picker.
+    if space.system_kind == DATA_AGENT_FORMATS_KIND and ext not in DATA_AGENT_FORMATS:
+        raise HTTPException(
+            400,
+            f"Format '{ext}' not accepted here. This knowledge base accepts: "
+            + ", ".join(sorted(DATA_AGENT_FORMATS)),
+        )
 
     content = await file.read()
 

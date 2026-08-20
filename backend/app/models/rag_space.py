@@ -1,52 +1,20 @@
 """
 RAGSpace model — FULLY CONFIGURABLE.
-Ajout de tous les champs configurables pour le pipeline RAG.
 
-NOUVEAUX CHAMPS:
-  Embedding: embedding_provider, embedding_model
+Champs configurables du pipeline RAG:
+  Embedding: embedding_provider, embedding_model (+ source: provider_id / own key)
   LLM:       llm_provider, llm_model, llm_temperature, llm_max_tokens
   LLM source: llm_provider_id (company provider), llm_api_key_enc (own key), llm_base_url
-  Recherche: search_engine, semantic_weight, reranking_enabled
+  Recherche: top_k + retrieval_params (JSON — la config complète du pipeline)
   Prompt:    system_prompt
   Status:    status (DRAFT → ACTIVE)
 """
 import uuid
-from sqlalchemy import Column, String, Integer, Float, Boolean, Text, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import Column, String, Integer, Float, Boolean, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.database import Base
 import enum
-
-
-# ══════════════════════════════════════════════════════
-# ENUMS
-# ══════════════════════════════════════════════════════
-
-class ChunkStrategy(str, enum.Enum):
-    FIXED        = "FIXED"
-    SEMANTIC     = "SEMANTIC"
-    HIERARCHICAL = "HIERARCHICAL"
-
-class ChunkMode(str, enum.Enum):
-    FIXED_ALL    = "FIXED_ALL"
-    PER_DOCUMENT = "PER_DOCUMENT"
-    ADAPTIVE     = "ADAPTIVE"
-
-class EmbeddingProvider(str, enum.Enum):
-    LOCAL   = "LOCAL"       # sentence-transformers (gratuit)
-    OPENAI  = "OPENAI"      # OpenAI API (payant)
-    COHERE  = "COHERE"      # Cohere API (payant)
-
-
-class LLMProvider(str, enum.Enum):
-    GROQ    = "GROQ"        # Groq API (gratuit)
-    OPENAI  = "OPENAI"      # OpenAI API (payant)
-    OLLAMA  = "OLLAMA"      # Ollama (local, gratuit)
-
-
-class SearchEngine(str, enum.Enum):
-    HYBRID        = "HYBRID"          # pgvector + BM25 (défaut)
-    ELASTICSEARCH = "ELASTICSEARCH"   # ES fait tout
 
 
 class SpaceStatus(str, enum.Enum):
@@ -70,6 +38,10 @@ class RAGSpace(Base):
     # Plain string (not a native PG enum) so new statuses like EDITING can be
     # added without an enum migration. Values come from SpaceStatus.
     status          = Column(String, default="DRAFT")
+    # Internal space owned by another feature (currently "data_agent_knowledge"):
+    # it uses the full RAG pipeline but is hidden from the RAG workspace,
+    # the dashboards and the admin listings.
+    system_kind     = Column(String, nullable=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
     department_id   = Column(String, ForeignKey("departments.id"), nullable=True)
 
@@ -126,11 +98,8 @@ class RAGSpace(Base):
     llm_api_key_enc = Column(Text, nullable=True)
     llm_base_url    = Column(String, nullable=True)
 
-    # ── Search config ──                                                           # NEW
+    # ── Search config ──
     top_k              = Column(Integer, default=5)
-    search_engine      = Column(String, default="HYBRID")
-    semantic_weight    = Column(Float, default=0.7)
-    reranking_enabled  = Column(Boolean, default=False)
     # Retrieval Pipeline overrides (visual pipeline UI): JSON of RetrievalConfig
     # fields — per-retriever toggles, BM25 k1/b, fusion weights, transforms,
     # reranker provider/model, context/compression. See services/retrieval/config.py

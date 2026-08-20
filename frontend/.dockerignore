@@ -1,0 +1,8 @@
+# keep .env (Vite reads VITE_* from it at build time)
+node_modules/
+dist/
+.git
+.gitignore
+npm-debug.log*
+err.txt
+*.md

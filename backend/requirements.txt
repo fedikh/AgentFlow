@@ -62,3 +62,8 @@ flashrank
 ragas
 xlrd                   # legacy .xls → .xlsx conversion for Docling
 trafilatura>=2.1        # web main-content + metadata + structure extraction (no hand-rolled boilerplate rules)
+
+# ── Security evaluation module ──
+rapidfuzz>=3.0          # fuzzy shingle match for the system-prompt-leak checker
+deepteam>=1.0           # adversarial attack generation (AI red team)
+sentry-sdk>=2.0         # required transitively by deepteam's telemetry import

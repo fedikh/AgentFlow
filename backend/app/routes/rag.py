@@ -616,3 +616,136 @@ def eval_run_detail(space_id: str, run_id: str, request: Request, db: Session = 
     user = _get_current_user(request, db)
     rag_service._find_space(db, space_id, user.organization_id)
     return eval_service.get_run(db, space_id, run_id)
+
+
+@router.delete("/spaces/{space_id}/eval/runs/{run_id}")
+def eval_run_delete(space_id: str, run_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return eval_service.delete_run(db, space_id, run_id)
+
+
+@router.post("/spaces/{space_id}/eval/runs/{run_id}/diagnose")
+def eval_run_diagnose(space_id: str, run_id: str, request: Request, db: Session = Depends(get_db)):
+    """Hybrid feedback: rules detect the problems, the judge LLM explains WHY and
+    recommends WHAT TO TRY from a fixed catalog of allowed config changes."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    run = eval_service.get_run(db, space_id, run_id)
+    return eval_service.diagnose(db, space, run.get("metrics") or {}, run.get("config") or {})
+
+
+# ══════════════════════════════════════════
+# SECURITY EVALUATION — frozen attack corpus replayed in the real pipeline
+# (Steps 1-8; the judge reuses the eval judge LLM: company / local / own key)
+# ══════════════════════════════════════════
+from app.services import security as sec_service                       # noqa: E402
+
+
+class SecurityRunIn(_BM):
+    categories: _Opt[list] = None
+    counts: _Opt[dict] = None          # {category: N attacks} — limit per category
+
+
+class SecurityApplyIn(_BM):
+    config_diff: dict
+
+
+class SecurityManualIn(_BM):
+    attack_prompt: str
+    category: str = "direct_injection"
+    expected_behavior: _Opt[str] = None
+
+
+class SecurityBatchIn(_BM):
+    cases: list                        # [{attack_prompt, category, expected_behavior?}]
+
+
+@router.get("/security/cases")
+def sec_cases(request: Request, db: Session = Depends(get_db)):
+    _get_current_user(request, db)
+    return sec_service.list_cases(db)
+
+
+@router.post("/spaces/{space_id}/security/runs")
+def sec_start_run(space_id: str, data: SecurityRunIn, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return sec_service.start_run(db, space, data.categories, user, counts=data.counts)
+
+
+@router.post("/spaces/{space_id}/security/manual-check")
+def sec_manual_check(space_id: str, data: SecurityManualIn, request: Request, db: Session = Depends(get_db)):
+    """One custom attack the IT typed, run through the real pipeline (not stored)."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return sec_service.manual_check(db, space, data.attack_prompt, data.category, data.expected_behavior)
+
+
+@router.post("/spaces/{space_id}/security/manual-batch")
+def sec_manual_batch(space_id: str, data: SecurityBatchIn, request: Request, db: Session = Depends(get_db)):
+    """A dataset of custom attacks run at once (not stored)."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return sec_service.manual_batch(db, space, data.cases)
+
+
+@router.get("/spaces/{space_id}/security/runs")
+def sec_list_runs(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return {"runs": sec_service.list_runs(db, space_id)}
+
+
+@router.get("/spaces/{space_id}/security/run-status/{job_id}")
+def sec_run_status(space_id: str, job_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return sec_service.job_status(job_id)
+
+
+@router.get("/security/runs/{run_id}")
+def sec_run_detail(run_id: str, request: Request, db: Session = Depends(get_db)):
+    _get_current_user(request, db)
+    return sec_service.get_run(db, run_id)
+
+
+@router.delete("/security/runs/{run_id}")
+def sec_run_delete(run_id: str, request: Request, db: Session = Depends(get_db)):
+    _get_current_user(request, db)
+    return sec_service.delete_run(db, run_id)
+
+
+@router.post("/spaces/{space_id}/security/runs/{run_id}/cases/{case_id}/retry")
+def sec_retry_case(space_id: str, run_id: str, case_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return sec_service.retry_case(db, space, run_id, case_id)
+
+
+@router.get("/security/compare")
+def sec_compare(a: str, b: str, request: Request, db: Session = Depends(get_db)):
+    """Compare two campaigns. NOTE: this path must NOT live under /security/runs/
+    or it collides with /security/runs/{run_id} (run_id='compare')."""
+    _get_current_user(request, db)
+    return sec_service.compare_runs(db, a, b)
+
+
+@router.post("/spaces/{space_id}/security/apply")
+def sec_apply(space_id: str, data: SecurityApplyIn, request: Request, db: Session = Depends(get_db)):
+    """Apply a recommendation's config diff to the space (never automatic — the
+    user previews it first). Supports numeric/string field sets and a system-
+    prompt append."""
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    payload = {}
+    for field, change in (data.config_diff or {}).items():
+        if field == "system_prompt" and isinstance(change, dict) and change.get("append"):
+            base = getattr(space, "system_prompt", None) or ""
+            payload["system_prompt"] = (base + change["append"]).strip()
+        elif isinstance(change, dict) and "to" in change:
+            payload[field] = change["to"]
+    if not payload:
+        raise HTTPException(400, "No change to apply")
+    req = UpdateRAGSpaceRequest(**payload)
+    return rag_service.update_space(db, space_id, user.organization_id, req, user)

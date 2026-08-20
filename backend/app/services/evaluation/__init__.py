@@ -23,4 +23,5 @@ from .datasets import (                                           # noqa: F401
     generate_cases,
 )
 from .runner import (run_evaluation, start_evaluation, job_status,  # noqa: F401
-                     list_runs, get_run)
+                     list_runs, get_run, delete_run)
+from .diagnose import diagnose  # noqa: F401

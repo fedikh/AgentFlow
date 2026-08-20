@@ -16,17 +16,6 @@ from typing import Optional
 # ENUMS
 # ══════════════════════════════════════════════════════
 
-class ChunkStrategy(str, Enum):
-    FIXED        = "FIXED"
-    SEMANTIC     = "SEMANTIC"
-    HIERARCHICAL = "HIERARCHICAL"
-
-class ChunkMode(str, Enum):
-    FIXED_ALL    = "FIXED_ALL"
-    PER_DOCUMENT = "PER_DOCUMENT"
-    ADAPTIVE     = "ADAPTIVE"
-
-
 class EmbeddingProvider(str, Enum):
     LOCAL   = "LOCAL"
     OPENAI  = "OPENAI"
@@ -37,11 +26,6 @@ class LLMProvider(str, Enum):
     GROQ    = "GROQ"
     OPENAI  = "OPENAI"
     OLLAMA  = "OLLAMA"
-
-
-class SearchEngine(str, Enum):
-    HYBRID        = "HYBRID"
-    ELASTICSEARCH = "ELASTICSEARCH"
 
 
 # ══════════════════════════════════════════════════════
@@ -76,10 +60,8 @@ class CreateRAGSpaceRequest(BaseModel):
     llm_max_tokens:  int = Field(default=1024, ge=100, le=8000)     # min 100, max 8000
 
     # ── Recherche ──
+    # (la config complète du pipeline vit dans retrieval_params — voir Update)
     top_k:              int = Field(default=5, ge=1, le=20)         # min 1, max 20
-    search_engine:      SearchEngine = SearchEngine.HYBRID
-    semantic_weight:    float = Field(default=0.7, ge=0.0, le=1.0)  # 0 = keyword only, 1 = semantic only
-    reranking_enabled:  bool = False
 
     # ── Prompt ──
     system_prompt:  Optional[str] = None                            # null = prompt par défaut
@@ -131,9 +113,6 @@ class UpdateRAGSpaceRequest(BaseModel):
     llm_base_url:       Optional[str] = None
 
     top_k:              Optional[int] = None
-    search_engine:      Optional[str] = None
-    semantic_weight:    Optional[float] = None
-    reranking_enabled:  Optional[bool] = None
     # Re-ranker own key (Voyage rerank-2.5) — plaintext in, encrypted at rest
     reranker_api_key:   Optional[str] = None
     # Evaluation judge own key — plaintext in, encrypted at rest

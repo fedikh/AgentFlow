@@ -1,0 +1,13 @@
+# keep the build context (and image) small
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+uploads/
+.env
+.git
+.gitignore
+*.md
+err.txt

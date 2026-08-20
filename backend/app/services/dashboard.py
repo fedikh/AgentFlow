@@ -56,7 +56,9 @@ def _my_spaces(db: Session, user) -> list:
     admin dashboard naturally covers every space of the organization."""
     from app.services.rag_service import _can_build
     rows = (db.query(RAGSpace)
-            .filter(RAGSpace.organization_id == user.organization_id).all())
+            .filter(RAGSpace.organization_id == user.organization_id,
+                    RAGSpace.system_kind.is_(None))    # hide internal spaces
+            .all())
     return [s for s in rows if _can_build(db, s, user)]
 
 

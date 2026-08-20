@@ -29,6 +29,10 @@ from app.models.rag_space_collaborator import RAGSpaceCollaborator  # noqa: F401
 # Evaluation — datasets + experiment runs (tables created by create_all)
 from app.models.evaluation import EvalCase, EvalRun  # noqa: F401
 
+# Security evaluation — frozen attack corpus + campaigns + results
+from app.models.security import (  # noqa: F401
+    SecurityCase, SecurityRun, SecurityResult)
+
 # Vector buckets — one chunk_vectors_<dim> model per catalog dimension,
 # created by create_all like every other table (see models/chunk_vector.py)
 from app.models import chunk_vector  # noqa: F401
@@ -38,6 +42,11 @@ from app.models.chat import ChatSession, ChatMessage  # noqa: F401
 
 # Agent API keys — machine access to deployed agents from other apps
 from app.models.api_key import AgentApiKey, AgentApiLog  # noqa: F401
+
+# Data Agent (NL → SQL) — sources, schema, sessions (tables via create_all)
+from app.models import data_agent as data_agent_models  # noqa: F401
+# Data Agent vector buckets — data_vectors_<dim>, the chunk_vectors pattern
+from app.models import data_vector  # noqa: F401
 
 # Import rag — show error if it fails
 try:
@@ -53,14 +62,35 @@ Base.metadata.create_all(bind=engine)
 
 # Startup self-healing: remove upload folders of spaces that no longer exist
 # (a delete may have failed earlier on a locked file — retried here).
+# Data-agent knowledge spaces go FIRST: while such a row survives its deleted
+# agent, the folder sweep below still considers its uploads legitimate.
 try:
     from app.database import SessionLocal as _SL
     from app.services.rag_service import cleanup_orphan_upload_folders as _cof
     _db = _SL()
+    try:
+        from app.services.data_agent.knowledge import cleanup_orphan_spaces as _cos
+        _cos(_db)
+    except Exception as _e:
+        print(f"[CLEANUP] data-agent space sweep skipped: {_e}")
     _removed = _cof(_db)
     _db.close()
 except Exception as _e:
     print(f"[CLEANUP] orphan sweep skipped: {_e}")
+
+# Security evaluation: seed the frozen attack corpus once + warm the PII engine
+try:
+    from app.database import SessionLocal as _SL2
+    from app.services.security.seed import seed_corpus as _seed_sec
+    _db2 = _SL2()
+    try:
+        _r = _seed_sec(_db2)
+        if _r.get("seeded"):
+            print(f"[SECURITY] seeded {_r['seeded']} attack cases")
+    finally:
+        _db2.close()
+except Exception as _e:
+    print(f"[SECURITY] corpus seed skipped: {_e}")
 
 app = FastAPI(
     title="AgentFlow API",
@@ -87,6 +117,8 @@ else:
     print("❌ RAG module NOT loaded — check the error above")
 
 app.include_router(data_agent_router, prefix="/api")
+from app.routes.data_agent import ask_router as data_agent_ask_router
+app.include_router(data_agent_ask_router, prefix="/api")
 
 # Chat sessions + history for deployed agents (Upstash Redis cache optional —
 # set UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN in .env to enable)

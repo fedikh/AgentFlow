@@ -7,15 +7,15 @@ class Settings(BaseSettings):
 
     # JWT
     SECRET_KEY: str
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int 
 
     # Email
     MAIL_USERNAME: str
     MAIL_PASSWORD: str
     MAIL_FROM: str
-    MAIL_SERVER: str = "smtp.gmail.com"
-    MAIL_PORT: int = 587
+    MAIL_SERVER: str 
+    MAIL_PORT: int
     # Public URL of the frontend — used to build activation / reset links in
     # emails. Read from .env (FRONTEND_URL). MUST be a real reachable URL in
     # production (e.g. https://app.com), otherwise invites get a dead link.
@@ -33,12 +33,12 @@ class Settings(BaseSettings):
 
     # ── Vision (image description for multi-vector RAG) ──
     # Provider used to describe extracted images. "openai" | "gemini" | "ollama".
-    VISION_PROVIDER: str = "openai"
+    VISION_PROVIDER: str 
     # Model for the chosen provider. Defaults resolve per-provider if left blank
     # (openai→gpt-4o-mini, gemini→gemini-2.5-flash, ollama→llava).
-    VISION_MODEL: str = "gpt-4o-mini"
+    VISION_MODEL: str 
     # API key for openai/gemini (not needed for ollama — that uses OLLAMA_BASE_URL).
-    VISION_API_KEY: str = ""
+    VISION_API_KEY: str 
 
     # ── LLM-based & agentic chunking (OpenAI) ──
     # OpenAI key used by the "LLM" chunking strategy and the "Agentic" chunking
