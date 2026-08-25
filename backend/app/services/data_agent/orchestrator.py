@@ -86,7 +86,7 @@ def ask(db: Session, user, source_id: str, question: str,
 
     source = _source_for(db, user, source_id)
     if source.status not in ("trained", "stale", "deployed"):
-        raise HTTPException(409, "Train this agent first (Schema & Training → Train)")
+        raise HTTPException(409, "Train this agent first (Knowledge → Train)")
 
     session = (_owned_session(db, session_id, user) if session_id else
                DataAgentSession(user_id=user.id, data_source_id=source_id,

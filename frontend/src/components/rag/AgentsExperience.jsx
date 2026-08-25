@@ -22,6 +22,7 @@ import {
   Search,
   Send,
   Trash2,
+  X,
 } from "lucide-react";
 import "../../styles/it/rag.css";
 import "../../styles/it/spacesgrid.css";
@@ -108,6 +109,7 @@ const AgentsExperience = ({
   const [docs, setDocs] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [docSearch, setDocSearch] = useState("");
+  const [showDocs, setShowDocs] = useState(false);   // panel hidden by default
   const [viewerDoc, setViewerDoc] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [sessionId, setSessionId] = useState(null);
@@ -434,6 +436,18 @@ const AgentsExperience = ({
               : selected.description || "AI assistant powered by your documents"}
           </div>
         </div>
+        {!editing && (
+          <button
+            className={`ac-docs-toggle ${showDocs ? "on" : ""}`}
+            onClick={() => setShowDocs((v) => !v)}
+            title={showDocs ? "Hide documents" : "Show documents"}
+          >
+            <FileText size={13} /> Documents
+            {docs.length > 0 && (
+              <span className="ac-docs-toggle-n">{docs.length}</span>
+            )}
+          </button>
+        )}
       </div>
 
       {editing ? (
@@ -597,11 +611,20 @@ const AgentsExperience = ({
             </div>
           </div>
 
-          {/* documents sidebar */}
+          {/* documents sidebar — hidden until the header toggle opens it */}
+          {showDocs && (
           <aside className="ac-side">
             <div className="ac-side-head">
-              <FileText size={15} /> Documents
+              Documents
               <span className="ac-side-count">{docs.length}</span>
+              <button
+                className="ac-side-close"
+                onClick={() => setShowDocs(false)}
+                title="Hide documents"
+                aria-label="Hide documents"
+              >
+                <X size={14} />
+              </button>
             </div>
             {docs.length > 0 && (
               <div className="ac-search">
@@ -644,6 +667,7 @@ const AgentsExperience = ({
               )}
             </div>
           </aside>
+          )}
         </div>
       )}
 

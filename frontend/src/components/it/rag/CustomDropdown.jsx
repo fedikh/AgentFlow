@@ -16,6 +16,7 @@ export default function CustomDropdown({
   onChange,
   placeholder,
   showLogo,
+  disabled,
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -58,12 +59,15 @@ export default function CustomDropdown({
     >
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
         style={{
           ...rowBase,
           borderRadius: 8,
           border: "1px solid #e2e8f0",
-          background: "#fff",
+          background: disabled ? "#f8fafc" : "#fff",
+          cursor: disabled ? "default" : "pointer",
+          opacity: disabled ? 0.7 : 1,
         }}
       >
         {selected ? (

@@ -65,7 +65,10 @@ const DeployedDataAgentsPage = ({
   /* chat view */
   if (selected) {
     return (
-      <div style={{ display: "grid", gap: 14 }}>
+      /* fills .layout-main's frame exactly (100vh minus its 32px paddings) —
+         the chat stretches and scrolls internally, no dead space below */
+      <div style={{ display: "flex", flexDirection: "column", gap: 14,
+                    height: "calc(100vh - 64px)", minHeight: 420 }}>
         <div style={{ ...card, display: "flex", alignItems: "center", gap: 12, padding: "12px 16px" }}>
           <button onClick={goBack}
                   style={{ ...btn(false), borderColor: ink.line, color: ink.primary }}>
@@ -89,7 +92,7 @@ const DeployedDataAgentsPage = ({
           </div>
         )}
         <DataChat source={selected} setError={setError} withHistory
-                  height="calc(100vh - 240px)"
+                  height="fill"
                   placeholder="Ask a question about this data…" />
       </div>
     );

@@ -417,7 +417,10 @@ export default function DataChat({
   };
 
   return (
-    <div className="dc-wrap" style={{ height }}>
+    <div className="dc-wrap"
+         style={height === "fill"
+           ? { flex: "1 1 auto", height: "auto", minHeight: 320 }
+           : { height }}>
       {withHistory && (
         <aside className="dc-hist">
           <button className="dc-hist-new" onClick={newChat} disabled={asking}>

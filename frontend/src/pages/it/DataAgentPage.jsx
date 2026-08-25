@@ -8,16 +8,16 @@ import {
 import {
   getEmbeddingModels, listDepartments, listDepartmentUsers,
 } from "../../services/ragApi";
+import CustomDropdown from "../../components/it/rag/CustomDropdown";
 import LLMSourceSelector from "../../components/it/rag/LLMSourceSelector";
 import EmbeddingSourceSelector from "../../components/it/rag/EmbeddingSourceSelector";
 import AccessSelector from "../../components/it/rag/AccessSelector";
-import SchemaSection from "../../components/it/dataagent/SchemaSection";
+import KnowledgePanel from "../../components/it/dataagent/KnowledgePanel";
 import DataChat from "../../components/it/dataagent/DataChat";
 import StatusBadge from "../../components/it/dataagent/StatusBadge";
 import SavedBar from "../../components/it/dataagent/SavedBar";
 import RetrievalPanel from "../../components/it/dataagent/RetrievalPanel";
 import DataFlowPanel from "../../components/it/dataagent/DataFlowPanel";
-import BusinessPanel from "../../components/it/dataagent/BusinessPanel";
 import { DIALECTS, dialectLabel } from "../../components/it/dataagent/ui";
 import "../../styles/it/rag.css";
 import "../../styles/it/spacesgrid.css";
@@ -39,10 +39,9 @@ function DataAgentSidebar({ panel, setPanel, source }) {
       ? `${dialectLabel(source.dialect)} · ${source.database || "—"}`
       : "Connect your database",
     models: (source.llm_model || "choose models").split("/").pop(),
-    schema: source.table_count
+    knowledge: source.table_count
       ? `${source.table_count} tables · ${source.mode} mode`
-      : "Introspect & train",
-    business: "Examples · glossary · documents",
+      : "Schema · training · business",
     retrieval: `hybrid · top-k `
       + `${source.retrieval?.n_ddl ?? 10}/${source.retrieval?.n_sql ?? 5}/`
       + `${source.retrieval?.n_business ?? 8}`,
@@ -50,8 +49,7 @@ function DataAgentSidebar({ panel, setPanel, source }) {
   const STEPS = [
     { key: "connection", label: "Connection" },
     { key: "models", label: "Models" },
-    { key: "schema", label: "Schema & Training" },
-    { key: "business", label: "Business knowledge" },
+    { key: "knowledge", label: "Knowledge" },
     { key: "retrieval", label: "Retrieval" },
   ];
   return (
@@ -145,10 +143,16 @@ function ConnectionPanel({ source, onChanged, setError, editable }) {
       </div>
 
       <label className="rag-cfg-label">Dialect</label>
-      <select className="rag-cfg-select" value={form.dialect}
-              onChange={(e) => setF("dialect", e.target.value)} disabled={!editable}>
-        {DIALECTS.map((d) => <option key={d.name} value={d.name}>{d.label}</option>)}
-      </select>
+      <CustomDropdown
+        showLogo
+        disabled={!editable}
+        value={form.dialect}
+        onChange={(v) => setF("dialect", v)}
+        options={DIALECTS.map((d) => ({
+          value: d.name, label: d.label, family: d.name,
+          sub: `Default port ${d.port}`,
+        }))}
+      />
 
       <label className="rag-cfg-label">Host : Port</label>
       <div style={{ display: "flex", gap: 8 }}>
@@ -680,7 +684,7 @@ const DataAgentPage = () => {
           {selected.status === "stale" && (
             <div className="rag-cfg-warn" style={{ margin: "0 0 12px" }}>
               ⚠️ <strong>Re-train needed.</strong> The schema or its curation changed —
-              train again (Schema &amp; Training) so the agent uses the new state.
+              train again (Knowledge → Train) so the agent uses the new state.
             </div>
           )}
 
@@ -711,47 +715,37 @@ const DataAgentPage = () => {
                            setError={setError} editable />
             </>
           )}
-          {panel === "business" && (
-            <BusinessPanel key={selected.id} source={selected}
-                           onChanged={refresh} setError={setError} />
+          {panel === "knowledge" && (
+            <KnowledgePanel key={selected.id} source={selected}
+                            onChanged={refresh} setError={setError} />
           )}
           {panel === "retrieval" && (
             <RetrievalPanel key={selected.id} source={selected}
                             onChanged={refresh} setError={setError} />
           )}
           {panel === "flow" && <DataFlowPanel source={selected} />}
-          {panel === "schema" && (
-            <div className="rag-cfg-panel">
-              <div className="rag-cfg-head">
-                <div>
-                  <div className="rag-cfg-title">Schema &amp; Training</div>
-                  <div className="rag-cfg-sub">
-                    Introspect → curate tables → train the vector store the agent retrieves from.
-                  </div>
-                </div>
-              </div>
-              <SchemaSection source={selected} onChanged={refresh} setError={setError} />
-            </div>
-          )}
           {panel === "access" && (
             <AccessPanel key={selected.id} source={selected} onChanged={refresh}
                          setError={setError} />
           )}
           {panel === "test" && (
-            <div className="rag-cfg-panel">
+            /* flex column overriding the panel's flex-basis:auto — the chat
+               takes every remaining pixel and owns its own scrolling */
+            <div className="rag-cfg-panel"
+                 style={{ flex: "1 1 auto", minHeight: 0,
+                          display: "flex", flexDirection: "column" }}>
               <div className="rag-cfg-head">
                 <div>
                   <div className="rag-cfg-title">Test console</div>
                   <div className="rag-cfg-sub">
                     {testable
                       ? "Ask real questions before deploying — the SQL is always shown."
-                      : "Train the agent (Schema & Training) to unlock testing."}
+                      : "Train the agent (Knowledge) to unlock testing."}
                   </div>
                 </div>
               </div>
               {testable && (
-                <DataChat source={selected} setError={setError}
-                          height="calc(100vh - 305px)"
+                <DataChat source={selected} setError={setError} height="fill"
                           placeholder="e.g. How many orders were placed last month?" />
               )}
             </div>
