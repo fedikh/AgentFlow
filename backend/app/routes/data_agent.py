@@ -105,6 +105,20 @@ class ExampleRequest(BaseModel):
     is_verified: Optional[bool] = False
 
 
+class SaveVersionRequest(BaseModel):
+    label: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class EvalCaseRequest(BaseModel):
+    question: Optional[str] = None
+    gold_sql: Optional[str] = None
+    expected_answer: Optional[str] = None
+    category: Optional[str] = None
+    difficulty: Optional[str] = None
+    language: Optional[str] = None
+
+
 class AskRequest(BaseModel):
     question: str
     data_source_id: str
@@ -215,6 +229,193 @@ def deploy(source_id: str, request: Request, db: Session = Depends(get_db)):
 def pause(source_id: str, request: Request, db: Session = Depends(get_db)):
     user = _get_current_user(request, db)
     return sources.pause_source(db, source_id, user)
+
+
+# ══════════════════════════════════════════════════════════════
+#  Auto evaluation — gold-SQL datasets + execution-accuracy runs
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/{source_id}/eval/cases")
+def eval_list_cases(source_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return {"cases": evaluation.list_cases(db, source_id)}
+
+
+@router.post("/{source_id}/eval/cases", status_code=201)
+def eval_add_case(source_id: str, data: EvalCaseRequest, request: Request,
+                  db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.add_case(db, source_id, data.model_dump(exclude_none=True))
+
+
+@router.patch("/{source_id}/eval/cases/{case_id}")
+def eval_update_case(source_id: str, case_id: str, data: EvalCaseRequest,
+                     request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.update_case(db, source_id, case_id,
+                                  data.model_dump(exclude_none=True))
+
+
+@router.delete("/{source_id}/eval/cases/{case_id}")
+def eval_delete_case(source_id: str, case_id: str, request: Request,
+                     db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.delete_case(db, source_id, case_id)
+
+
+@router.delete("/{source_id}/eval/cases")
+def eval_clear_cases(source_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.clear_cases(db, source_id)
+
+
+@router.post("/{source_id}/eval/cases/import-examples")
+def eval_import_examples(source_id: str, request: Request,
+                         db: Session = Depends(get_db)):
+    """Copy the agent's VERIFIED question→SQL pairs as eval cases."""
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.import_from_examples(db, source_id)
+
+
+@router.post("/{source_id}/eval/cases/{case_id}/verify")
+def eval_verify_case(source_id: str, case_id: str, request: Request,
+                     db: Session = Depends(get_db)):
+    """Dry-run the gold SQL through the full validator chain."""
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.verify_case(db, source_id, case_id)
+
+
+@router.post("/{source_id}/eval/dataset-file")
+async def eval_dataset_file(source_id: str, request: Request,
+                            db: Session = Depends(get_db)):
+    """CSV/XLSX/JSON → eval cases (question + gold SQL headers, EN/FR)."""
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    form = await request.form()
+    up = form.get("file")
+    if up is None:
+        raise HTTPException(400, "No file")
+    from app.services.data_agent import evaluation
+    parsed = evaluation.parse_dataset_file(up.filename, await up.read())
+    if not parsed:
+        raise HTTPException(400, "No test cases found in the file")
+    return evaluation.upload_dataset(db, source_id, parsed)
+
+
+@router.get("/{source_id}/eval/dataset-template")
+def eval_dataset_template(source_id: str, request: Request,
+                          db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    source = sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.dataset_template(db, source)
+
+
+@router.post("/{source_id}/eval/generate-cases")
+def eval_generate_cases(source_id: str, request: Request, n: int = 8,
+                        db: Session = Depends(get_db)):
+    """LLM-proposed cases from the schema catalog — arrive UNVERIFIED."""
+    user = _get_current_user(request, db)
+    source = sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.generate_cases(db, source, n=n)
+
+
+@router.post("/{source_id}/eval/run-async")
+def eval_run_async(source_id: str, request: Request, db: Session = Depends(get_db)):
+    """Start an experiment; poll GET /data-sources/jobs/{job_id}."""
+    user = _get_current_user(request, db)
+    source = sources.require_manager(db, source_id, user.organization_id, user)
+    if source.status not in ("trained", "stale", "deployed"):
+        raise HTTPException(409, "Train the agent before evaluating it")
+    from app.services.data_agent import evaluation
+    return evaluation.start_run(source_id)
+
+
+@router.get("/{source_id}/eval/runs")
+def eval_list_runs(source_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return {"runs": evaluation.list_runs(db, source_id)}
+
+
+@router.get("/{source_id}/eval/runs/{run_id}")
+def eval_get_run(source_id: str, run_id: str, request: Request,
+                 db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.get_run(db, source_id, run_id)
+
+
+@router.delete("/{source_id}/eval/runs/{run_id}")
+def eval_delete_run(source_id: str, run_id: str, request: Request,
+                    db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    sources.require_manager(db, source_id, user.organization_id, user)
+    from app.services.data_agent import evaluation
+    return evaluation.delete_run(db, source_id, run_id)
+
+
+# ══════════════════════════════════════════════════════════════
+#  Versions — save / apply / deploy config snapshots (RAG lifecycle)
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/{source_id}/versions")
+def list_versions(source_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    from app.services.data_agent import versions
+    return versions.list_versions(db, source_id, user)
+
+
+@router.post("/{source_id}/versions", status_code=201)
+def save_version(source_id: str, data: SaveVersionRequest, request: Request,
+                 db: Session = Depends(get_db)):
+    """Snapshot the current working config as a new saved version (v1, v2…)."""
+    user = _get_current_user(request, db)
+    from app.services.data_agent import versions
+    return versions.save_version(db, source_id, user, data.label, data.notes)
+
+
+@router.post("/{source_id}/versions/{version_id}/apply")
+def apply_version(source_id: str, version_id: str, request: Request,
+                  db: Session = Depends(get_db)):
+    """Load a saved version's config into the working agent (no deploy)."""
+    user = _get_current_user(request, db)
+    from app.services.data_agent import versions
+    return versions.apply_version(db, source_id, user, version_id)
+
+
+@router.post("/{source_id}/versions/{version_id}/deploy")
+def deploy_version(source_id: str, version_id: str, request: Request,
+                   db: Session = Depends(get_db)):
+    """Deploy a saved version → applies its config + the agent goes live."""
+    user = _get_current_user(request, db)
+    from app.services.data_agent import versions
+    return versions.deploy_version(db, source_id, user, version_id)
+
+
+@router.delete("/{source_id}/versions/{version_id}")
+def delete_version(source_id: str, version_id: str, request: Request,
+                   db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    from app.services.data_agent import versions
+    return versions.delete_version(db, source_id, user, version_id)
 
 
 # ══════════════════════════════════════════════════════════════

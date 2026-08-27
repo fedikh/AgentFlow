@@ -140,7 +140,7 @@ def search_kind(db, model, source, kind: str, question: str,
     else:
         fused = fuse(branches, rrf_k=cfg.rrf_k)
 
-    if cfg.rerank and len(fused) > 1:
+    if len(fused) > 1:
         fused = _rerank(db, cfg, question, fused)
     return fused[:top_n]
 

@@ -104,6 +104,35 @@ class DataSource(Base):
 
     tables = relationship("DataSourceTable", cascade="all, delete-orphan",
                           back_populates="source")
+    versions = relationship("DataSourceVersion", cascade="all, delete-orphan")
+
+
+class DataSourceVersion(Base):
+    """Config snapshot of a data agent (mirror of rag_space_versions).
+
+    A version stores the PIPELINE config only — generation, models, retrieval,
+    execution safety — never the connection identity (host, credentials) and
+    never the trained index. The deployed version is the row whose status is
+    DEPLOYED (exactly one per source; deploying archives the previous one), so
+    no pointer column is needed on data_sources."""
+    __tablename__ = "data_source_versions"
+
+    id             = Column(String, primary_key=True, default=_uid)
+    data_source_id = Column(String, ForeignKey("data_sources.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    version_number = Column(Integer, nullable=False, default=1)
+    label          = Column(String, nullable=False, default="v1")
+    status         = Column(String, nullable=False, default="SAVED")  # SAVED|DEPLOYED|ARCHIVED
+    notes          = Column(Text, nullable=True)
+    config         = Column(Text, nullable=True)       # JSON snapshot
+    created_by     = Column(String, ForeignKey("users.id", ondelete="SET NULL"),
+                            nullable=True)
+    created_at     = Column(DateTime, default=_now)
+
+    __table_args__ = (
+        Index("ix_data_source_versions_source_number",
+              "data_source_id", "version_number", unique=True),
+    )
 
 
 class DataSourceTable(Base):

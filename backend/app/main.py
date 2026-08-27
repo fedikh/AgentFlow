@@ -47,6 +47,8 @@ from app.models.api_key import AgentApiKey, AgentApiLog  # noqa: F401
 from app.models import data_agent as data_agent_models  # noqa: F401
 # Data Agent vector buckets — data_vectors_<dim>, the chunk_vectors pattern
 from app.models import data_vector  # noqa: F401
+# Data Agent evaluation — gold-SQL test cases + experiment runs
+from app.models import data_eval  # noqa: F401
 
 # Import rag — show error if it fails
 try:

@@ -70,8 +70,8 @@ class RetrievalConfig(BaseModel):
     keyword_k: int = Field(default=20, ge=1, le=100)
 
     # ── cross-encoder re-ranking (same models/keys as a RAG space) ──
-    rerank: bool = False              # RAG has it always on; here it costs one
-                                      # pass per index, so it stays a choice
+    # Always on, like the RAG spaces — a stored legacy `rerank` key is simply
+    # ignored by the model_fields filter in retrieval_config().
     reranker_provider: Literal["bge", "voyage"] = "bge"
     reranker_model: str = ""          # "" = provider default
     reranker_key_source: Literal["company", "own"] = "company"

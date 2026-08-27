@@ -1,9 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, Database, Loader2, Plug, Table2, X } from "lucide-react";
 import {
-  createDataSource, deleteDataSource, deploySource, listDataSources,
-  pauseSource, setSourceAuthorization, testDataSource, updateDataSource,
+  Check, ChevronDown, ChevronRight, Database, Loader2, Plug, RefreshCw,
+  Table2, X,
+} from "lucide-react";
+import {
+  createDataSource, dataJobStatus, deleteDataSource, deploySource,
+  getSourceSchema, introspectSource, listDataSources, pauseSource,
+  setSourceAuthorization, testDataSource, updateDataSource,
 } from "../../services/dataAgentApi";
 import {
   getEmbeddingModels, listDepartments, listDepartmentUsers,
@@ -13,7 +17,8 @@ import LLMSourceSelector from "../../components/it/rag/LLMSourceSelector";
 import EmbeddingSourceSelector from "../../components/it/rag/EmbeddingSourceSelector";
 import AccessSelector from "../../components/it/rag/AccessSelector";
 import KnowledgePanel from "../../components/it/dataagent/KnowledgePanel";
-import DataChat from "../../components/it/dataagent/DataChat";
+import VersionsPanel from "../../components/it/dataagent/VersionsPanel";
+import TestingPanel from "../../components/it/dataagent/TestingPanel";
 import StatusBadge from "../../components/it/dataagent/StatusBadge";
 import SavedBar from "../../components/it/dataagent/SavedBar";
 import RetrievalPanel from "../../components/it/dataagent/RetrievalPanel";
@@ -80,10 +85,182 @@ function DataAgentSidebar({ panel, setPanel, source }) {
                 onClick={() => setPanel("test")}>
           <span className="rag-step-badge">✓</span>
           <span className="rag-step-txt">
-            <span className="rag-step-name">Test console</span>
-            <span className="rag-step-hint">Evaluate before deploying</span>
+            <span className="rag-step-name">Testing</span>
+            <span className="rag-step-hint">Manual · auto · security</span>
           </span>
         </button>
+        <button className={`rag-step ${panel === "versions" ? "active" : ""}`}
+                onClick={() => setPanel("versions")}>
+          <span className="rag-step-badge">⧉</span>
+          <span className="rag-step-txt">
+            <span className="rag-step-name">Versions</span>
+            <span className="rag-step-hint">Save &amp; deploy configs</span>
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── read-only schema preview (Connection page) ──
+   Shows what introspection captured from the connected database; when the
+   catalog is still empty it offers to run introspection right here (same
+   background job + polling as Knowledge). Curation — enable toggles and
+   descriptions — deliberately stays in Knowledge: this is a viewer. */
+function SchemaModal({ source, onClose, onChanged, setError }) {
+  const [schema, setSchema] = useState(null);        // null = loading
+  const [openTables, setOpenTables] = useState({});
+  const [filter, setFilter] = useState("");
+  const [job, setJob] = useState(null);
+  const pollRef = useRef(null);
+
+  const load = () =>
+    getSourceSchema(source.id).then(setSchema).catch(() => setSchema([]));
+  useEffect(() => {
+    load();
+    return () => clearInterval(pollRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source.id]);
+
+  const introspect = async () => {
+    try {
+      const { job_id: jobId } = await introspectSource(source.id);
+      setJob({ status: "running", step: "Starting…" });
+      pollRef.current = setInterval(async () => {
+        try {
+          const st = await dataJobStatus(jobId);
+          setJob(st);
+          if (st.status !== "running") {
+            clearInterval(pollRef.current);
+            onChanged();
+            load();
+          }
+        } catch {
+          clearInterval(pollRef.current);
+        }
+      }, 1200);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const running = job?.status === "running";
+  const rows = (schema || []).filter((t) =>
+    !filter.trim() ||
+    `${t.schema}.${t.table}`.toLowerCase().includes(filter.trim().toLowerCase()));
+
+  return (
+    <div className="rag-create-overlay" onClick={onClose}>
+      <div className="rag-create-modal" style={{ maxWidth: 720 }}
+           onClick={(e) => e.stopPropagation()}>
+        <div className="rag-create-modal-head">
+          <span className="rag-create-title" style={{ display: "inline-flex",
+                                                      alignItems: "center", gap: 8 }}>
+            <Database size={16} /> Schema — {source.database || source.name}
+          </span>
+          <button className="rag-create-x" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        <div style={{ padding: "16px 22px", overflowY: "auto", minHeight: 160 }}>
+          {schema === null && <div className="rag-cfg-hint">Loading…</div>}
+
+          {running && (
+            <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+              <div style={{ font: "600 12.5px system-ui", color: "#0F172A" }}>
+                Introspecting… {job.step ? `· ${job.step}` : ""}
+                {job.total ? ` · ${job.done}/${job.total}` : ""}
+              </div>
+              <div style={{ height: 6, background: "#EEF2F5", borderRadius: 4 }}>
+                <div style={{
+                  width: job.total ? `${Math.round((job.done / job.total) * 100)}%` : "30%",
+                  height: "100%", background: "#2563EB", borderRadius: 4,
+                  transition: "width .4s",
+                }} />
+              </div>
+            </div>
+          )}
+          {job && !running && job.status === "error" && (
+            <div className="rag-cfg-warn" style={{ marginBottom: 12 }}>
+              Introspection failed: {job.error}
+            </div>
+          )}
+
+          {schema?.length === 0 && !running && (
+            <div style={{ textAlign: "center", padding: "22px 0",
+                          display: "grid", gap: 10, justifyItems: "center" }}>
+              <div className="rag-cfg-hint" style={{ margin: 0 }}>
+                No schema captured yet — introspection reads the tables and
+                columns from the connected database.
+              </div>
+              <button className="rag-btn rag-btn-blue" onClick={introspect}>
+                <RefreshCw size={13} /> Introspect now
+              </button>
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div style={{ display: "grid", gap: 8 }}>
+              {schema.length > 6 && (
+                <input className="rag-cfg-select" style={{ maxWidth: 260 }}
+                       value={filter} onChange={(e) => setFilter(e.target.value)}
+                       placeholder="Filter tables…" />
+              )}
+              {rows.map((t) => (
+                <div key={t.id} style={{ border: "1px solid #E5E9F0",
+                                         borderRadius: 10, padding: "9px 12px",
+                                         opacity: t.is_enabled ? 1 : 0.55 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                    <button onClick={() => setOpenTables((o) => ({ ...o, [t.id]: !o[t.id] }))}
+                            style={{ border: "none", background: "none", cursor: "pointer",
+                                     color: "#64748B", display: "inline-flex" }}>
+                      {openTables[t.id] ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                    </button>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: "#0F172A" }}>
+                      {t.schema}.{t.table}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#94A3B8" }}>
+                      {t.columns.length} cols
+                      {t.row_estimate != null ? ` · ~${t.row_estimate} rows` : ""}
+                    </span>
+                    {!t.is_enabled && (
+                      <span style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 800,
+                                     padding: "2px 7px", borderRadius: 20,
+                                     background: "#F1F5F9", color: "#64748B" }}>
+                        DISABLED
+                      </span>
+                    )}
+                  </div>
+                  {openTables[t.id] && (
+                    <div style={{ marginTop: 9, display: "grid", gap: 4 }}>
+                      {t.columns.map((c) => (
+                        <div key={c.name}
+                             style={{ display: "flex", gap: 8, fontSize: 12,
+                                      fontFamily: "ui-monospace, Consolas, monospace" }}>
+                          <span style={{ color: "#0F172A", fontWeight: 600,
+                                         minWidth: 180 }}>{c.name}</span>
+                          <span style={{ color: "#64748B" }}>{c.data_type}</span>
+                          {c.pk && <span style={{ color: "#1D4ED8", fontWeight: 700 }}>PK</span>}
+                          {c.fk_ref && <span style={{ color: "#94A3B8" }}>→ {c.fk_ref}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {schema?.length > 0 && rows.length === 0 && (
+            <div className="rag-cfg-hint">No table matches “{filter}”.</div>
+          )}
+        </div>
+
+        {schema?.length > 0 && (
+          <div style={{ padding: "10px 22px", borderTop: "1px solid #EEF2F7",
+                        fontSize: 11.5, color: "#94A3B8" }}>
+            Read-only preview — enable/disable tables and add descriptions in
+            Knowledge → Schema.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -96,6 +273,7 @@ function ConnectionPanel({ source, onChanged, setError, editable }) {
     database: source.database, username: source.username, password: "",
   });
   const [testState, setTestState] = useState(null);
+  const [schemaOpen, setSchemaOpen] = useState(false);
   const setF = (k, v) => {
     setForm((f) => {
       const next = { ...f, [k]: v };
@@ -184,13 +362,24 @@ function ConnectionPanel({ source, onChanged, setError, editable }) {
                         : <><X size={13} /> {testState.error || "Connection failed"}</>}
         </div>
       )}
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
         <button className="rag-btn rag-btn-blue" onClick={handleTest}
                 disabled={!editable || testState === "testing" || !form.host || !form.database || !form.username}>
           {testState === "testing" ? <Loader2 size={13} className="spin" /> : <Plug size={13} />}
           {" "}Test connection
         </button>
+        {(testState?.ok ||
+          ["connected", "trained", "stale", "deployed"].includes(source.status)) && (
+          <button className="rag-btn" onClick={() => setSchemaOpen(true)}>
+            <Table2 size={13} /> View schema
+          </button>
+        )}
       </div>
+
+      {schemaOpen && (
+        <SchemaModal source={source} onClose={() => setSchemaOpen(false)}
+                     onChanged={onChanged} setError={setError} />
+      )}
     </div>
   );
 }
@@ -724,31 +913,17 @@ const DataAgentPage = () => {
                             onChanged={refresh} setError={setError} />
           )}
           {panel === "flow" && <DataFlowPanel source={selected} />}
+          {panel === "versions" && (
+            <VersionsPanel key={selected.id} source={selected}
+                           onChanged={refresh} setError={setError} />
+          )}
           {panel === "access" && (
             <AccessPanel key={selected.id} source={selected} onChanged={refresh}
                          setError={setError} />
           )}
           {panel === "test" && (
-            /* flex column overriding the panel's flex-basis:auto — the chat
-               takes every remaining pixel and owns its own scrolling */
-            <div className="rag-cfg-panel"
-                 style={{ flex: "1 1 auto", minHeight: 0,
-                          display: "flex", flexDirection: "column" }}>
-              <div className="rag-cfg-head">
-                <div>
-                  <div className="rag-cfg-title">Test console</div>
-                  <div className="rag-cfg-sub">
-                    {testable
-                      ? "Ask real questions before deploying — the SQL is always shown."
-                      : "Train the agent (Knowledge) to unlock testing."}
-                  </div>
-                </div>
-              </div>
-              {testable && (
-                <DataChat source={selected} setError={setError} height="fill"
-                          placeholder="e.g. How many orders were placed last month?" />
-              )}
-            </div>
+            <TestingPanel key={selected.id} source={selected}
+                          setError={setError} testable={testable} />
           )}
         </div>
 

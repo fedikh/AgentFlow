@@ -78,15 +78,14 @@ function buildAgentSections(source, providers, eff) {
       accent: "#10b981",
       tag: "Search",
       title: "Retrieval",
-      how: "Each question searches the three indexes in hybrid mode — vector (business meaning) and keyword (exact table / column names) merged by Reciprocal Rank Fusion — optionally re-ranked by a cross-encoder.",
+      how: "Each question searches the three indexes in hybrid mode — vector (business meaning) and keyword (exact table / column names) merged by Reciprocal Rank Fusion — then re-ranked by a cross-encoder.",
       summary: `Hybrid · top-k ${topK}`,
       rows: [
         ["Search mode", "Hybrid (locked)"],
         ["Query enhancement", rp.transform_enabled === false ? "Off" : "On"],
         ["Top-K (DDL / SQL / Business)", topK],
-        ["Re-rank", rp.rerank
-          ? `${rp.reranker_provider === "voyage" ? "rerank-2.5" : "BGE v2-m3"} · top ${rp.rerank_top_n ?? 10}`
-          : "Off"],
+        ["Re-rank",
+          `${rp.reranker_provider === "voyage" ? "rerank-2.5" : "BGE v2-m3"} · top ${rp.rerank_top_n ?? 10}`],
         ["RRF k", rp.rrf_k ?? 60],
       ],
     },

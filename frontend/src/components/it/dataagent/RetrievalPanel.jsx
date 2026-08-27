@@ -39,6 +39,7 @@ export default function RetrievalPanel({ source, onChanged, setError }) {
     setSaving(true);
     try {
       const payload = { ...rp };
+      delete payload.rerank;              // legacy flag — re-ranking is always on
       if (ownKey.trim()) payload.reranker_api_key = ownKey.trim();
       await updateDataSource(source.id, { retrieval_params: payload });
       setOwnKey("");
@@ -60,20 +61,6 @@ export default function RetrievalPanel({ source, onChanged, setError }) {
     </div>
   );
 
-  const rerankToggle = (
-    <div style={{ marginBottom: 10 }}>
-      <label className="rpl-check">
-        <input type="checkbox" checked={!!rp.rerank}
-               onChange={(e) => set("rerank", e.target.checked)} />
-        <span>Re-rank the fused results</span>
-      </label>
-      <div className="rp2-hint" style={{ marginTop: 4 }}>
-        Runs once per index (three passes per question), so it stays a choice
-        here. Off by default.
-      </div>
-    </div>
-  );
-
   return (
     <>
       <SavedBar title="Retrieval" accent="#10b981" chips={{
@@ -81,9 +68,8 @@ export default function RetrievalPanel({ source, onChanged, setError }) {
         "Top-k (DDL / SQL / Business)":
           `${rp.n_ddl} / ${rp.n_sql} / ${rp.n_business}`,
         "Query enhancement": rp.transform_enabled ? "on" : "off",
-        Rerank: rp.rerank
-          ? `${rp.reranker_provider === "voyage" ? "rerank-2.5" : "BGE v2-m3"} · top ${rp.rerank_top_n}`
-          : "off",
+        Rerank:
+          `${rp.reranker_provider === "voyage" ? "rerank-2.5" : "BGE v2-m3"} · top ${rp.rerank_top_n ?? 10}`,
         "RRF k": rp.rrf_k,
         Scope: source.mode === "base"
           ? "base — everything retrieved" : "rag — subset retrieved",
@@ -105,22 +91,31 @@ export default function RetrievalPanel({ source, onChanged, setError }) {
           </div>
         </div>
 
-        {/* the RAG retrieval panel, verbatim */}
-        <RetrievalPipeline cfg={cfg} setC={setC} hybridOnly
-                           rerankToggle={rerankToggle} />
+        {/* the RAG retrieval panel, verbatim — re-ranking always on, like RAG */}
+        <RetrievalPipeline cfg={cfg} setC={setC} hybridOnly />
 
         {/* the agent-specific Top-K: one number per index */}
         <div className="rp2-block" style={{ marginTop: 14 }}>
           <div className="rp2-block-t">Results kept per index</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-            {num("DDLs", "n_ddl", 1, 100, "Table definitions")}
-            {num("Prompt→SQL pairs", "n_sql", 0, 50, "Verified examples")}
-            {num("Business", "n_business", 0, 50, "Glossary, values, documents")}
+            {num("DDLs", "n_ddl", 1, 100,
+                 "≈ tables a question touches, JOINs included — 8–15 fits most schemas")}
+            {num("Prompt→SQL pairs", "n_sql", 0, 50,
+                 "Few-shot examples — 3–8; more dilutes the signal")}
+            {num("Business", "n_business", 0, 50,
+                 "Glossary, sample values, documents — 5–10")}
           </div>
           <div className="rp2-hint">
             Each index is searched separately, so 30 DDL blocks can never crowd
             3 glossary entries out of the prompt. Business also covers the
             knowledge documents retrieved by the RAG engine.
+            <br />
+            <strong>How to choose:</strong> higher = more context in the prompt
+            (better recall, but slower, costlier and noisier) · lower = risk of
+            missing the one table or term the query needed. Raise DDLs when
+            answers reference wide JOIN paths; raise Business when questions use
+            company vocabulary. In <em>base</em> mode these caps are bypassed —
+            they take effect in <em>rag</em> mode (&gt;40 tables or forced).
           </div>
         </div>
 

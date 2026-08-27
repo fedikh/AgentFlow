@@ -335,9 +335,8 @@ const AdminDataAgentPage = () => {
           <Row k="Context per index" v={`DDL ${rp.n_ddl ?? 10} · SQL ${rp.n_sql ?? 5} · business ${rp.n_business ?? 8}`} />
           <Row k="Query enhancement" v={rp.transform_enabled ? "On" : "Off"} />
           <Row k="Re-ranker" v={
-            rp.rerank
-              ? (rp.reranker_provider === "voyage" ? (rp.reranker_model || "rerank-2.5") : "BGE v2-m3 (local)")
-              : "Off"} />
+            rp.reranker_provider === "voyage"
+              ? (rp.reranker_model || "rerank-2.5") : "BGE v2-m3 (local)"} />
 
           <SubTitle>Guardrails</SubTitle>
           <Row k="Write protection" v="Read-only session + SELECT-only validation" />

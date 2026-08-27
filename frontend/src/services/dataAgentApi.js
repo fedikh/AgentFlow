@@ -27,6 +27,17 @@ export const setSourceAuthorization = (id, userIds) =>
 export const deploySource = (id) => req("POST", `/data-sources/${id}/deploy`);
 export const pauseSource = (id) => req("POST", `/data-sources/${id}/pause`);
 
+/* ── Versions: save / apply / deploy config snapshots ── */
+export const listVersions = (id) => req("GET", `/data-sources/${id}/versions`);
+export const saveVersion = (id, label, notes) =>
+  req("POST", `/data-sources/${id}/versions`, { label, notes });
+export const applyVersion = (id, versionId) =>
+  req("POST", `/data-sources/${id}/versions/${versionId}/apply`);
+export const deployVersion = (id, versionId) =>
+  req("POST", `/data-sources/${id}/versions/${versionId}/deploy`);
+export const deleteVersion = (id, versionId) =>
+  req("DELETE", `/data-sources/${id}/versions/${versionId}`);
+
 /* ── Schema & training ── */
 export const introspectSource = (id) => req("POST", `/data-sources/${id}/introspect`);
 export const trainSource = (id) => req("POST", `/data-sources/${id}/index`);
@@ -72,6 +83,31 @@ export const csvTemplateUrl = (kind) => `${BASE}/data-sources/csv-template/${kin
    the panel drives it with the RAG endpoints (ragApi) — no duplicate API. */
 export const ensureKnowledgeSpace = (sourceId) =>
   req("POST", `/data-sources/${sourceId}/knowledge-space`);
+
+/* ── Auto evaluation: gold-SQL datasets + execution-accuracy runs ── */
+export const daEvalListCases = (id) => req("GET", `/data-sources/${id}/eval/cases`);
+export const daEvalAddCase = (id, d) => req("POST", `/data-sources/${id}/eval/cases`, d);
+export const daEvalUpdateCase = (id, caseId, d) =>
+  req("PATCH", `/data-sources/${id}/eval/cases/${caseId}`, d);
+export const daEvalDeleteCase = (id, caseId) =>
+  req("DELETE", `/data-sources/${id}/eval/cases/${caseId}`);
+export const daEvalClearCases = (id) => req("DELETE", `/data-sources/${id}/eval/cases`);
+export const daEvalImportExamples = (id) =>
+  req("POST", `/data-sources/${id}/eval/cases/import-examples`);
+export const daEvalVerifyCase = (id, caseId) =>
+  req("POST", `/data-sources/${id}/eval/cases/${caseId}/verify`);
+export const daEvalUploadFile = (id, file) =>
+  upload(`/data-sources/${id}/eval/dataset-file`, file);
+export const daEvalTemplate = (id) =>
+  req("GET", `/data-sources/${id}/eval/dataset-template`);
+export const daEvalGenerate = (id, n = 8) =>
+  req("POST", `/data-sources/${id}/eval/generate-cases?n=${n}`);
+export const daEvalRunAsync = (id) => req("POST", `/data-sources/${id}/eval/run-async`);
+export const daEvalRuns = (id) => req("GET", `/data-sources/${id}/eval/runs`);
+export const daEvalRunDetail = (id, runId) =>
+  req("GET", `/data-sources/${id}/eval/runs/${runId}`);
+export const daEvalRunDelete = (id, runId) =>
+  req("DELETE", `/data-sources/${id}/eval/runs/${runId}`);
 
 /* ── Ask (LangGraph + Vanna) ── */
 export const askData = (dataSourceId, question, sessionId = null) =>

@@ -15,7 +15,7 @@ import SavedKeyInput from "./SavedKeyInput";
  * RRF → Cross-Encoder Re-ranking → Context Construction → LLM.
  */
 
-export const RP_DEFAULTS = {
+const RP_DEFAULTS = {
   search_mode: "hybrid",
   transform_enabled: true,
   reranker_provider: "bge", reranker_model: "",
@@ -52,13 +52,9 @@ const Radio = ({ options, value, onChange }) => (
   </div>
 );
 
-/* hybridOnly   — search mode is fixed to hybrid (Data Agent: schema knowledge
- *                needs both branches, so there is nothing to choose).
- * rerankToggle — optional node rendered inside the re-ranker block by callers
- *                where re-ranking is opt-in instead of always-on.
- */
-export default function RetrievalPipeline({ cfg, setC, hybridOnly = false,
-                                            rerankToggle = null }) {
+/* hybridOnly — search mode is fixed to hybrid (Data Agent: schema knowledge
+ *              needs both branches, so there is nothing to choose). */
+export default function RetrievalPipeline({ cfg, setC, hybridOnly = false }) {
   const rp = { ...RP_DEFAULTS, ...(cfg.retrieval_params || {}) };
   const setMany = (obj) =>
     setC("retrieval_params", { ...(cfg.retrieval_params || {}), ...obj });
@@ -140,7 +136,6 @@ export default function RetrievalPipeline({ cfg, setC, hybridOnly = false,
       {/* ── Re-ranker model ── */}
       <div className="rp2-block">
         <div className="rp2-block-t">Re-ranker model</div>
-        {rerankToggle}
         <Radio
           value={rerankKey}
           onChange={(v) => setMany(RERANK_MODELS[v].params)}
@@ -186,7 +181,7 @@ export default function RetrievalPipeline({ cfg, setC, hybridOnly = false,
           </>
         )}
         <div className="rp2-hint">
-          {rerankToggle ? "When enabled, a" : "Always on: a"} cross-encoder
+          Always on: a cross-encoder
           re-reads the top candidates together with
           the question and re-orders them — the biggest quality win in the
           pipeline. <strong>BGE v2-m3</strong> runs locally and free;
