@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine, test_connection
 from app.routes import auth, users
 from app.routes.rag import router as rag_router
-from app.routes.data_agent import router as data_agent_router
 from app.routes import models as models_routes
 from app.routes import api_provider
 
@@ -43,13 +42,6 @@ from app.models.chat import ChatSession, ChatMessage  # noqa: F401
 # Agent API keys — machine access to deployed agents from other apps
 from app.models.api_key import AgentApiKey, AgentApiLog  # noqa: F401
 
-# Data Agent (NL → SQL) — sources, schema, sessions (tables via create_all)
-from app.models import data_agent as data_agent_models  # noqa: F401
-# Data Agent vector buckets — data_vectors_<dim>, the chunk_vectors pattern
-from app.models import data_vector  # noqa: F401
-# Data Agent evaluation — gold-SQL test cases + experiment runs
-from app.models import data_eval  # noqa: F401
-
 # Import rag — show error if it fails
 try:
     from app.routes import rag
@@ -64,17 +56,10 @@ Base.metadata.create_all(bind=engine)
 
 # Startup self-healing: remove upload folders of spaces that no longer exist
 # (a delete may have failed earlier on a locked file — retried here).
-# Data-agent knowledge spaces go FIRST: while such a row survives its deleted
-# agent, the folder sweep below still considers its uploads legitimate.
 try:
     from app.database import SessionLocal as _SL
     from app.services.rag_service import cleanup_orphan_upload_folders as _cof
     _db = _SL()
-    try:
-        from app.services.data_agent.knowledge import cleanup_orphan_spaces as _cos
-        _cos(_db)
-    except Exception as _e:
-        print(f"[CLEANUP] data-agent space sweep skipped: {_e}")
     _removed = _cof(_db)
     _db.close()
 except Exception as _e:
@@ -117,10 +102,6 @@ if has_rag:
     print("✅ RAG module loaded")
 else:
     print("❌ RAG module NOT loaded — check the error above")
-
-app.include_router(data_agent_router, prefix="/api")
-from app.routes.data_agent import ask_router as data_agent_ask_router
-app.include_router(data_agent_ask_router, prefix="/api")
 
 # Chat sessions + history for deployed agents (Upstash Redis cache optional —
 # set UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN in .env to enable)

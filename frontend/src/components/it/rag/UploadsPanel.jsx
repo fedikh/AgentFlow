@@ -134,7 +134,7 @@ const UploadsPanel = ({
   isOwner = true,
   editable = true,
   // Extensions the file picker offers. Callers with a narrower pipeline
-  // (e.g. a Data Agent knowledge base) pass their own list.
+  // can pass their own list.
   accept = ".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.html,.htm,.json,.xml,.pptx",
 }) => {
   const { uploadingCount, loadedCount, extractedCount } = counts;

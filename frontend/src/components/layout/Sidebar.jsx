@@ -52,11 +52,6 @@ const NAV = {
           icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
           icon2: "M14 2v6h6",
         },
-        {
-          to: "/admin/data-agents",
-          label: "Data Agents",
-          icon: "M3 3h18v18H3zM3 9h18M9 21V9",
-        },
       ],
     },
     {
@@ -107,14 +102,6 @@ const NAV = {
             { to: "/it/agents", label: "Deployed Agents" },
           ],
         },
-        {
-          label: "Data Agent",
-          icon: "M3 3h18v18H3zM3 9h18M9 21V9",
-          children: [
-            { to: "/it/data-agent", label: "Workspace" },
-            { to: "/it/data-agent/deployed", label: "Deployed Agents" },
-          ],
-        },
       ],
     },
     {
@@ -151,11 +138,6 @@ const NAV = {
           icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
         },
         {
-          to: "/user/data-agents",
-          label: "Data Agents",
-          icon: "M3 3h18v18H3zM3 9h18M9 21V9",
-        },
-        {
           to: "/user/history",
           label: "Chat History",
           icon: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
@@ -183,8 +165,8 @@ const NavGroup = ({ item }) => {
     (c) => location.pathname === c.to || location.pathname.startsWith(c.to + "/"),
   );
   const childActive = matches.length > 0;
-  // Longest match wins: /it/data-agent/deployed highlights "Deployed Agents",
-  // while /it/data-agent/<id> still highlights "Workspace".
+  // Longest match wins: /it/agents highlights "Deployed Agents", while
+  // /it/rag/<id> still highlights "Workspace".
   const bestMatch = matches
     .slice()
     .sort((a, b) => b.to.length - a.to.length)[0]?.to;
@@ -223,11 +205,10 @@ const NavGroup = ({ item }) => {
               key={c.to}
               to={c.to}
               // The FUNCTION form is required: given a plain string, NavLink
-              // appends its own "active" class on top of it, which lights up
-              // BOTH "Workspace" (/it/data-agent) and "Deployed Agents"
-              // (/it/data-agent/deployed) — the first is a prefix of the
-              // second. The function form replaces that default entirely, so
-              // only the most specific matching sub-link wins.
+              // appends its own "active" class on top of it, which can light
+              // up several sub-links when one path is a prefix of another.
+              // The function form replaces that default entirely, so only
+              // the most specific matching sub-link wins.
               className={() =>
                 `sidebar-sublink ${bestMatch === c.to ? "active" : ""}`
               }

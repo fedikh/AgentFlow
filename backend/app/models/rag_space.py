@@ -38,9 +38,9 @@ class RAGSpace(Base):
     # Plain string (not a native PG enum) so new statuses like EDITING can be
     # added without an enum migration. Values come from SpaceStatus.
     status          = Column(String, default="DRAFT")
-    # Internal space owned by another feature (currently "data_agent_knowledge"):
-    # it uses the full RAG pipeline but is hidden from the RAG workspace,
-    # the dashboards and the admin listings.
+    # Internal space owned by another feature: it uses the full RAG pipeline
+    # but is hidden from the RAG workspace, the dashboards and the admin
+    # listings. NULL for every normal space.
     system_kind     = Column(String, nullable=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
     department_id   = Column(String, ForeignKey("departments.id"), nullable=True)

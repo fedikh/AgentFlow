@@ -55,13 +55,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ── Data Agent knowledge base: a narrower format list than a RAG space ──
-# Its hidden space is a normal RAG space, so the restriction lives with the
-# upload code that enforces it (the panel shows the same list).
-DATA_AGENT_FORMATS_KIND = "data_agent_knowledge"
-DATA_AGENT_FORMATS = {".pdf", ".docx", ".txt", ".md", ".markdown", ".csv",
-                      ".html", ".htm"}
-
 # ── Embeddings (Batch 6: now resolved per-space via the embedding factory) ──
 # The factory picks the space's embedding source (own key → company provider →
 # local BGE-M3) and guards the 1024-dim pgvector column. Index-time and
@@ -898,7 +891,7 @@ def _rmtree_force(path: str):
 def cleanup_orphan_upload_folders(db) -> int:
     """Startup self-healing: delete uploads/<uuid> folders whose space no
     longer exists (e.g. deletion failed earlier because a file was locked).
-    Only UUID-named folders are touched — data_agent etc. are safe."""
+    Only UUID-named folders are touched — anything else is safe."""
     import re
     if not os.path.isdir(UPLOADS_ROOT):
         return 0
@@ -1230,14 +1223,6 @@ async def upload_document(db: Session, space_id: str, org_id: str, file: UploadF
     if ext not in SUPPORTED_FORMATS:
         supported = ", ".join(SUPPORTED_FORMATS.keys())
         raise HTTPException(400, f"Format '{ext}' not supported. Accepted: {supported}")
-    # A Data Agent knowledge base takes a narrower set than a full RAG space —
-    # enforced here so the API can't be used to get around the picker.
-    if space.system_kind == DATA_AGENT_FORMATS_KIND and ext not in DATA_AGENT_FORMATS:
-        raise HTTPException(
-            400,
-            f"Format '{ext}' not accepted here. This knowledge base accepts: "
-            + ", ".join(sorted(DATA_AGENT_FORMATS)),
-        )
 
     content = await file.read()
 

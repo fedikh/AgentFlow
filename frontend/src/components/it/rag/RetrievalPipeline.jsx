@@ -52,9 +52,7 @@ const Radio = ({ options, value, onChange }) => (
   </div>
 );
 
-/* hybridOnly — search mode is fixed to hybrid (Data Agent: schema knowledge
- *              needs both branches, so there is nothing to choose). */
-export default function RetrievalPipeline({ cfg, setC, hybridOnly = false }) {
+export default function RetrievalPipeline({ cfg, setC }) {
   const rp = { ...RP_DEFAULTS, ...(cfg.retrieval_params || {}) };
   const setMany = (obj) =>
     setC("retrieval_params", { ...(cfg.retrieval_params || {}), ...obj });
@@ -78,43 +76,21 @@ export default function RetrievalPipeline({ cfg, setC, hybridOnly = false }) {
       {/* ── Search mode (switchable: keyword / vector / hybrid) ── */}
       <div className="rp2-block">
         <div className="rp2-block-t">Search mode</div>
-        {hybridOnly ? (
-          <div className="rp2-locked">
-            <span className="rp2-locked-badge">HYBRID</span>
-            <span>
-              <strong>Vector</strong> (pgvector + HNSW) and{" "}
-              <strong>keyword</strong> (FTS) always run together, merged with
-              Reciprocal Rank Fusion.
-            </span>
-          </div>
-        ) : (
-          <Radio
-            value={rp.search_mode}
-            onChange={(v) => setMany({ search_mode: v })}
-            options={[
-              { value: "vector", label: "Vector", desc: "Meaning (pgvector + HNSW)" },
-              { value: "hybrid", label: "Hybrid", desc: "Both + RRF merge", star: true },
-              { value: "keyword", label: "Keyword", desc: "Exact words (FTS)" },
-            ]}
-          />
-        )}
+        <Radio
+          value={rp.search_mode}
+          onChange={(v) => setMany({ search_mode: v })}
+          options={[
+            { value: "vector", label: "Vector", desc: "Meaning (pgvector + HNSW)" },
+            { value: "hybrid", label: "Hybrid", desc: "Both + RRF merge", star: true },
+            { value: "keyword", label: "Keyword", desc: "Exact words (FTS)" },
+          ]}
+        />
         <div className="rp2-hint">
-          {hybridOnly ? (
-            <>
-              Not a toggle here: table and column names are rare literal tokens
-              that embeddings match poorly, while business phrasing is invisible
-              to keyword search. Each branch covers the other&apos;s blind spot,
-              so turning either off could only lose recall.
-            </>
-          ) : (
-            <>
-              <strong>Vector</strong> understands meaning ("vacation days" finds
-              "annual leave"). <strong>Keyword</strong> nails exact terms, IDs and
-              codes, in every indexed language. <strong>Hybrid</strong> runs both
-              and merges them with Reciprocal Rank Fusion — recommended for
-              enterprise documents.
-            </>
-          )}
+          <strong>Vector</strong> understands meaning ("vacation days" finds
+          "annual leave"). <strong>Keyword</strong> nails exact terms, IDs and
+          codes, in every indexed language. <strong>Hybrid</strong> runs both
+          and merges them with Reciprocal Rank Fusion — recommended for
+          enterprise documents.
         </div>
       </div>
 

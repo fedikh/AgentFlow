@@ -1,7 +1,5 @@
 import React from "react";
 import { BAAI, Jina } from "@lobehub/icons";
-import { SiPostgresql, SiMysql } from "react-icons/si";
-import { DiMsqlServer } from "react-icons/di";
 import openaiLogo from "../assets/providers/openai.png";
 import anthropicLogo from "../assets/providers/anthropic.png";
 import geminiLogo from "../assets/providers/gemini.png";
@@ -34,18 +32,8 @@ const ICON_COMPONENTS = {
   JINA: Jina, // jina-embeddings-*
 };
 
-/* Database dialect logos (Data Agent connection) — react-icons brand glyphs
-   tinted in each engine's official color. Keys match DIALECTS names. */
-const DB_ICONS = {
-  POSTGRES: { Icon: SiPostgresql, color: "#336791" },
-  MYSQL: { Icon: SiMysql, color: "#00758F" },
-  MSSQL: { Icon: DiMsqlServer, color: "#CC2927" },
-};
-
 const ProviderLogo = ({ family, size = 20 }) => {
   const fam = (family || "").toUpperCase();
-  const db = DB_ICONS[fam];
-  if (db) return <db.Icon size={size} color={db.color} style={{ flexShrink: 0 }} />;
   const src = LOGOS[fam];
   if (!src) {
     const Icon = ICON_COMPONENTS[fam];
