@@ -40,9 +40,13 @@ function OnlineBadge({ status }) {
   );
 }
 
-const UserDashboard = () => {
+// onOpenAgent: when embedded in the chat page, opening an agent goes through
+// the host (which swaps back to the chat view) instead of a raw navigation.
+const UserDashboard = ({ onOpenAgent = null }) => {
   const user = getUser();
   const navigate = useNavigate();
+  const openAgent = (id) =>
+    onOpenAgent ? onOpenAgent(id) : navigate(`/user/agents/${id}`);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
@@ -86,7 +90,7 @@ const UserDashboard = () => {
         {agents.map((a) => (
           <button
             key={a.id}
-            onClick={() => navigate(`/user/agents/${a.id}`)}
+            onClick={() => openAgent(a.id)}
             style={{
               ...card, flex: 1, minWidth: 260, maxWidth: 420, textAlign: "left",
               cursor: "pointer", display: "grid", gap: 10, font: "inherit",
@@ -154,7 +158,7 @@ const UserDashboard = () => {
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: ink.blue, flexShrink: 0, alignSelf: "center" }} />
                 <span>
                   <button
-                    onClick={() => navigate(`/user/agents/${w.agent_id}`)}
+                    onClick={() => openAgent(w.agent_id)}
                     style={{ border: "none", background: "none", padding: 0, font: "inherit", fontWeight: 700, color: ink.primary, cursor: "pointer" }}
                   >
                     {w.agent}

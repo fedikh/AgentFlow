@@ -26,7 +26,7 @@ import DeployedDataAgentsPage from "./pages/it/DeployedDataAgentsPage";
 
 // ── User pages ────────────────────────────────────────
 import UserDashboard from "./pages/user/UserDashboard";
-import UserAgentsPage from "./pages/user/UserAgentsPage";
+import UserChatPage from "./pages/user/UserChatPage";
 
 // ── Shared pages ──────────────────────────────────────
 import ProfilePage from "./pages/shared/ProfilePage";
@@ -38,7 +38,9 @@ import { getUser } from "./services/authApi";
 const RoleRedirect = () => {
   const user = getUser();
   if (!user) return <Navigate to="/login" replace />;
-  const redirects = { ADMIN: "/admin", IT: "/it", USER: "/user" };
+  // End users land straight in the chat — Dashboard stays reachable from the
+  // profile menu inside it.
+  const redirects = { ADMIN: "/admin", IT: "/it", USER: "/user/agents" };
   return <Navigate to={redirects[user.role] || "/login"} replace />;
 };
 
@@ -123,11 +125,15 @@ export default function App() {
         </Route>
 
         {/* ══ Protected — EndUser only ══ */}
+        {/* The chat is FULL-PAGE (its own rail + profile menu) — deliberately
+            outside DashboardLayout, DeepSeek-style. */}
+        <Route element={<ProtectedRoute roles={["USER"]} />}>
+          <Route path="/user/agents" element={<UserChatPage />} />
+          <Route path="/user/agents/:agentId" element={<UserChatPage />} />
+        </Route>
         <Route element={<ProtectedRoute roles={["USER"]} />}>
           <Route element={<DashboardLayout />}>
             <Route path="/user" element={<UserDashboard />} />
-            <Route path="/user/agents" element={<UserAgentsPage />} />
-            <Route path="/user/agents/:agentId" element={<UserAgentsPage />} />
             {/* Data agents for end users — the same page as the IT preview;
                 the backend role-scopes the list. */}
             {["/user/data-agents", "/user/data-agents/:sourceId"].map((p) => (
