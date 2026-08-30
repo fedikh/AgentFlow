@@ -27,6 +27,7 @@ import UserChatPage from "./pages/user/UserChatPage";
 
 // ── Shared pages ──────────────────────────────────────
 import ProfilePage from "./pages/shared/ProfilePage";
+import RAGObservabilityPage from "./pages/shared/RAGObservabilityPage";
 import StartPage from "./pages/StartPage";
 
 // ── Role redirect after login ─────────────────────────
@@ -81,6 +82,14 @@ export default function App() {
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/rag" element={<AdminRAGPage />} />
+            <Route
+              path="/admin/observability"
+              element={
+                <RAGObservabilityPage
+                  subtitle="Production monitoring of every deployed RAG agent in the organization"
+                />
+              }
+            />
             <Route path="/admin/providers" element={<ApiProvidersPage />} />
             <Route
               path="/admin/settings"
@@ -97,6 +106,7 @@ export default function App() {
             <Route path="/it/rag/:spaceId" element={<RAGSpacesPage />} />
             <Route path="/it/agents" element={<ITAgentsPage />} />
             <Route path="/it/agents/:agentId" element={<ITAgentsPage />} />
+            <Route path="/it/observability" element={<RAGObservabilityPage />} />
             <Route
               path="/it/workflows"
               element={<ComingSoon title="Workflows" />}

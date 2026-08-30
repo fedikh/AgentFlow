@@ -301,11 +301,29 @@ def send_message(db: Session, user: User, space_id: str, question: str,
                    if recent else question)
 
     # ── the existing RAG pipeline, with the memory block for generation ──
+    from app.services import observability
     t0 = time.perf_counter()
-    result = rag_service.query(db, space_id, user.organization_id,
-                               QueryRequest(question=retrieval_q), user,
-                               history=memory)
+    try:
+        result = rag_service.query(db, space_id, user.organization_id,
+                                   QueryRequest(question=retrieval_q), user,
+                                   history=memory)
+    except Exception as e:
+        # failed requests are production signals too — trace, then re-raise
+        observability.record_query(
+            space, user, question, "", [],
+            {"total_ms": round((time.perf_counter() - t0) * 1000, 1)},
+            session_id=session.id, error=str(e)[:300], db=db)
+        raise
     total_ms = int((time.perf_counter() - t0) * 1000)
+
+    # one Langfuse trace per answered question (fire-and-forget, no-op
+    # unless LANGFUSE_* keys are configured)
+    timings = dict(result.get("timings") or {})
+    timings.setdefault("total_ms", total_ms)
+    observability.record_query(space, user, question,
+                               result.get("answer") or "",
+                               result.get("sources") or [], timings,
+                               session_id=session.id, db=db)
 
     # ── persist both turns (Postgres = source of truth) ──
     now_count = (session.message_count or 0)

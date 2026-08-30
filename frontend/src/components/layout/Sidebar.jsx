@@ -52,6 +52,11 @@ const NAV = {
           icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
           icon2: "M14 2v6h6",
         },
+        {
+          to: "/admin/observability",
+          label: "RAG Observability",
+          icon: "M22 12h-4l-3 9L9 3l-3 9H2",
+        },
       ],
     },
     {
@@ -100,6 +105,7 @@ const NAV = {
           children: [
             { to: "/it/rag", label: "Workspace" },
             { to: "/it/agents", label: "Deployed Agents" },
+            { to: "/it/observability", label: "RAG Observability" },
           ],
         },
       ],
@@ -158,7 +164,8 @@ const NAV = {
   ],
 };
 
-// Collapsible parent with sub-links (e.g. RAG Spaces → Workspace / Deployed Agents)
+// Fixed parent with sub-links (e.g. RAG Spaces → Workspace / Deployed Agents).
+// Always expanded — the parent is a plain label, not a toggle.
 const NavGroup = ({ item }) => {
   const location = useLocation();
   const matches = item.children.filter(
@@ -170,55 +177,35 @@ const NavGroup = ({ item }) => {
   const bestMatch = matches
     .slice()
     .sort((a, b) => b.to.length - a.to.length)[0]?.to;
-  const [open, setOpen] = React.useState(childActive);
-  React.useEffect(() => {
-    if (childActive) setOpen(true);
-  }, [childActive]);
 
   return (
     <div className="sidebar-group">
-      <button
-        type="button"
+      <div
         className={`sidebar-link sidebar-parent ${childActive ? "active-parent" : ""}`}
-        onClick={() => setOpen((o) => !o)}
+        style={{ cursor: "default" }}
       >
         <Icon d={item.icon} d2={item.icon2} d3={item.d3} />
         <span>{item.label}</span>
-        <svg
-          className={`sidebar-caret ${open ? "open" : ""}`}
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      {open && (
-        <div className="sidebar-subnav">
-          {item.children.map((c) => (
-            <NavLink
-              key={c.to}
-              to={c.to}
-              // The FUNCTION form is required: given a plain string, NavLink
-              // appends its own "active" class on top of it, which can light
-              // up several sub-links when one path is a prefix of another.
-              // The function form replaces that default entirely, so only
-              // the most specific matching sub-link wins.
-              className={() =>
-                `sidebar-sublink ${bestMatch === c.to ? "active" : ""}`
-              }
-            >
-              <span className="sidebar-subdot" />
-              <span>{c.label}</span>
-            </NavLink>
-          ))}
-        </div>
-      )}
+      </div>
+      <div className="sidebar-subnav">
+        {item.children.map((c) => (
+          <NavLink
+            key={c.to}
+            to={c.to}
+            // The FUNCTION form is required: given a plain string, NavLink
+            // appends its own "active" class on top of it, which can light
+            // up several sub-links when one path is a prefix of another.
+            // The function form replaces that default entirely, so only
+            // the most specific matching sub-link wins.
+            className={() =>
+              `sidebar-sublink ${bestMatch === c.to ? "active" : ""}`
+            }
+          >
+            <span className="sidebar-subdot" />
+            <span>{c.label}</span>
+          </NavLink>
+        ))}
+      </div>
     </div>
   );
 };

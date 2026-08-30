@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     CLEAN_DETECT_PII: bool = True           # count PII → metadata (non-destructive)
     CLEAN_REDACT_PII: bool = False          # actually replace PII in text (destructive)
 
+    # ── RAG Observability (Langfuse) — empty keys = feature off ──
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

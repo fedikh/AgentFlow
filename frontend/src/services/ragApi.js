@@ -210,6 +210,16 @@ export const evalRunAsync = (s) => req("POST", `/rag/spaces/${s}/eval/run-async`
 export const getPublicDocumentText = (s, d) => req("GET", `/rag/spaces/${s}/public-documents/${d}/content`);
 export const evalRunStatus = (s, job) => req("GET", `/rag/spaces/${s}/eval/run-status/${job}`);
 export const evalRuns = (s) => req("GET", `/rag/spaces/${s}/eval/runs`);
+
+/* ── RAG Observability (Langfuse) — production monitoring after deploy ── */
+export const obsStatus = (s) =>
+  req("GET", `/rag/spaces/${s}/observability/status`);
+export const obsOverview = (s, days = 7) =>
+  req("GET", `/rag/spaces/${s}/observability/overview?days=${days}`);
+export const obsTraces = (s, days = 7, limit = 50) =>
+  req("GET", `/rag/spaces/${s}/observability/traces?days=${days}&limit=${limit}`);
+export const obsTraceDetail = (s, traceId) =>
+  req("GET", `/rag/spaces/${s}/observability/traces/${traceId}`);
 export const evalRunDetail = (s, id) => req("GET", `/rag/spaces/${s}/eval/runs/${id}`);
 export const evalRunDelete = (s, id) => req("DELETE", `/rag/spaces/${s}/eval/runs/${id}`);
 export const evalRunDiagnose = (s, id) => req("POST", `/rag/spaces/${s}/eval/runs/${id}/diagnose`);

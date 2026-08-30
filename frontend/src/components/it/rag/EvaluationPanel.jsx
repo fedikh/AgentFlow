@@ -6,13 +6,15 @@ import {
   evalRunDelete, evalRunDiagnose,
 } from "../../../services/ragApi";
 import {
-  Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, LabelList, Legend, ResponsiveContainer,
+  Tooltip, XAxis, YAxis,
 } from "recharts";
 import JudgeSelector from "./JudgeSelector";
 import SecurityPanel from "./SecurityPanel";
 import {
   FlaskConical, Bot, BarChart3, BookOpen, Scale, Upload, Sparkles,
   FileSpreadsheet, FileText, Plus, Trash2, Play, Timer, Info, Shield,
+  ChevronDown, ChevronRight,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
@@ -106,6 +108,8 @@ const flatCfg = (c = {}) => {
     "LLM model": `${llm.model || "—"}${llm.company_provider ? " (company)" : ""}`,
     "Temperature": String(llm.temperature ?? "—"),
     "Max tokens": String(llm.max_tokens ?? "—"),
+    // short label only — the full texts get their own collapsible block
+    // (PromptCollapse) under the What-changed table
     "System prompt": llm.system_prompt || "—",
     "Chunking": `${ch.mode || "—"}${chunkDetail ? ` — ${chunkDetail}` : ""}`,
     "Search mode": String(ret.search_mode || "—"),
@@ -116,6 +120,29 @@ const flatCfg = (c = {}) => {
     "Judge": String(c.judge || "—"),
   };
 };
+
+/* collapsible prompt text — the SecurityPanel comparison pattern */
+function PromptCollapse({ label, text, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  if (!text)
+    return <div style={{ fontSize: 12, color: "#94a3b8" }}>{label}: (default prompt)</div>;
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none",
+                 background: "none", padding: 0, cursor: "pointer", color: "#334155",
+                 font: "600 12px system-ui" }}>
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {label}
+      </button>
+      {open && (
+        <pre style={{ whiteSpace: "pre-wrap", background: "#f8fafc", border: "1px solid #e2e8f0",
+                      borderRadius: 9, padding: "10px 12px", fontSize: 11.5, color: "#334155",
+                      marginTop: 6, maxHeight: 260, overflow: "auto",
+                      fontFamily: "ui-monospace, monospace" }}>{text}</pre>
+      )}
+    </div>
+  );
+}
 
 function DeltaPill({ a, b, higherBetter }) {
   if (a == null || b == null || a === b)
@@ -145,6 +172,9 @@ function CompareView({ a, b }) {
 
   const ca = flatCfg(a.config), cb = flatCfg(b.config);
   const cfgDiff = Object.keys(ca).filter((k) => ca[k] !== cb[k]);
+  const promptA = a.config?.llm?.system_prompt_text || "";
+  const promptB = b.config?.llm?.system_prompt_text || "";
+  const promptChanged = promptA.trim() !== promptB.trim();
 
   const d = (r) => new Date(r.created_at).toLocaleString();
   const verdict = wins > losses
@@ -191,6 +221,17 @@ function CompareView({ a, b }) {
         )}
       </div>
 
+      {/* the full prompt texts, collapsed — the security-comparison pattern */}
+      <div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: ink.muted, textTransform: "uppercase", letterSpacing: ".03em", marginBottom: 6 }}>
+          System prompt{promptChanged ? " — changed" : " — unchanged"}
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <PromptCollapse label="Experiment A prompt" text={promptA} />
+          <PromptCollapse label="Experiment B prompt" text={promptB} />
+        </div>
+      </div>
+
       {/* visual comparison: A vs B across the percentage metrics */}
       <CompareChart rows={rows} />
 
@@ -218,16 +259,22 @@ function CompareView({ a, b }) {
   );
 }
 
-/* ── A-vs-B comparison chart (grouped horizontal bars, percentage metrics) ──
-   Two categorical series in the app's CVD-validated palette. Only the metrics
-   that share a 0–100% scale go here; latency/cost (different scale) stay in the
-   table — never a dual-axis chart. The table below is the exact-value view. */
+/* ── A-vs-B comparison chart (grouped VERTICAL columns, percentage metrics) ──
+   Two categorical series in the app's CVD-validated palette, value labels on
+   top of every column so no reading back to an axis is needed. Only metrics
+   that share a 0–100% scale go here; latency/cost (different scale) stay in
+   the table — never a dual-axis chart. */
 const CMP_A = "#2563EB", CMP_B = "#0D9488";
+const SHORT_METRIC = {
+  "Hit rate@K": "Hit rate", "Precision@K": "Precision",
+  "Answer relevancy": "Relevancy", "Context precision": "Ctx precision",
+  "Context recall": "Ctx recall", "Correctness (judge)": "Correctness",
+};
 function CompareChart({ rows }) {
   const data = rows
     .filter((r) => r.fmt === pct)
     .map((r) => ({
-      metric: r.label.replace(" (judge)", ""),
+      metric: SHORT_METRIC[r.label] || r.label,
       A: r.va != null ? Math.round(r.va * 100) : null,
       B: r.vb != null ? Math.round(r.vb * 100) : null,
     }));
@@ -238,22 +285,32 @@ function CompareChart({ rows }) {
                     letterSpacing: ".03em", marginBottom: 6 }}>
         Metric comparison — A vs B
       </div>
-      <div style={{ width: "100%", height: data.length * 40 + 44 }}>
+      <div style={{ width: "100%", height: 300 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} layout="vertical" barGap={2} barCategoryGap="26%"
-                    margin={{ top: 4, right: 40, left: 6, bottom: 4 }}>
-            <CartesianGrid horizontal={false} stroke="#eef2f6" />
-            <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`}
-                   tick={{ fontSize: 11, fill: "#64748b" }} tickLine={false}
-                   axisLine={{ stroke: "#e5e9f0" }} />
-            <YAxis type="category" dataKey="metric" width={132}
-                   tick={{ fontSize: 11.5, fill: "#0f172a" }} tickLine={false} axisLine={false} />
+          <BarChart data={data} barGap={3} barCategoryGap="28%"
+                    margin={{ top: 18, right: 10, left: -14, bottom: 4 }}>
+            <CartesianGrid vertical={false} stroke="#eef2f6" />
+            <XAxis dataKey="metric" interval={0}
+                   tick={{ fontSize: 11, fill: "#0f172a" }}
+                   tickLine={false} axisLine={{ stroke: "#e5e9f0" }} />
+            <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`}
+                   ticks={[0, 25, 50, 75, 100]}
+                   tick={{ fontSize: 11, fill: "#64748b" }}
+                   tickLine={false} axisLine={false} />
             <Tooltip cursor={{ fill: "#f1f5f9" }}
                      formatter={(v, name) => [v == null ? "—" : `${v}%`, name]}
                      contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e5e9f0" }} />
             <Legend iconSize={10} wrapperStyle={{ fontSize: 11.5 }} />
-            <Bar name="A" dataKey="A" fill={CMP_A} radius={[0, 4, 4, 0]} maxBarSize={13} />
-            <Bar name="B" dataKey="B" fill={CMP_B} radius={[0, 4, 4, 0]} maxBarSize={13} />
+            <Bar name="A" dataKey="A" fill={CMP_A} radius={[4, 4, 0, 0]} maxBarSize={26}>
+              <LabelList dataKey="A" position="top"
+                         formatter={(v) => (v == null ? "" : `${v}`)}
+                         style={{ fontSize: 10, fill: CMP_A, fontWeight: 700 }} />
+            </Bar>
+            <Bar name="B" dataKey="B" fill={CMP_B} radius={[4, 4, 0, 0]} maxBarSize={26}>
+              <LabelList dataKey="B" position="top"
+                         formatter={(v) => (v == null ? "" : `${v}`)}
+                         style={{ fontSize: 10, fill: CMP_B, fontWeight: 700 }} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>

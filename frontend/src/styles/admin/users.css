@@ -323,15 +323,15 @@
 /* ── Department grid / cards ── */
 .dept-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+  gap: 16px;
 }
 .dept-card {
   position: relative;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 18px;
+  padding: 22px;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
@@ -347,9 +347,9 @@
   margin-bottom: 14px;
 }
 .dept-card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 11px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: #eff4ff;
   color: var(--accent);
   display: grid;
@@ -383,18 +383,52 @@
   font-size: 12px;
   color: var(--muted);
 }
-.dept-card-breakdown {
+/* footer: member avatar stack + the manage affordance */
+.dept-card-foot {
   display: flex;
-  gap: 6px;
-  margin-top: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
 }
-.dept-card-stat {
-  font: 500 11px system-ui, sans-serif;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: #f8fafc;
-  border: 1px solid var(--line);
-  color: var(--ink-2);
+.dept-avatars {
+  display: flex;
+  align-items: center;
+}
+.dept-av {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #0f1b2d;
+  color: #fff;
+  font: 700 9.5px system-ui, sans-serif;
+  border: 2px solid #fff;
+  flex-shrink: 0;
+}
+.dept-av + .dept-av { margin-left: -7px; }
+.dept-av.more {
+  background: #eef2f7;
+  color: #475569;
+}
+.dept-avatars-empty {
+  font-size: 12px;
+  color: var(--faint);
+}
+.dept-card-open {
+  font: 650 11.5px system-ui, sans-serif;
+  color: var(--accent);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.15s, transform 0.15s;
+  white-space: nowrap;
+}
+.dept-card:hover .dept-card-open {
+  opacity: 1;
+  transform: none;
 }
 .dept-empty-card {
   display: flex;

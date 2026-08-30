@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowUp, Bot, Building2, Check, ChevronDown, FileText,
-  LayoutDashboard, LogOut, MoreHorizontal, Plus, Trash2, User, X,
+  LayoutDashboard, LogOut, MoreHorizontal, Plus, Search, Trash2, User, X,
 } from "lucide-react";
 import {
   listSpaces, listPublicDocuments, listChatSessions, getChatSession,
@@ -51,6 +51,7 @@ function ProfileMenu({ onView }) {
   const navigate = useNavigate();
   const user = getUser();
   const [open, setOpen] = useState(false);
+  const [confirmOut, setConfirmOut] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -83,9 +84,30 @@ function ProfileMenu({ onView }) {
             <User size={15} /> Profile
           </button>
           <div className="uc-menu-sep" />
-          <button className="uc-menu-item danger" onClick={signOut}>
+          <button className="uc-menu-item danger"
+                  onClick={() => { setOpen(false); setConfirmOut(true); }}>
             <LogOut size={15} /> Log out
           </button>
+        </div>
+      )}
+      {confirmOut && (
+        <div className="uc-modal-backdrop" onClick={() => setConfirmOut(false)}>
+          <div className="uc-confirm" onClick={(e) => e.stopPropagation()}>
+            <span className="uc-confirm-ic"><LogOut size={20} /></span>
+            <div className="uc-confirm-t">Sign out?</div>
+            <div className="uc-confirm-s">
+              Are you sure you want to sign out of AgentFlow?
+            </div>
+            <div className="uc-confirm-row">
+              <button className="uc-confirm-cancel"
+                      onClick={() => setConfirmOut(false)}>
+                Cancel
+              </button>
+              <button className="uc-confirm-out" onClick={signOut}>
+                Sign out
+              </button>
+            </div>
+          </div>
         </div>
       )}
       <button className="uc-me-row" onClick={() => setOpen((v) => !v)}>
@@ -236,6 +258,7 @@ export default function UserChatPage() {
   const [viewerDoc, setViewerDoc] = useState(null);
   const [view, setView] = useState("chat");      // chat | dashboard | profile
   const [showDocs, setShowDocs] = useState(false);
+  const [docQuery, setDocQuery] = useState("");
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -269,6 +292,7 @@ export default function UserChatPage() {
     setDocs([]);
     setView("chat");           // a dashboard "chat with…" click lands here
     setShowDocs(false);
+    setDocQuery("");
     if (navigateTo) navigate(`/user/agents/${agent.id}`);
     if (agent.status === "EDITING") return;
     listPublicDocuments(agent.id).then(setDocs).catch(() => {});
@@ -347,6 +371,13 @@ export default function UserChatPage() {
 
   const updating = selected?.status === "EDITING";
   const empty = messages.length === 0 && !loadingChat;
+
+  // documents filtered by the panel search (case/diacritics-insensitive)
+  const norm = (s) => String(s || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const filteredDocs = docQuery.trim()
+    ? docs.filter((d) => norm(d.file_name).includes(norm(docQuery)))
+    : docs;
 
   return (
     <div className="uc-page">
@@ -503,11 +534,24 @@ export default function UserChatPage() {
                 <X size={14} />
               </button>
             </div>
+            {docs.length > 0 && (
+              <div className="uc-docsearch">
+                <Search size={13} />
+                <input value={docQuery}
+                       onChange={(e) => setDocQuery(e.target.value)}
+                       placeholder="Search documents…" />
+              </div>
+            )}
             <div className="uc-docspanel-list">
               {docs.length === 0 && (
                 <div className="uc-docs-empty">No documents to preview.</div>
               )}
-              {docs.map((d) => (
+              {docs.length > 0 && filteredDocs.length === 0 && (
+                <div className="uc-docs-empty">
+                  No document matches “{docQuery}”.
+                </div>
+              )}
+              {filteredDocs.map((d) => (
                 <button key={d.id} className="uc-doc"
                         onClick={() => setViewerDoc(d)}
                         title={`Open ${d.file_name}`}>

@@ -92,7 +92,12 @@ export function Donut({ data, total, totalLabel, format = (v) => v, height = 205
       </div>
       <div style={{ display: "grid", gap: 9, minWidth: 0, flex: 1 }}>
         {data.map((e, i) => (
-          <div key={e.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+          // minWidth: 0 — grid items refuse to shrink below their content
+          // width by default, pushing the count/percent OUTSIDE the card in
+          // narrow layouts (e.g. the end-user dashboard modal)
+          <div key={e.name}
+               style={{ display: "flex", alignItems: "center", gap: 8,
+                        fontSize: 12, minWidth: 0 }}>
             <span style={{ width: 9, height: 9, borderRadius: 3, background: PALETTE[i % PALETTE.length], flexShrink: 0 }} />
             <span style={{ color: ink.muted, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {e.name}

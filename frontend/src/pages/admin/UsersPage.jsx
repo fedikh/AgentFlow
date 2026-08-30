@@ -13,6 +13,13 @@ import {
 import { getUser } from "../../services/authApi";
 import "../../styles/admin/users.css";
 
+/* ── initials for the member avatar stack on department cards ── */
+const nameInitials = (name = "?") => {
+  const p = String(name).trim().split(/\s+/);
+  return ((p.length >= 2 ? p[0][0] + p[1][0] : String(name).slice(0, 2)) || "?")
+    .toUpperCase();
+};
+
 /* ── Clean line icons (no emoji) ── */
 const I = {
   team: (p) => (
@@ -1022,19 +1029,14 @@ const UsersPage = () => {
 
             <div className="dept-grid">
               {depts.map((d) => {
-                const totalCount = users.filter(
+                const members = users.filter(
                   (u) =>
                     u.department_ids &&
                     u.department_ids.includes(d.id) &&
                     u.role !== "ADMIN",
-                ).length;
-                const itCount = users.filter(
-                  (u) =>
-                    u.department_ids &&
-                    u.department_ids.includes(d.id) &&
-                    u.role === "IT",
-                ).length;
-                const userCount = totalCount - itCount;
+                );
+                const itCount = members.filter((u) => u.role === "IT").length;
+                const userCount = members.length - itCount;
                 return (
                   <div
                     key={d.id}
@@ -1047,6 +1049,7 @@ const UsersPage = () => {
                       </div>
                       <button
                         className="dept-card-del"
+                        title="Delete department"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDeleteDept(d.id, d.name);
@@ -1057,20 +1060,31 @@ const UsersPage = () => {
                     </div>
                     <div className="dept-card-name">{d.name}</div>
                     <div className="dept-card-count">
-                      {totalCount} member{totalCount !== 1 ? "s" : ""}
+                      {members.length === 0
+                        ? "No members yet"
+                        : [itCount && `${itCount} IT`,
+                           userCount && `${userCount} User${userCount !== 1 ? "s" : ""}`]
+                            .filter(Boolean).join(" · ")}
                     </div>
-                    {(itCount > 0 || userCount > 0) && (
-                      <div className="dept-card-breakdown">
-                        {itCount > 0 && (
-                          <span className="dept-card-stat">{itCount} IT</span>
-                        )}
-                        {userCount > 0 && (
-                          <span className="dept-card-stat">
-                            {userCount} User{userCount !== 1 ? "s" : ""}
+                    <div className="dept-card-foot">
+                      <div className="dept-avatars">
+                        {members.slice(0, 4).map((u) => (
+                          <span key={u.id} className="dept-av"
+                                title={u.name || u.email}>
+                            {nameInitials(u.name || u.email)}
+                          </span>
+                        ))}
+                        {members.length > 4 && (
+                          <span className="dept-av more">
+                            +{members.length - 4}
                           </span>
                         )}
+                        {members.length === 0 && (
+                          <span className="dept-avatars-empty">—</span>
+                        )}
                       </div>
-                    )}
+                      <span className="dept-card-open">Manage →</span>
+                    </div>
                   </div>
                 );
               })}

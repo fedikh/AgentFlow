@@ -619,6 +619,36 @@
   cursor: pointer;
 }
 .uc-docspanel-x:hover { color: #0f172a; background: #f3f5f8; }
+.uc-docsearch {
+  position: relative;
+  margin: 0 12px 10px;
+}
+.uc-docsearch svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a3adbd;
+  pointer-events: none;
+}
+.uc-docsearch input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #f3f5f8;
+  padding: 8px 10px 8px 30px;
+  font: 400 12.5px system-ui, sans-serif;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.uc-docsearch input::placeholder { color: #a3adbd; }
+.uc-docsearch input:focus {
+  border-color: #2563eb;
+  background: #fff;
+}
+
 .uc-docspanel-list {
   flex: 1;
   min-height: 0;
@@ -731,6 +761,62 @@
   scrollbar-width: thin;
   scrollbar-color: #d7dce3 transparent;
 }
+
+/* ── sign-out confirmation (the platform's Sign out? dialog) ── */
+.uc-confirm {
+  width: min(320px, 100%);
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  padding: 24px 22px 20px;
+  text-align: center;
+  animation: uc-pop 0.16s ease;
+}
+.uc-confirm-ic {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  display: inline-grid;
+  place-items: center;
+  background: #fee2e2;
+  color: #dc2626;
+  margin-bottom: 12px;
+}
+.uc-confirm-t {
+  font: 800 16.5px system-ui, sans-serif;
+  color: #0f172a;
+}
+.uc-confirm-s {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.55;
+  margin: 6px 0 18px;
+}
+.uc-confirm-row {
+  display: flex;
+  gap: 10px;
+}
+.uc-confirm-cancel,
+.uc-confirm-out {
+  flex: 1;
+  border-radius: 11px;
+  padding: 10px 14px;
+  font: 700 13px system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.uc-confirm-cancel {
+  border: 1px solid #e7eaf0;
+  background: #fff;
+  color: #334155;
+}
+.uc-confirm-cancel:hover { border-color: #cbd5e1; }
+.uc-confirm-out {
+  border: none;
+  background: #dc2626;
+  color: #fff;
+}
+.uc-confirm-out:hover { background: #b91c1c; }
 
 /* ── Profile inside the modal: re-skin to the chat design language ──
    (scoped — the standalone /profile page of other roles keeps its look) */

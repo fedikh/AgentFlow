@@ -472,6 +472,43 @@ def serve_document_file(space_id: str, doc_id: str, request: Request, db: Sessio
     )
 
 # ══════════════════════════════════════════
+# OBSERVABILITY — production monitoring of deployed spaces (Langfuse)
+# ══════════════════════════════════════════
+from app.services import observability as obs_service                  # noqa: E402
+
+
+@router.get("/spaces/{space_id}/observability/status")
+def obs_status(space_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return obs_service.status()
+
+
+@router.get("/spaces/{space_id}/observability/overview")
+def obs_overview(space_id: str, request: Request, days: int = 7,
+                 db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return obs_service.overview(db, space, days=days)
+
+
+@router.get("/spaces/{space_id}/observability/traces")
+def obs_traces(space_id: str, request: Request, days: int = 7,
+               limit: int = 50, db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    space = rag_service._find_space(db, space_id, user.organization_id)
+    return obs_service.trace_list(space, days=days, limit=limit)
+
+
+@router.get("/spaces/{space_id}/observability/traces/{trace_id}")
+def obs_trace_detail(space_id: str, trace_id: str, request: Request,
+                     db: Session = Depends(get_db)):
+    user = _get_current_user(request, db)
+    rag_service._find_space(db, space_id, user.organization_id)
+    return obs_service.trace_detail(trace_id)
+
+
+# ══════════════════════════════════════════
 # EVALUATION — dataset (upload / generate) + experiment runs
 # ══════════════════════════════════════════
 from app.services import evaluation as eval_service                    # noqa: E402
