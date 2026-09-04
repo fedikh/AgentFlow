@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowUp, Bot, Building2, Check, ChevronDown, FileText,
+  ArrowUp, Bot, Building2, Check, FileText,
   LayoutDashboard, LogOut, MoreHorizontal, Plus, Search, Trash2, User, X,
 } from "lucide-react";
 import {
@@ -20,8 +20,9 @@ import "../../styles/user/userChat.css";
  * UserChatPage — the end-user experience, chat-first (DeepSeek-style):
  *
  *   rail    New chat · history grouped by month · profile row whose ⋯ menu
- *           carries the navigation (Dashboard · Profile · Log out)
- *   top     the picker pills — Department ▾ then Agent ▾ — the only chrome
+ *           carries the navigation (Agents · Dashboard · Profile · Log out)
+ *   top     a quiet chip naming the current department · agent — changing
+ *           agent happens in the Agents overlay opened from the menu
  *   center  hero "What can I do for you?" + floating input card; once a
  *           message is sent, a clean thread with cited sources
  *
@@ -77,6 +78,9 @@ function ProfileMenu({ onView }) {
     <div className="uc-me" ref={ref}>
       {open && (
         <div className="uc-menu">
+          <button className="uc-menu-item" onClick={() => go("agents")}>
+            <Bot size={15} /> Agents
+          </button>
           <button className="uc-menu-item" onClick={() => go("dashboard")}>
             <LayoutDashboard size={15} /> Dashboard
           </button>
@@ -119,95 +123,76 @@ function ProfileMenu({ onView }) {
   );
 }
 
-/* ── the top picker: Department ▾ · Agent ▾ ── */
-function AgentPicker({ agents, selected, onPick }) {
-  const [open, setOpen] = useState(null);        // "dept" | "agent" | null
-  const ref = useRef(null);
-  // Browsing override only — until an agent is picked, the selected agent's
-  // own department names the pill (derived, no state sync needed).
-  const [deptOverride, setDeptOverride] = useState(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(null);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
+/* ── the Agents view — lives in the overlay next to Dashboard · Profile:
+   departments on the left, that department's agents as cards ── */
+function AgentsBrowser({ agents, selected, onPick }) {
   const departments = useMemo(
     () => [...new Set(agents.map((a) => a.department_name || "General"))],
     [agents],
   );
-  const currentDept =
-    deptOverride || selected?.department_name || departments[0] || null;
+  const [dept, setDept] = useState(
+    selected?.department_name || departments[0] || null,
+  );
+  const current = departments.includes(dept) ? dept : departments[0];
   const deptAgents = agents.filter(
-    (a) => (a.department_name || "General") === currentDept,
+    (a) => (a.department_name || "General") === current,
   );
 
-  return (
-    <div className="uc-picker" ref={ref}>
-      <button className={`uc-pill ${open === "dept" ? "on" : ""}`}
-              onClick={() => setOpen(open === "dept" ? null : "dept")}>
-        <span className="uc-pill-ic"><Building2 size={15} /></span>
-        <span className="uc-pill-txt">
-          <span className="uc-pill-label">Department</span>
-          <span className="uc-pill-value">{currentDept || "Choose…"}</span>
-        </span>
-        <ChevronDown size={14} className="uc-pill-caret" />
-      </button>
-      <button className={`uc-pill agent ${open === "agent" ? "on" : ""}`}
-              onClick={() => setOpen(open === "agent" ? null : "agent")}>
-        <span className="uc-pill-ic"><Bot size={15} /></span>
-        <span className="uc-pill-txt">
-          <span className="uc-pill-label">Agent</span>
-          <span className="uc-pill-value">
-            {selected ? selected.name : "Choose an agent"}
-          </span>
-        </span>
-        <ChevronDown size={14} className="uc-pill-caret" />
-      </button>
+  if (agents.length === 0) {
+    return (
+      <div className="uc-agents-empty">
+        <b>No agents available yet</b>
+        Your IT team hasn&apos;t deployed any AI agents for your department.
+        Check back later!
+      </div>
+    );
+  }
 
-      {open === "dept" && (
-        <div className="uc-dd">
-          <div className="uc-dd-label">Department</div>
-          {departments.map((d) => (
+  return (
+    <div className="uc-agents">
+      <aside className="uc-agents-side">
+        <div className="uc-agents-label">Departments</div>
+        {departments.map((d) => {
+          const n = agents.filter(
+            (a) => (a.department_name || "General") === d,
+          ).length;
+          return (
             <button key={d}
-                    className={`uc-dd-item ${d === currentDept ? "on" : ""}`}
-                    onClick={() => { setDeptOverride(d); setOpen("agent"); }}>
-              <Building2 size={14} /> {d}
-              {d === currentDept && <Check size={14} className="uc-dd-check" />}
+                    className={`uc-agents-dept ${d === current ? "on" : ""}`}
+                    onClick={() => setDept(d)}>
+              <Building2 size={15} />
+              <span className="uc-agents-dept-name">{d}</span>
+              <span className="uc-agents-dept-n">{n}</span>
             </button>
-          ))}
-        </div>
-      )}
-      {open === "agent" && (
-        <div className="uc-dd">
-          <div className="uc-dd-label">{currentDept} · agents</div>
-          {deptAgents.length === 0 && (
-            <div className="uc-hist-empty">No agents in this department yet.</div>
-          )}
-          {deptAgents.map((a) => {
-            const updating = a.status === "EDITING";
-            return (
-              <button key={a.id} disabled={updating}
-                      className={`uc-dd-item ${a.id === selected?.id ? "on" : ""}`}
-                      onClick={() => { onPick(a); setDeptOverride(null); setOpen(null); }}>
-                <Bot size={14} />
-                <span style={{ minWidth: 0 }}>
-                  {a.name}
-                  <span className="uc-dd-sub">
-                    {updating ? "Updating — temporarily offline"
-                              : a.description || `${a.num_documents || 0} documents`}
-                  </span>
-                </span>
-                {a.id === selected?.id && <Check size={14} className="uc-dd-check" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
+          );
+        })}
+      </aside>
+      <div className="uc-agents-grid">
+        {deptAgents.map((a) => {
+          const updating = a.status === "EDITING";
+          const on = a.id === selected?.id;
+          return (
+            <button key={a.id} disabled={updating}
+                    className={`uc-agent-card ${on ? "on" : ""}`}
+                    onClick={() => onPick(a)}>
+              <span className="uc-agent-head">
+                <span className="uc-agent-ic"><Bot size={17} /></span>
+                <span className="uc-agent-name">{a.name}</span>
+                {on && <Check size={15} className="uc-agent-check" />}
+              </span>
+              <span className="uc-agent-desc">
+                {updating
+                  ? "Updating — temporarily offline"
+                  : a.description || "AI assistant powered by your documents."}
+              </span>
+              <span className="uc-agent-meta">
+                <FileText size={11} /> {a.num_documents || 0} documents
+                {on && <em>Current agent</em>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -217,7 +202,7 @@ function InputCard({ agent, value, onChange, onSend, busy, inputRef }) {
   return (
     <div className="uc-inputcard">
       <textarea ref={inputRef} className="uc-input" rows={1} value={value}
-                placeholder={agent ? `Message ${agent.name}` : "Choose an agent above to start"}
+                placeholder={agent ? `Message ${agent.name}` : "Choose an agent to start"}
                 disabled={!agent || busy}
                 onChange={(e) => {
                   onChange(e.target.value);
@@ -256,7 +241,7 @@ export default function UserChatPage() {
   const [question, setQuestion] = useState("");
   const [querying, setQuerying] = useState(false);
   const [viewerDoc, setViewerDoc] = useState(null);
-  const [view, setView] = useState("chat");      // chat | dashboard | profile
+  const [view, setView] = useState("chat");  // chat | agents | dashboard | profile
   const [showDocs, setShowDocs] = useState(false);
   const [docQuery, setDocQuery] = useState("");
   const endRef = useRef(null);
@@ -422,8 +407,17 @@ export default function UserChatPage() {
       <main className="uc-main">
         <div className="uc-top">
           <span />
-          <AgentPicker agents={agents || []} selected={selected}
-                       onPick={(a) => pickAgent(a)} />
+          <div className="uc-current">
+            <span className="uc-current-ic"><Bot size={15} /></span>
+            <span className="uc-current-txt">
+              <span className="uc-current-dept">
+                {selected ? selected.department_name || "General" : "AgentFlow"}
+              </span>
+              <span className="uc-current-name">
+                {selected ? selected.name : "No agent selected"}
+              </span>
+            </span>
+          </div>
           <div className="uc-top-right">
             {selected && !updating && (
               <button className={`uc-docsbtn ${showDocs ? "on" : ""}`}
@@ -572,13 +566,15 @@ export default function UserChatPage() {
         </div>
       </main>
 
-      {/* ═══ Dashboard / Profile — floating OVER the chat ═══ */}
+      {/* ═══ Agents / Dashboard / Profile — floating OVER the chat ═══ */}
       {view !== "chat" && (
         <div className="uc-modal-backdrop" onClick={() => setView("chat")}>
-          <div className="uc-modal" onClick={(e) => e.stopPropagation()}>
+          <div className={`uc-modal ${view === "agents" ? "tall" : ""}`}
+               onClick={(e) => e.stopPropagation()}>
             <div className="uc-modal-head">
               <span className="uc-modal-title">
-                {view === "dashboard" ? "Dashboard" : "My profile"}
+                {view === "agents" ? "Choose an agent"
+                  : view === "dashboard" ? "Dashboard" : "My profile"}
               </span>
               <button className="uc-modal-x" aria-label="Close"
                       onClick={() => setView("chat")}>
@@ -586,7 +582,10 @@ export default function UserChatPage() {
               </button>
             </div>
             <div className="uc-modal-body">
-              {view === "dashboard" ? (
+              {view === "agents" ? (
+                <AgentsBrowser agents={agents || []} selected={selected}
+                               onPick={(a) => pickAgent(a)} />
+              ) : view === "dashboard" ? (
                 <UserDashboard onOpenAgent={(id) => {
                   const a = (agents || []).find((x) => x.id === id);
                   if (a) pickAgent(a);

@@ -1,370 +1,164 @@
-# AgentFlow — Backend API
+# AgentFlow — Backend (FastAPI)
 
-Plateforme d'agents IA métiers avec système RAG configurable, authentification JWT, gestion multi-tenant et architecture multi-agents.
+The API behind AgentFlow, a platform where a company builds **RAG-powered AI agents**
+over its own documents:
 
-## Stack technique
+- **Admins** manage the organization: users, departments, company LLM/embedding
+  providers and their API keys.
+- **IT** builds and tunes **RAG spaces** (document ingestion, chunking, embeddings,
+  retrieval, evaluation, security testing) and deploys them as agents.
+- **End users** chat with the deployed agents of their department; every answer
+  cites its source documents.
 
-- **Framework** : FastAPI (Python 3.11+)
-- **Base de données** : PostgreSQL + pgvector
-- **ORM** : SQLAlchemy 2.0 + Alembic (migrations)
-- **Auth** : JWT (HS256) + bcrypt + cookies HttpOnly
-- **Email** : FastMail (SMTP)
-- **Embeddings** : sentence-transformers (BGE-M3 / BGE-base / MiniLM)
-- **LLM** : Groq API (Llama 3.3 70B Versatile)
-- **PDF** : pdfplumber + PyPDF2
+> To run the whole stack with one command, see [../DOCKER.md](../DOCKER.md).
+> This file is for understanding the backend and running it directly (dev mode).
 
----  
-## Installation
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| API framework | FastAPI + Uvicorn (Python 3.11+) |
+| Database | PostgreSQL 15+ with the **pgvector** extension |
+| ORM | SQLAlchemy 2.0 (schema auto-created at startup via `create_all`) |
+| Auth | JWT (HS256) in HttpOnly cookies + bcrypt, email OTP for password reset |
+| Email | fastapi-mail (SMTP) — invitations, password reset |
+| Document parsing | Docling (ML layout/tables/images) or PyMuPDF (fast mode), OCR fallback via vision LLM |
+| Chunking | Fixed / semantic / hierarchical / LLM / agentic strategies |
+| Embeddings | Local sentence-transformers (BGE-M3, MiniLM, …) or provider APIs |
+| LLMs | Multi-provider: Groq, OpenAI, Gemini, Ollama (local) — keys stored encrypted (Fernet) |
+| Retrieval | pgvector similarity + BGE cross-encoder reranking |
+| Web ingestion | crawl4ai / Playwright (Chromium), falls back to plain requests |
+| Chat cache | Upstash Redis REST (optional) |
+| Observability | Langfuse tracing (optional) |
+| Security eval | Built-in attack corpus + campaigns (prompt-injection testing) |
+
+---
+
+## Running locally (without Docker)
+
+### 1. Prerequisites
+
+- Python **3.11+** (3.12 recommended — same as the Docker image)
+- PostgreSQL **15+** with pgvector installed, and a database created:
+
+```sql
+CREATE DATABASE agentflow;
+\c agentflow
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+- (Optional) [Ollama](https://ollama.com) if you want local LLMs with no API key.
+
+### 2. Install
 
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
+venv\Scripts\activate        # Windows   (Linux/macOS: source venv/bin/activate)
 pip install -r requirements.txt
 ```
 
-### Prérequis
+The install is **heavy** (Docling, HuggingFace, LangChain, LlamaIndex, crawl4ai…)
+— expect several GB and a long first install.
 
-- Python 3.11+
-- PostgreSQL 15+ avec l'extension pgvector installée
-- Un compte Groq (gratuit) pour la clé API LLM
+### 3. Configure `.env`
 
-### Activer pgvector dans PostgreSQL
+Create `backend/.env`. Variables (from [app/config.py](app/config.py)):
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
+| Variable | Required | What it does |
+|---|---|---|
+| `DATABASE_URL` | ✅ | e.g. `postgresql://postgres:postgres@localhost:5432/agentflow` |
+| `SECRET_KEY` | ✅ | JWT signing secret (any long random string) |
+| `ALGORITHM` | ✅ | `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | ✅ | e.g. `1440` |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` / `MAIL_FROM` / `MAIL_SERVER` / `MAIL_PORT` | ✅ | SMTP account used to send invitations and OTP emails |
+| `FRONTEND_URL` | ✅ | Public URL of the frontend (`http://localhost:5173` in dev). Used to build activation/reset links in emails — a wrong value means dead links. |
+| `FERNET_KEY` | ✅ | Encrypts provider API keys stored in the DB. Generate once: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `VISION_PROVIDER` / `VISION_MODEL` / `VISION_API_KEY` | ✅ | Vision LLM that describes images found in documents (`openai` \| `gemini` \| `ollama`) |
+| `GROQ_API_KEY` | optional | Fallback Groq key (normally keys come from admin-managed providers) |
+| `OPENAI_API_KEY` / `CHUNK_LLM_MODEL` | optional | Key/model for LLM & agentic chunking (degrades to structural chunking if absent) |
+| `OLLAMA_BASE_URL` | optional | Local Ollama server (default `http://localhost:11434`) |
+| `PDF_EXTRACTION_MODE` | optional | `accurate` (Docling, slow on CPU) or `fast` (PyMuPDF, ~40× faster, no ML tables/images) |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | optional | Chat answer cache — empty = disabled |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | optional | RAG observability tracing — empty = disabled |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` / `TOP_K` | optional | RAG defaults (512 / 50 / 5) |
+| `DOCLING_*`, `PDF_OCR_*`, `CLEAN_*`, `WEB_IMAGE_VISION_MAX`, `VISION_MAX_WORKERS` | optional | Parsing/cleaning performance tuning — the defaults in `config.py` are documented inline and safe |
 
----
-## Lancement
+### 4. Run
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-- API : http://localhost:8000
-- Documentation Swagger : http://localhost:8000/docs
-- Documentation ReDoc : http://localhost:8000/redoc
+- API: http://localhost:8000 — Swagger: http://localhost:8000/docs — ReDoc: `/redoc`
+- **First startup is slow**: tables are created, the security attack corpus is
+  seeded, and the ML models (Docling, embeddings, reranker) are downloaded and
+  warmed up in a background thread. Later startups are fast — models are cached
+  and `HF_HUB_OFFLINE=1` keeps the app from calling HuggingFace at runtime.
+- **Do not add `--workers`**: evaluation/security runs keep in-memory job state,
+  the app must stay a single process.
+
+There is no seed user — open the frontend and **Sign up**: the first registration
+creates the organization and its admin account. Everyone else is invited by email
+from the admin's Users page.
 
 ---
 
-## Structure du projet
+## Project layout
 
 ```
-backend/
-├── app/
-│   ├── main.py                 # Point d'entrée FastAPI, CORS, routeurs
-│   ├── config.py               # Settings depuis .env (Pydantic)
-│   ├── database.py             # Connexion PostgreSQL, session SQLAlchemy
-│   │
-│   ├── models/                 # Modèles SQLAlchemy (tables)
-│   │   ├── __init__.py         # Imports centralisés
-│   │   ├── organization.py     # Organization (PERSONAL / BUSINESS)
-│   │   ├── department.py       # Department (RH, Finance, Support...)
-│   │   ├── user.py             # User (ADMIN / IT / USER)
-│   │   ├── rag_space.py        # RAGSpace (config du pipeline)
-│   │   ├── document.py         # Document (fichiers uploadés)
-│   │   └── chunk.py            # Chunk (morceaux + embeddings pgvector)
-│   │
-│   ├── schemas/                # Schémas Pydantic (validation)
-│   │   ├── auth.py             # Register, Login, ForgotPassword, OTP
-│   │   ├── user.py             # Invite, Activate, UpdateRole, Department
-│   │   └── rag.py              # CreateRAGSpace, Query, ChunkStrategy
-│   │
-│   ├── routes/                 # Endpoints API (routeurs FastAPI)
-│   │   ├── auth.py             # /api/auth/*
-│   │   ├── users.py            # /api/users/*
-│   │   └── rag.py              # /api/rag/*
-│   │
-│   └── services/               # Logique métier
-│       ├── auth_service.py     # Register, login, JWT, OTP, rate limiting
-│       ├── user_service.py     # Invite, activate, CRUD users, departments
-│       └── rag_service.py      # Pipeline RAG complet
-│
-├── requirements.txt
-├── .env
-├── .gitignore
-└── README.md
+backend/app/
+├── main.py            # App entry: CORS, routers, startup warmups, create_all
+├── config.py          # All settings, read from .env (pydantic-settings)
+├── database.py        # Engine + SessionLocal
+├── models/            # SQLAlchemy tables
+│   ├── organization / department / user / user_department
+│   ├── rag_space / rag_space_access / rag_space_collaborator / rag_space_version
+│   ├── document / chunk / chunk_vector    # chunk_vectors_<dim> per embedding size
+│   ├── chat            # ChatSession + ChatMessage (end-user conversations)
+│   ├── api_provider    # Company LLM/embedding providers (encrypted keys)
+│   ├── api_key         # Agent API keys + request logs (external access)
+│   ├── evaluation      # Eval datasets + experiment runs
+│   └── security        # Attack corpus + security campaigns/results
+├── schemas/           # Pydantic request/response models
+├── routes/            # HTTP endpoints (see table below)
+└── services/          # Business logic
+    ├── rag_service.py         # Ingestion pipeline orchestration
+    ├── providers/             # Document loaders/parsers per format
+    ├── embedding_factory/     # Local + API embeddings
+    ├── llm_factory/           # Multi-provider LLM clients
+    ├── retrieval/             # Vector search + reranking + query transform
+    ├── chat/                  # Chat sessions, answering, caching
+    ├── evaluation/ security/  # Quality & security testing of agents
+    ├── pgvector_store.py      # Vector storage
+    └── observability.py       # Langfuse tracing
 ```
 
----
-
-## Modèles de données
-
-### Organization
-
-| Champ      | Type     | Description           |
-| ---------- | -------- | --------------------- |
-| id         | UUID     | Clé primaire          |
-| name       | String   | Nom de l'organisation |
-| type       | Enum     | PERSONAL ou BUSINESS  |
-| created_at | DateTime | Date de création      |
-
-### User
-
-| Champ           | Type   | Description                                 |
-| --------------- | ------ | ------------------------------------------- |
-| id              | UUID   | Clé primaire                                |
-| name            | String | Nom complet (null si invitation en attente) |
-| email           | String | Email unique, indexé                        |
-| password_hash   | String | Haché avec bcrypt (tronqué à 72 bytes)      |
-| role            | Enum   | ADMIN, IT ou USER                           |
-| status          | Enum   | ACTIVE ou PENDING                           |
-| invite_token    | String | Token d'invitation (null si activé)         |
-| organization_id | FK     | Lien vers Organization                      |
-| department_id   | FK     | Lien vers Department (optionnel)            |
-
-### Department
-
-| Champ           | Type   | Description                         |
-| --------------- | ------ | ----------------------------------- |
-| id              | UUID   | Clé primaire                        |
-| name            | String | Nom du département (RH, Finance...) |
-| organization_id | FK     | Lien vers Organization              |
-
-### RAGSpace
-
-| Champ           | Type    | Description                     |
-| --------------- | ------- | ------------------------------- |
-| id              | UUID    | Clé primaire                    |
-| name            | String  | Nom de l'espace RAG             |
-| description     | String  | Description                     |
-| organization_id | FK      | Lien vers Organization          |
-| chunk_size      | Integer | Taille des chunks (défaut: 512) |
-| chunk_overlap   | Integer | Chevauchement (défaut: 50)      |
-| top_k           | Integer | Nombre de résultats (défaut: 5) |
-| chunk_strategy  | Enum    | FIXED, SEMANTIC ou HIERARCHICAL |
-
-### Document
-
-| Champ        | Type    | Description                         |
-| ------------ | ------- | ----------------------------------- |
-| id           | UUID    | Clé primaire                        |
-| file_name    | String  | Nom du fichier original             |
-| file_type    | String  | Type (pdf, docx, csv...)            |
-| file_size    | Integer | Taille en bytes                     |
-| num_chunks   | Integer | Nombre de chunks générés            |
-| status       | Enum    | PENDING, INDEXING, INDEXED ou ERROR |
-| error_msg    | Text    | Message d'erreur si échec           |
-| rag_space_id | FK      | Lien vers RAGSpace                  |
-
-### Chunk
-
-| Champ        | Type         | Description                        |
-| ------------ | ------------ | ---------------------------------- |
-| id           | UUID         | Clé primaire                       |
-| content      | Text         | Texte du chunk                     |
-| embedding    | Vector(1024) | Vecteur pgvector (1024 dimensions) |
-| page         | Integer      | Numéro de page source              |
-| type         | String       | "text" ou "table"                  |
-| document_id  | FK           | Lien vers Document                 |
-| rag_space_id | FK           | Lien vers RAGSpace                 |
-
----
-
-## API Endpoints
-
-### Authentification — `/api/auth`
-
-| Méthode | URL                         | Description                                 | Auth |
-| ------- | --------------------------- | ------------------------------------------- | ---- |
-| POST    | `/api/auth/register`        | Inscription + création de l'organisation    | Non  |
-| POST    | `/api/auth/login`           | Connexion (retourne JWT en cookie HttpOnly) | Non  |
-| POST    | `/api/auth/logout`          | Déconnexion (supprime le cookie)            | Oui  |
-| GET     | `/api/auth/me`              | Profil de l'utilisateur connecté            | Oui  |
-| POST    | `/api/auth/forgot-password` | Envoi d'un OTP 6 chiffres par email         | Non  |
-| POST    | `/api/auth/verify-otp`      | Vérification de l'OTP                       | Non  |
-| POST    | `/api/auth/reset-password`  | Réinitialisation du mot de passe            | Non  |
-
-### Utilisateurs — `/api/users`
-
-| Méthode | URL                           | Description                                     | Auth  |
-| ------- | ----------------------------- | ----------------------------------------------- | ----- |
-| GET     | `/api/users/`                 | Lister tous les utilisateurs de l'organisation  | Oui   |
-| POST    | `/api/users/invite`           | Inviter un utilisateur par email                | Admin |
-| POST    | `/api/users/activate`         | Activer un compte invité (token + mot de passe) | Non   |
-| PUT     | `/api/users/{user_id}`        | Modifier le rôle d'un utilisateur               | Admin |
-| DELETE  | `/api/users/{user_id}`        | Supprimer un utilisateur                        | Admin |
-| POST    | `/api/users/{user_id}/resend` | Renvoyer l'invitation                           | Admin |
-
-### Départements — `/api/users/departments`
-
-| Méthode | URL                                | Description              | Auth |
-| ------- | ---------------------------------- | ------------------------ | ---- |
-| GET     | `/api/users/departments`           | Lister les départements  | Oui  |
-| POST    | `/api/users/departments`           | Créer un département     | Oui  |
-| DELETE  | `/api/users/departments/{dept_id}` | Supprimer un département | Oui  |
-
-### RAG — `/api/rag`
-
-| Méthode | URL                                       | Description                                    | Auth |
-| ------- | ----------------------------------------- | ---------------------------------------------- | ---- |
-| POST    | `/api/rag/spaces`                         | Créer un espace RAG                            | Oui  |
-| GET     | `/api/rag/spaces`                         | Lister les espaces RAG                         | Oui  |
-| GET     | `/api/rag/spaces/{id}`                    | Détail d'un espace RAG                         | Oui  |
-| PUT     | `/api/rag/spaces/{id}`                    | Modifier un espace RAG                         | Oui  |
-| DELETE  | `/api/rag/spaces/{id}`                    | Supprimer un espace RAG (+ documents + chunks) | Oui  |
-| POST    | `/api/rag/spaces/{id}/upload`             | Uploader un document (PDF)                     | Oui  |
-| GET     | `/api/rag/spaces/{id}/documents`          | Lister les documents d'un espace               | Oui  |
-| DELETE  | `/api/rag/spaces/{id}/documents/{doc_id}` | Supprimer un document                          | Oui  |
-| POST    | `/api/rag/spaces/{id}/query`              | Poser une question au RAG                      | Oui  |
-
----
-
-## Pipeline RAG
-
-Le pipeline s'exécute en deux phases :
-
-### Phase d'indexation (à l'upload d'un document)
-
-1. **Extraction** — pdfplumber extrait le texte et les tableaux du PDF. Trois méthodes de détection de tableaux sont essayées (bordures visibles, texte, colonnes). Les tableaux sont convertis en Markdown.
-
-2. **Chunking** — Le texte extrait est découpé en morceaux via `RecursiveCharacterTextSplitter` de LangChain. La taille (`chunk_size`) et le chevauchement (`chunk_overlap`) sont configurables par espace. Les tableaux sont gardés intacts (jamais découpés).
-
-3. **Embedding** — Chaque chunk est transformé en vecteur (1024 dimensions) par le modèle `BGE-M3` de sentence-transformers. Le modèle est chargé une seule fois en mémoire (lazy loading). Fallback : BGE-base (768 dims) puis MiniLM (384 dims).
-
-4. **Stockage** — Les chunks (texte + vecteur) sont insérés dans PostgreSQL via pgvector. Un index IVFFlat est utilisé pour la recherche rapide.
-
-### Phase de requête (à chaque question)
-
-5. **Embed query** — La question est transformée en vecteur avec le même modèle.
-
-6. **Recherche hybride** — Deux scores sont calculés pour chaque chunk :
-   - Score sémantique (70%) : distance cosinus via pgvector (`<=>`)
-   - Score keyword (30%) : TF basique en Python
-   - Score final = 0.70 × sémantique + 0.30 × keyword
-   - Les tableaux reçoivent un boost de 15% si la question contient des termes tabulaires
-
-7. **Génération LLM** — Les top-K chunks sont assemblés en contexte et envoyés à Groq (Llama 3.3 70B) avec un prompt système qui force le LLM à ne répondre qu'à partir du contexte fourni et à citer ses sources.
-
----
-
-## Sécurité
-
-### Authentification
-
-- Mots de passe hachés avec **bcrypt** (passlib), tronqués à 72 bytes
-- JWT signé **HS256** avec expiration configurable (défaut: 60 min)
-- Token stocké en cookie **HttpOnly** + **Secure** + **SameSite=Lax**
-- Rate limiting : 5 tentatives de login par IP, blocage 15 minutes
-
-### OTP (mot de passe oublié)
-
-- Code à 6 chiffres envoyé par email
-- Expiration : 15 minutes
-- Stocké en mémoire (dict Python — à migrer vers Redis en production)
-
-### Multi-tenant
-
-- Chaque utilisateur appartient à une organisation
-- Les RAG spaces sont isolés par organisation (filtrés par `organization_id`)
-- Les utilisateurs sont assignés à des départements
-
----
-
-## Dépendances principales
-
-```
-fastapi==0.111.0          # Framework web async
-uvicorn==0.29.0           # Serveur ASGI
-sqlalchemy==2.0.30        # ORM
-psycopg2-binary==2.9.9    # Driver PostgreSQL
-alembic==1.13.1           # Migrations DB
-python-jose==3.3.0        # JWT
-passlib==1.7.4            # Hachage bcrypt
-pydantic==2.7.1           # Validation des données
-fastapi-mail==1.4.1       # Envoi d'emails SMTP
-langchain==0.2.0          # Orchestration RAG
-langchain-groq             # Provider LLM Groq
-pdfplumber==0.11.0        # Extraction PDF
-pypdf==4.2.0              # Fallback PDF
-pgvector==0.3.0           # Extension PostgreSQL vectorielle
-sentence-transformers      # Modèles d'embedding locaux
-```
-
----
-
-## Variables d'environnement
-
-| Variable                      | Requis | Défaut         | Description                             |
-| ----------------------------- | ------ | -------------- | --------------------------------------- |
-| `DATABASE_URL`                | Oui    | —              | URL PostgreSQL                          |
-| `SECRET_KEY`                  | Oui    | —              | Clé secrète JWT (changer en production) |
-| `ALGORITHM`                   | Non    | HS256          | Algorithme JWT                          |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Non    | 60             | Durée de vie du token                   |
-| `MAIL_USERNAME`               | Oui    | —              | Email SMTP                              |
-| `MAIL_PASSWORD`               | Oui    | —              | Mot de passe SMTP                       |
-| `MAIL_FROM`                   | Oui    | —              | Adresse expéditeur                      |
-| `MAIL_SERVER`                 | Non    | smtp.gmail.com | Serveur SMTP                            |
-| `MAIL_PORT`                   | Non    | 587            | Port SMTP                               |
-| `GROQ_API_KEY`                | Oui    | —              | Clé API Groq (gratuit)                  |
-| `CHUNK_SIZE`                  | Non    | 512            | Taille de chunk par défaut              |
-| `CHUNK_OVERLAP`               | Non    | 50             | Chevauchement par défaut                |
-| `TOP_K`                       | Non    | 5              | Nombre de résultats par défaut          |
-
----
-
-## Exemples de requêtes
-
-### Inscription
-
-```bash
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "first_name": "Fedi",
-    "last_name": "Khala",
-    "email": "fedi@welyne.com",
-    "password": "securepassword",
-    "org_type": "BUSINESS",
-    "org_name": "Welyne"
-  }'
-```
-
-### Connexion
-
-```bash
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -c cookies.txt \
-  -d '{"email": "fedi@welyne.com", "password": "securepassword"}'
-```
-
-### Créer un espace RAG
-
-```bash
-curl -X POST http://localhost:8000/api/rag/spaces \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "name": "RAG RH",
-    "description": "Documents RH",
-    "chunk_size": 500,
-    "chunk_overlap": 50,
-    "top_k": 5,
-    "chunk_strategy": "FIXED"
-  }'
-```
-
-### Uploader un document
-
-```bash
-curl -X POST http://localhost:8000/api/rag/spaces/{space_id}/upload \
-  -b cookies.txt \
-  -F "file=@politique_rh.pdf"
-```
-
-### Poser une question
-
-```bash
-curl -X POST http://localhost:8000/api/rag/spaces/{space_id}/query \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{"question": "Combien de jours de congé annuel ?"}'
-```
-
----
-
-## Licence
-
-Projet de fin d'études — Welyne Software Engineering, 2026.
+## API surface
+
+All routes are under `/api` except the public agent API.
+
+| Prefix | File | What it serves |
+|---|---|---|
+| `/api/auth` | `routes/auth.py` | Register, login/logout (HttpOnly cookie), me, forgot/reset password (OTP) |
+| `/api/users` | `routes/users.py` | Users CRUD, invitations, roles, departments |
+| `/api/rag` | `routes/rag.py` | RAG spaces: config, documents, ingestion, query, versions, evaluation, security |
+| `/api/chat` | `routes/chat.py` | End-user chat sessions + messages with deployed agents |
+| `/api/dashboard` | `routes/dashboard.py` | Read-only aggregates for the role dashboards |
+| `/api/providers` | `routes/api_provider.py` | Admin-managed company LLM/embedding providers |
+| `/api/models` | `routes/models.py` | Model catalog per provider |
+| `/api/rag/spaces/{id}/api-keys` | `routes/agent_api.py` | Manage agent API keys (owner/admin) |
+| `/v1/...` | `routes/agent_api.py` | **Public agent API** — API-key auth, lets external apps query a deployed agent |
+
+Full request/response detail: run the server and open **http://localhost:8000/docs**.
+
+## Database schema & migrations
+
+The schema is created automatically at startup from the SQLAlchemy models
+(`Base.metadata.create_all`) — new tables and indexes appear on boot, so a fresh
+database needs **no migration step**. The [migrations/](migrations/) folder only
+holds one-off SQL patches for columns added to already-populated databases.
+
+Uploaded documents are stored on disk in `backend/uploads/<space_id>/`.

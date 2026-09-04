@@ -1,7 +1,9 @@
 /* ════════════════════════════════════════════════════════════
    End-user chat — full-page, chat-first experience.
    DeepSeek-inspired: quiet gray rail, month-grouped history,
-   centered hero + floating input card, picker pills on top.
+   centered hero + floating input card, current-agent chip on top;
+   agent selection lives in the Agents overlay (menu: Agents ·
+   Dashboard · Profile).
 
    Palette: ink #0f172a · rail #f9fafb · blue #2563eb
    ════════════════════════════════════════════════════════════ */
@@ -207,7 +209,7 @@
   position: relative;
 }
 
-/* top bar: [spacer] [picker centered] [documents toggle] */
+/* top bar: [spacer] [current-agent chip centered] [documents toggle] */
 .uc-top {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -222,109 +224,191 @@
   gap: 8px;
 }
 
-/* picker pills — the main control of the page, deliberately prominent */
-.uc-picker {
-  position: relative;
-  display: inline-flex;
-  align-items: stretch;
-  padding: 5px;
-  border: 1px solid #dfe5ee;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 3px 14px rgba(15, 23, 42, 0.07);
-}
-.uc-pill {
+/* current-agent chip — a static label naming who you're chatting with;
+   changing agent happens in the Agents view (menu → Agents) */
+.uc-current {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  border: none;
-  border-radius: 13px;
-  padding: 8px 16px;
-  background: transparent;
-  cursor: pointer;
-  transition: background 0.13s;
-  white-space: nowrap;
+  border: 1px solid #e7eaf0;
+  border-radius: 999px;
+  padding: 6px 16px 6px 8px;
+  background: #fff;
   text-align: left;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 }
-.uc-pill:hover { background: #f3f5f8; }
-.uc-pill.on { background: #e8efff; }
-.uc-pill + .uc-pill { margin-left: 4px; }
-.uc-pill-ic {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+.uc-current-ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  background: #f1f4f9;
-  color: #64748b;
+  background: #e8efff;
+  color: #2563eb;
 }
-.uc-pill.agent .uc-pill-ic { background: #e8efff; color: #2563eb; }
-.uc-pill-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.uc-pill-label {
+.uc-current-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.uc-current-dept {
   font: 700 9.5px system-ui, sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: #9aa3b2;
 }
-.uc-pill-value {
+.uc-current-name {
   font: 700 13.5px system-ui, sans-serif;
   color: #0f172a;
-  max-width: 200px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.uc-pill.on .uc-pill-value { color: #1d4ed8; }
-.uc-pill-caret { color: #94a3b8; flex-shrink: 0; }
-
-.uc-dd {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  min-width: 250px;
-  max-height: 320px;
-  overflow-y: auto;
-  background: #fff;
-  border: 1px solid #eceff3;
-  border-radius: 14px;
-  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
-  padding: 6px;
-  z-index: 50;
-  animation: uc-pop 0.14s ease;
+/* ── Agents view (inside the overlay, next to Dashboard · Profile) ── */
+.uc-agents {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
 }
-.uc-dd-label {
+.uc-agents-side {
+  width: 216px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.uc-agents-label {
   font: 700 10.5px system-ui, sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #9aa3b2;
-  padding: 7px 11px 4px;
+  padding: 2px 10px 8px;
 }
-.uc-dd-item {
+.uc-agents-dept {
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
   padding: 9px 11px;
   border: none;
-  border-radius: 9px;
+  border-radius: 10px;
   background: transparent;
-  font: 500 13px system-ui, sans-serif;
+  font: 600 13px system-ui, sans-serif;
   color: #334155;
   cursor: pointer;
   text-align: left;
+  transition: background 0.12s;
 }
-.uc-dd-item:hover { background: #f3f5f8; }
-.uc-dd-item.on { background: #e8efff; color: #1d4ed8; }
-.uc-dd-item:disabled { opacity: 0.5; cursor: default; }
-.uc-dd-sub {
-  display: block;
-  font-size: 11px;
+.uc-agents-dept:hover { background: #eef1f5; }
+.uc-agents-dept.on { background: #e8efff; color: #1d4ed8; }
+.uc-agents-dept-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.uc-agents-dept-n {
+  font: 700 10.5px system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+  background: #eef1f5;
+  border-radius: 999px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+.uc-agents-dept.on .uc-agents-dept-n { color: #1d4ed8; background: #fff; }
+
+.uc-agents-grid {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+.uc-agent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 15px 16px;
+  border: 1px solid #e7eaf0;
+  border-radius: 16px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.uc-agent-card:hover:not(:disabled) {
+  border-color: #c8d8fc;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.1);
+}
+.uc-agent-card.on { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb inset; }
+.uc-agent-card:disabled { opacity: 0.55; cursor: default; }
+.uc-agent-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.uc-agent-ic {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: #e8efff;
+  color: #2563eb;
+}
+.uc-agent-name {
+  flex: 1;
+  min-width: 0;
+  font: 700 13.5px system-ui, sans-serif;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.uc-agent-check { color: #2563eb; flex-shrink: 0; }
+.uc-agent-desc {
+  font: 400 12.5px/1.55 system-ui, sans-serif;
+  color: #64748b;
+  min-height: 38px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.uc-agent-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11.5px system-ui, sans-serif;
   color: #94a3b8;
-  margin-top: 1px;
-  font-weight: 400;
 }
-.uc-dd-check { margin-left: auto; flex-shrink: 0; }
+.uc-agent-meta em {
+  margin-left: auto;
+  font: 700 10px system-ui, sans-serif;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #1d4ed8;
+  background: #e8efff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.uc-agents-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 20px;
+  color: #64748b;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.uc-agents-empty b { color: #0f172a; font-size: 15.5px; }
 
 /* ── hero (empty chat) ── */
 .uc-hero {
@@ -702,7 +786,7 @@
 }
 .uc-docs-empty { padding: 16px 12px; font-size: 12.5px; color: #9aa3b2; }
 
-/* ── Dashboard · Profile — floating modal OVER the chat ── */
+/* ── Agents · Dashboard · Profile — floating modal OVER the chat ── */
 .uc-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -728,6 +812,8 @@
   box-shadow: 0 28px 80px rgba(15, 23, 42, 0.32);
   animation: uc-pop 0.16s ease;
 }
+/* the Agents view always opens full-height, even with few agents */
+.uc-modal.tall { height: 88vh; }
 .uc-modal-head {
   display: flex;
   align-items: center;
